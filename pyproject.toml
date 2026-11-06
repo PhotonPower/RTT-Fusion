@@ -1,0 +1,50 @@
+# Python package rtt_fusion: prototype of the Raytatouille Fusion. Development tools are pinned
+# in requirements-dev.txt; solver modules come from their repositories at pinned commits.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rtt-fusion"
+version = "0.1.0"
+description = "Prototype of the Raytatouille Fusion: wave-optical solvers coupled through ports"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+modules = [
+    "bwpm @ git+https://github.com/PhotonPower/BWPM.git@ef2de941d226d364db000a977963b0eba24aea44",
+    "fouriergrating @ git+https://github.com/PhotonPower/FourierGrating.git@959c93b8d69301492ac927287cddc33c0e6c55b2",
+    "fieldtracing @ git+https://github.com/PhotonPower/Fieldtracing.git@6da9983387b8872d3241851d04d2012df5baaf48",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rtt_fusion = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -m 'not slow'"
+markers = ["slow: expensive reference computation (pytest -m slow)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["scipy", "scipy.*", "fouriergrating", "fouriergrating.*", "bwpm", "bwpm.*", "fieldtracing", "fieldtracing.*"]
+ignore_missing_imports = true

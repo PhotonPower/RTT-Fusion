@@ -1,0 +1,6 @@
+# Pinned development tools (CI and local). Runtime dependencies: pyproject.toml.
+numpy==2.2.6
+scipy==1.15.3
+pytest==8.3.4
+ruff==0.8.4
+mypy==1.13.0

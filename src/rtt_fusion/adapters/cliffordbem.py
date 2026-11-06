@@ -30,7 +30,8 @@ from typing import Any
 import numpy as np
 
 from rtt_fusion import __version__
-from rtt_fusion._types import ComplexArray, FloatArray
+from rtt_fusion._types import ComplexArray
+from rtt_fusion.convert import far_field_to_spectrum, hemisphere
 from rtt_fusion.ports import PlaneWaves, Port
 
 ADAPTER_VERSION = "0.1.0"
@@ -194,43 +195,18 @@ def scatter(handle: Handle, incident: PlaneWaves) -> Scattering:
     return Scattering(fld, b, np.asarray(r.h), k_um)
 
 
-def hemisphere(n_theta: int, n_phi: int, forward: bool) -> tuple[FloatArray, FloatArray]:
-    """Directions (N, 3) and weights (N,) in dΩ: Gauss-Legendre in cos θ ∈ (0, 1], uniform φ."""
-    x, w = np.polynomial.legendre.leggauss(n_theta)
-    mu, wmu = 0.5 * (x + 1.0), 0.5 * w
-    phi = 2 * np.pi * (np.arange(n_phi) + 0.5) / n_phi
-    mm, pp = np.meshgrid(mu, phi, indexing="ij")
-    st = np.sqrt(1 - mm**2)
-    sign = 1.0 if forward else -1.0
-    dirs = np.column_stack(
-        [(st * np.cos(pp)).ravel(), (st * np.sin(pp)).ravel(), sign * mm.ravel()]
-    )
-    weights = (wmu[:, None] * np.full(n_phi, 2 * np.pi / n_phi)[None, :]).ravel()
-    return dirs, weights
-
-
 def scattered_plane_waves(
     handle: Handle, sol: Scattering, port: Port, n_theta: int = 48, n_phi: int = 96
 ) -> PlaneWaves:
-    """Scattered field at a port as plane waves (Weyl expansion of the far field, see module)."""
+    """Scattered field at a port as plane waves (`rtt_fusion.convert.far_field_to_spectrum`)."""
     cb = _cb()
     s = handle.structure
     dirs, w = hemisphere(n_theta, n_phi, port.direction == 1)
-    e_inf = np.asarray(cb.far_field_E(s.mesh, sol.h_scat, sol.k_um, s.n_background**2, dirs))
-    # the discrete far field is transverse only to about 1 % (flat elements); remove the radial
-    # part, otherwise E_z = −(k_x E_x + k_y E_y)/k_z amplifies it near grazing directions
-    e_inf = e_inf - np.sum(e_inf * dirs, axis=1, keepdims=True) * dirs
-    p0 = (np.array([0.0, 0.0, port.z]) - np.asarray(s.center_mm)) * UM_PER_MM
-    amp = (
-        (1j * sol.k_um / (2 * np.pi))
-        * w[:, None]
-        * e_inf
-        * np.exp(1j * sol.k_um * (dirs @ p0))[:, None]
+    e_um = np.asarray(
+        cb.far_field_E(s.mesh, sol.h_scat, sol.k_um, s.n_background**2, dirs), dtype=np.complex128
     )
-    k_mm = sol.k_um * UM_PER_MM
-    return PlaneWaves(
-        port, dirs[:, 0] * k_mm, dirs[:, 1] * k_mm, amp[:, :2].astype(np.complex128), solid_angle=w
-    )
+    # E∞ with r in µm → r in mm: E∞/r is invariant, so E∞[mm] = E∞[µm]·1e-3
+    return far_field_to_spectrum(port, np.asarray(s.center_mm), dirs, w, e_um / UM_PER_MM)
 
 
 def apply(

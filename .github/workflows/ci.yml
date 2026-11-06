@@ -51,7 +51,13 @@ jobs:
       - name: install cliffordbem
         run: pip install "cliffordbem @ git+https://github.com/PhotonPower/CliffordBem.git@41e64e627b82f96766c7cfe4f7d663864a5e5cfe"
       - name: install specklebem
-        run: pip install "specklebem @ git+https://github.com/PhotonPower/SpeckleBem.git@4f04efe26b71f95122ff58cc7589641ba7e8b28f#subdirectory=python"
+        # on failure the last error lines become annotations (readable through the API)
+        run: |
+          pip install -v "specklebem @ git+https://github.com/PhotonPower/SpeckleBem.git@4f04efe26b71f95122ff58cc7589641ba7e8b28f#subdirectory=python" > sb.log 2>&1 || {
+            grep -iE "error|fatal|not found|could not" sb.log | tail -n 9 | while IFS= read -r line; do echo "::error::${line}"; done
+            echo "::error::$(tail -n 1 sb.log)"
+            exit 1
+          }
         env:
           PIP_CONSTRAINT: ${{ github.workspace }}/constraints-modules.txt
       - run: pip install -e .

@@ -15,3 +15,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   gegen den BWPM-Adapter.
 - R2: BWPM-Adapter `rtt_fusion.adapters.bwpm` (Gitterfeld-Ports), bitgleich zu `bwpm.adapter`;
   Energie über `ports.power`, Querprobe mit FourierGrating über die Umwandlung G → S.
+- R3: Pilot K1 – `rtt_fusion.couplings.grating_table` (Effizienzen je Ordnung aus FourierGrating,
+  als `diffraction_efficiency` in ein Raytatouille-System) mit Test gegen Gittergleichung,
+  Pfadtransmission und Energie; Raytatouille als Modul (CI baut es mit Eigen, nlohmann-json, TBB).
+  Befunde für den Fusion-ADR in `docs/testfaelle.md`.

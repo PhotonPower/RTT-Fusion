@@ -88,13 +88,15 @@ dem ersten Modul, das sie braucht; jede weitere Darstellung braucht ein ADR.
 - Inhalt je Ordnung m und Seite (durchgelassen/reflektiert): **Jones-Matrix 2 × 2** von der
   s/p-Basis der einfallenden Welle in die s/p-Basis der Ordnung (Convention A, s = k × N), als
   Funktion von (λ, tangentialen Richtungskosinus der einfallenden Welle); Interpolation glatt in
-  den Stützstellen (Regel und Prüfung in der Umsetzung).
+  den Stützstellen (Regel und Prüfung in der Umsetzung). (Basis korrigiert im Nachtrag unten.)
 - Die Tabelle **ersetzt** die Interaktion der Fläche und die Effizienz: P_event ist die
   leistungsnormierte PRT-Matrix aus der Jones-Matrix (ADR 0021), sodass Grenzflächenverluste
   nicht doppelt zählen (B3). Fehlt die Tabelle, gilt ADR 0025 unverändert.
 - Erzeugt wird die Tabelle von einem Adapter (z. B. FourierGrating); Raytatouille rechnet sie
   nicht selbst.
-- Präzisierung als eigenes ADR möglich, weil sie unabhängig vom Rest umgesetzt werden kann.
+- Präzisiert im eigenen Entwurf `docs/adr-entwurf-beugungstabelle.md` (R6): Basis in
+  transversalen kartesischen Komponenten des lokalen Flächensystems (nicht s/p), Interpolation,
+  Rayleigh-Anomalien, Verhalten außerhalb der Tabelle.
 
 ### 5. Adapter
 
@@ -197,3 +199,14 @@ ADR 0013 bleibt für den Kern. Löser dürfen die GPU in ihrem eigenen Prozess n
      tabellierte Beugungsinteraktion mit FourierGrating-Adapter in Python, (c) `rtt-fusion` in
      C++ mit Port-Typen und Umwandlungen, Abnahme gegen die Sollwertdateien von RTT-Fusion,
      (d) `regions` und Pfade zusammen mit M9, (e) Planer.
+
+## Nachtrag (R6, 2026-11-06): Basis der Jones-Tabelle
+
+Der Prototyp der tabellierten Interaktion (RTT-Fusion R6, Tests J1–J5) zeigt, dass die
+s/p-Basis aus Punkt 4 bei senkrechtem Einfall nicht taugt: s ist dort nicht definiert, und
+Raytatouille wählt es über eine Achsenregel (`rtt/polar/prt.hpp`). Für ein Gitter ist die
+Jones-Matrix bei senkrechtem Einfall anisotrop (TE ≠ TM, J2), das Ergebnis hinge also von dieser
+Regel ab. Die Tabelle verwendet deshalb die **transversalen kartesischen Komponenten (E_x, E_y)
+im lokalen Flächensystem** (x = Gittervektor, y = Rillen, z = Normale), mit leistungsnormierter
+Jones-Matrix und der PRT-Matrix P_m = L_m J_m Π (I − k_ein k_einᵀ) + k_m k_einᵀ. Einzelheiten im
+eigenen Entwurf `docs/adr-entwurf-beugungstabelle.md`.

@@ -13,7 +13,7 @@
 | **R3 Pilot K1** | Gitterspektrometer: FourierGrating-Effizienzen als Tabelle im Raytracer (Python-API von Raytatouille) | Gittergleichung, Energie über die Ordnungen ✅ (K1, Befunde für R5 in `docs/testfaelle.md`) |
 | **R4 Pilot K3** | Partikel im Fokus mit CliffordBem (zweiter Löser) | Mie ✅ (C1–C3, K3) |
 | **R5 Fusion-ADR** | Entwurf für Raytatouille aus den Erfahrungen R1–R4, vor dem M9-ADR ([docs/adr-entwurf-fusion.md](adr-entwurf-fusion.md)) | Freigabe ✅ (E1) |
-| **R6 ADR-Entwurf tabellierte Beugungsinteraktion** | Tabellenformat (Jones-Matrix je Ordnung über λ und Einfall, Convention A), Interpolation, PRT-Matrix nach ADR 0021, Diagnosecodes; Python-Prototyp der Interaktion gegen FourierGrating direkt (Winkel- und λ-Scan) | Prototyp gegen FourierGrating, Freigabe |
+| **R6 ADR-Entwurf tabellierte Beugungsinteraktion** | Tabellenformat (Jones-Matrix je Ordnung über λ und Einfall, Convention A), Interpolation, PRT-Matrix nach ADR 0021, Diagnosecodes; Python-Prototyp der Interaktion gegen FourierGrating direkt (Winkel- und λ-Scan) | Prototyp gegen FourierGrating ✅ (J1–J5, [Entwurf](adr-entwurf-beugungstabelle.md)), Freigabe offen |
 | **R7 Sollwertdateien für den C++-Port** | Export der Port-Typen, Umwandlungen und Adapter-Ergebnisse im Format `raytatouille-result` | Dateien aktuell, Rundreise |
 
 ## Entscheidungen

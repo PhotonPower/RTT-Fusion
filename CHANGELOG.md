@@ -29,3 +29,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   begründet mit den Befunden B1–B7 aus R1–R4 und BWPM.
 - Fusion-ADR freigegeben (E1): Punkt 9 „`rtt-fusion` in C++“ mit drei Wegen für Adapter;
   Vorschläge zu Nummer, Zeitpunkt und eigenem ADR für die tabellierte Interaktion; Stufen R6, R7.
+- R6: Prototyp der tabellierten Beugungsinteraktion `rtt_fusion.couplings.jones_table`
+  (leistungsnormierte Jones-Matrix je Ordnung in kartesischer Basis, PRT-Matrix, kubische
+  Interpolation, Erkennung von Rayleigh-Anomalien) mit Tests J1–J5 und Konvergenzmessung;
+  ADR-Entwurf `docs/adr-entwurf-beugungstabelle.md`.

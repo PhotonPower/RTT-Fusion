@@ -20,6 +20,12 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 | C3 | Verschiebung des Teilchens: Port-Amplituden ändern sich um e^(i(k_ein − k_aus)·Δ) | analytisch | < 1e−5 | R4 | ✅ | `test_adapter_cliffordbem.py` |
 | K3 | Pilot: Teilchen im Fokus eines Objektivs (NA 0,8), Rückstreuung ins Objektiv | Fokusfeld gegen `BeamField.focused`; Leistungsanteil gegen die Rechnung allein in CliffordBem | < 1e−10 bzw. < 1e−6; Anteil 3,70 % | R4 | ✅ | `test_pilot_k3.py` |
 
+| J1 | Tabellierte Beugungsinteraktion: PRT-Matrix je Ordnung, P k_ein = k_m, Transversalität, Energie über alle Ordnungen bei beliebiger Polarisation | Energieerhaltung (verlustfreies Gitter) | < 1e−9 | R6 | ✅ | `test_jones_table.py` |
+| J2 | Senkrechter Einfall ohne Basis-Entartung (TE ≠ TM) | FourierGrating direkt | anisotrop, keine Kopplung < 1e−12 | R6 | ✅ | `test_jones_table.py` |
+| J3 | Leistungsnormierung | Effizienzen aus K1 (s, p, 0° und 4,6°) | < 1e−12 | R6 | ✅ | `test_jones_table.py` |
+| J4 | Phasenbezug am Gitterursprung | verschobenes Gitter: Faktor e^(−i m 2π x₀/Λ) | < 1e−10 | R6 | ✅ | `test_jones_table.py` |
+| J5 | Interpolation (kubisch) und Rayleigh-Anomalien | FourierGrating direkt an Kontrollpunkten | Tabelle 4 × 5 × 4: < 5e−3; Anomaliezellen erkannt | R6 | ✅ | `test_jones_table.py` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die
@@ -103,3 +109,24 @@ Vakuum, λ = 0,6 µm.
 3. **Numerische Transversalität:** Das Fernfeld flacher Elemente ist nur auf etwa 1 % transversal;
    die Rekonstruktion von E_z aus (E_x, E_y) verstärkt das nahe streifender Richtungen
    (σ_sca vorher 6 % zu groß). Der Adapter projiziert transversal.
+
+## J1–J5: Tabellierte Beugungsinteraktion (R6)
+
+Prototyp `rtt_fusion.couplings.jones_table` für den ADR-Entwurf
+`docs/adr-entwurf-beugungstabelle.md`; Gitter aus K1.
+
+**Konvergenz der Interpolation** (Messung außerhalb der Tests, 30 Zufallspunkte, λ 0,585–0,615 µm,
+σ_x ±0,08, Tabellen λ × σ_x mit n × n Stützstellen, σ_y 4 Stützstellen; größter Fehler eines
+Eintrags von J_m gegen FourierGrating direkt):
+
+| n | Schritt σ_x | linear | kubisch |
+| --- | --- | --- | --- |
+| 5 | 0,05 | 9,0·10⁻³ | 2,5·10⁻³ |
+| 9 | 0,025 | 1,6·10⁻³ | 2,5·10⁻⁴ |
+| 17 | 0,0125 | 5,9·10⁻⁴ | 1,4·10⁻⁵ |
+
+**Nahe der Rayleigh-Anomalie** (Ordnung ±1 streifend bei σ_x ≈ ±0,143, λ = 0,6 µm; Tabelle
+σ_x 0,10–0,20): Zellen, die die Anomalie enthalten, haben Fehler 0,11 / 0,087 / 0,031 bei
+Schritt 0,025 / 0,0125 / 0,0063 (≈ √h), Zellen daneben 5,9·10⁻⁴ / 1,4·10⁻⁴. Die Prüfung
+`near_rayleigh_anomaly` (Vorzeichenwechsel von |σ + m′λ/Λ| − n über der Zelle, alle Ordnungen,
+beide Medien) erkennt genau die schlechten Zellen.

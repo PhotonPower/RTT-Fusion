@@ -68,10 +68,40 @@ def test_file_is_up_to_date(name: str) -> None:
     _skip_without_fg(name)
     stored = _load(name)
     fresh = decode(encode(CASES[name]()))
-    tol = fresh["tolerance"]
+    tol = dict(fresh["tolerance"])
+    inputs_rel, inputs_abs = 1e-12, 0.0
+    if name in NEEDS_FOURIERGRATING:
+        # FourierGrating's eigen solvers round differently between builds (BLAS, compiler): the
+        # regenerated table may differ in the 1e-10 range from the stored one; the port itself is
+        # checked against the stored inputs (test_derived_values_from_stored_inputs)
+        tol = {"rel": max(tol["rel"], 1e-8), "abs": max(tol["abs"], 1e-9)}
+        inputs_rel, inputs_abs = 1e-8, 1e-9
     _close(fresh["expected"], stored["expected"], tol["rel"], tol["abs"], f"{name}/expected")
-    for key in ("case", "description", "source", "parameters", "inputs", "tolerance"):
+    _close(fresh["inputs"], stored["inputs"], inputs_rel, inputs_abs, f"{name}/inputs")
+    for key in ("case", "description", "source", "parameters", "tolerance"):
         _close(fresh[key], stored[key], 1e-12, 0.0, f"{name}/{key}")
+
+
+def test_derived_values_from_stored_inputs() -> None:
+    # interpolation from the stored table reproduces the stored values exactly (no FourierGrating)
+    from rtt_fusion.couplings import jones_table as jt
+
+    d = _load("jones_table_lamellar")
+    p, i = d["parameters"], d["inputs"]
+    table = jt.JonesTable(
+        tuple(p["orders"]),
+        p["side"],
+        i["wavelengths_um"],
+        i["sigma_x"],
+        i["sigma_y"],
+        p["period_um"],
+        p["n_in"],
+        p["n_out"],
+        i["jones"],
+    )
+    for q, expected in zip(i["queries"], d["expected"]["interpolated"], strict=True):
+        got = np.array([jt.interpolate(table, m, *q) for m in p["orders"]])
+        assert np.allclose(got, expected, rtol=1e-12, atol=d["tolerance"]["abs"])
 
 
 @pytest.mark.parametrize("name", list(CASES))

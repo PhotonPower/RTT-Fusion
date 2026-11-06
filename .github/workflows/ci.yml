@@ -36,9 +36,31 @@ jobs:
           python-version: ${{ matrix.python }}
       # solver modules from their repositories at pinned commits (extra "modules"); BWPM and
       # FourierGrating build their CPU cores from source
-      - run: sudo apt-get update && sudo apt-get install -y libeigen3-dev nlohmann-json3-dev libtbb-dev
+      - run: sudo apt-get update && sudo apt-get install -y libeigen3-dev nlohmann-json3-dev libtbb-dev libopenblas-dev liblapack-dev
       - run: pip install -r requirements-dev.txt
-      - run: pip install -e ".[modules]"
+      # one step per solver module (same pinned commits as the extra "modules" in pyproject.toml),
+      # so a failing build names its module
+      - name: install bwpm
+        run: pip install "bwpm @ git+https://github.com/PhotonPower/BWPM.git@ef2de941d226d364db000a977963b0eba24aea44"
+      - name: install fouriergrating
+        run: pip install "fouriergrating @ git+https://github.com/PhotonPower/FourierGrating.git@959c93b8d69301492ac927287cddc33c0e6c55b2"
+      - name: install fieldtracing
+        run: pip install "fieldtracing @ git+https://github.com/PhotonPower/Fieldtracing.git@6da9983387b8872d3241851d04d2012df5baaf48"
+      - name: install raytatouille
+        run: pip install "raytatouille @ git+https://github.com/PhotonPower/Raytatouille.git@708b6dda655a4bd0f20fb9f34b51c61d51761590"
+      - name: install cliffordbem
+        run: pip install "cliffordbem @ git+https://github.com/PhotonPower/CliffordBem.git@41e64e627b82f96766c7cfe4f7d663864a5e5cfe"
+      - name: install specklebem
+        # SpeckleBem (4f04efe) does not build with pybind11 3.x, and CMake finds the pybind11 of
+        # this environment (installed by an earlier module) even under build isolation: build it
+        # without isolation against pybind11 < 3. On failure the error lines become annotations.
+        run: |
+          pip install -c constraints-modules.txt "pybind11<3" "scikit-build-core>=0.10" numpy
+          pip install -v --no-build-isolation "specklebem @ git+https://github.com/PhotonPower/SpeckleBem.git@4f04efe26b71f95122ff58cc7589641ba7e8b28f#subdirectory=python" > sb.log 2>&1 || {
+            grep -iE "error|fatal|not found|could not" sb.log | tail -n 9 | while IFS= read -r line; do echo "::error::${line}"; done
+            exit 1
+          }
+      - run: pip install -e .
       - run: pytest -q
         env:
           RTT_FUSION_REQUIRE_MODULES: "1"

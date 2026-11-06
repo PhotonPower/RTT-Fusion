@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | **R0 Gerüst** | Regeln, Konventionen, Schnittstelle, Port-Typen G und S mit Umwandlung und Leistung, CI mit den Modulen | Tests der Port-Typen gegen analytische Werte ✅ (P1) |
 | **R1 FourierGrating-Adapter** | Adapter mit Umrechnung der Konventionen, Konformität: Fresnel/Airy, Transfer-Matrix, Gittergleichung, Energie, Querprobe gegen den BWPM-Adapter | alle Konformitätstests grün ✅ (F1–F5) |
-| **R2 BWPM-Adapter** | `bwpm.adapter` in die gemeinsamen Port-Typen eingebunden | Konformität wie R1, Querprobe |
+| **R2 BWPM-Adapter** | `bwpm.adapter` in die gemeinsamen Port-Typen eingebunden | Konformität wie R1, Querprobe ✅ (B1) |
 | **R3 Pilot K1** | Gitterspektrometer: FourierGrating-Effizienzen als Tabelle im Raytracer (Python-API von Raytatouille) | Gittergleichung, Energie über die Ordnungen |
 | **R4 Pilot K3** | Partikel im Fokus mit CliffordBem (zweiter Löser) | Mie |
 | **R5 Fusion-ADR** | Entwurf für Raytatouille aus den Erfahrungen R1–R4, vor dem M9-ADR | Freigabe |

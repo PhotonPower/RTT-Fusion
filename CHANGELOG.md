@@ -13,3 +13,5 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   kartesische Rekonstruktion mit FourierGratings Basen, Einfall als Überlagerung von δ = 0°/90°,
   Ports an oberer und unterer Grenzfläche) mit Konformitätstests F1–F5, darunter die Querprobe
   gegen den BWPM-Adapter.
+- R2: BWPM-Adapter `rtt_fusion.adapters.bwpm` (Gitterfeld-Ports), bitgleich zu `bwpm.adapter`;
+  Energie über `ports.power`, Querprobe mit FourierGrating über die Umwandlung G → S.

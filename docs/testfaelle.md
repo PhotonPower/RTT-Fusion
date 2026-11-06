@@ -157,6 +157,8 @@ Abweichungen der Größenordnung 1 (X2: Verstärkung statt Absorption).
 
 **Befund für SpeckleBem (Vorschlag, dort nur lesend):** Der Bau scheitert mit pybind11 3.x
 (`bind_excitation.cpp:151`: Lambda mit zwei verschiedenen `pybind11::typing::Tuple`-Rückgabetypen,
-3er-Vektor und N×3-Matrix). Mit pybind11 < 3 baut es; die CI von RTT-Fusion setzt deshalb
-`PIP_CONSTRAINT` mit `pybind11<3`. Abhilfe in SpeckleBem: expliziter Rückgabetyp der Lambda oder
-zwei getrennte Überladungen.
+3er-Vektor und N×3-Matrix). Mit pybind11 < 3 baut es. Eine Beschränkung über `PIP_CONSTRAINT`
+reicht in der CI nicht: Ein früher installiertes Modul bringt pybind11 3.x in die Umgebung, und
+CMake findet es auch bei isoliertem Bau. Die CI installiert deshalb pybind11 < 3 und baut
+SpeckleBem ohne Isolation (`.github/workflows/ci.yml`). Issue-Entwurf für SpeckleBem:
+`docs/vorschlaege/specklebem-pybind11.md`.

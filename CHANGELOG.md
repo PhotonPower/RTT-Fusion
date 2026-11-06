@@ -40,3 +40,5 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   von ε, Einfall und Fernfeld wegen exp(+jωt), SI-Einheiten) mit Tests X1–X4: Mie für eine
   absorbierende Kugel, Vorzeichen der Absorption, Querprobe gegen CliffordBem, Überlagerung.
   CI baut SpeckleBem mit `pybind11<3` (`constraints-modules.txt`).
+- CI: jedes Löser-Modul in einem eigenen Schritt; SpeckleBem ohne Isolation gegen pybind11 < 3;
+  Issue-Entwurf für SpeckleBem `docs/vorschlaege/specklebem-pybind11.md`.

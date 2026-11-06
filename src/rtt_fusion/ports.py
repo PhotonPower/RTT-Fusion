@@ -83,6 +83,8 @@ class PlaneWaves:
         kx, ky: transverse wave vectors (1/mm), shape (N,).
         field: transverse amplitudes (N, 2).
         orders: optional diffraction orders (N, 2) as integers (n, m).
+        solid_angle: optional quadrature weights dΩ (N,) when the waves discretise a continuous
+            angular spectrum E = ∫ A(k̂) e^(ik k̂·r) dΩ, field_j = A(k̂_j)·dΩ_j (then `power` applies).
     """
 
     port: Port
@@ -90,6 +92,7 @@ class PlaneWaves:
     ky: FloatArray
     field: ComplexArray
     orders: np.ndarray | None = None  # type: ignore[type-arg]
+    solid_angle: FloatArray | None = None
 
     def __post_init__(self) -> None:
         n = np.asarray(self.kx).shape
@@ -110,6 +113,26 @@ class PlaneWaves:
         e = np.asarray(self.field)
         magnitude = np.sum(np.abs(e) ** 2, axis=1) + np.abs(self.ez()) ** 2
         return np.asarray(np.real(kz) * magnitude)
+
+
+def spectrum_power(s: PlaneWaves, cone_na: float | None = None) -> float:
+    """Power of a continuous angular spectrum (waves with `solid_angle`), optionally only of the
+    waves within a cone sin θ ≤ NA/n around the port normal.
+
+    E = ∫ A e^(ik k̂·r) dΩ has the flux (2π)²/k ∫ |A|² dΩ in the units of `power_density`
+    (Re k_z |E|² per unit area; |A|² with the longitudinal part), k = n k₀.
+    """
+    if s.solid_angle is None:
+        raise ValueError("plane waves without solid-angle weights")
+    k = float(np.real(s.port.index)) * s.port.k0
+    w = np.asarray(s.solid_angle)
+    e = np.asarray(s.field)
+    magnitude = np.sum(np.abs(e) ** 2, axis=1) + np.abs(s.ez()) ** 2
+    terms = magnitude / w
+    if cone_na is not None:
+        sin_theta = np.hypot(s.kx, s.ky) / k
+        terms = np.where(sin_theta <= cone_na / float(np.real(s.port.index)), terms, 0.0)
+    return float((2 * np.pi) ** 2 / k * np.sum(terms))
 
 
 def _centre_phase(g: GriddedField) -> ComplexArray:

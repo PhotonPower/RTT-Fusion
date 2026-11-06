@@ -15,6 +15,11 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 
 | K1 | Pilot: FourierGrating-Effizienzen als Tabelle im sequenziellen Tracer von Raytatouille (Lamellengitter Λ = 0,7 µm in Vakuum, λ = 0,6 µm, Ordnungen −1, 0, +1) | Gittergleichung; FourierGrating-Richtungen; Effizienzen; Energieerhaltung | Richtungen < 1e−12 (gegen Gittergleichung) bzw. 1e−9 (gegen FourierGrating), Pfadtransmission = Effizienz < 1e−12, Σ = 1 < 1e−9 | R3 | ✅ | `test_pilot_k1.py` |
 
+| C1 | CliffordBem-Adapter: ebene Welle über den Adapter = Lösung von CliffordBem selbst (Phase am Port, Polarisation) | `ScatteringProblem.solve_plane_wave` | < 1e−7 | R4 | ✅ | `test_adapter_cliffordbem.py` |
+| C2 | Kugel R = 0,25 µm, n = 1,5, λ = 0,6 µm (720 Dreiecke) | Mie (eigene Reihe, Bohren & Huffman); σ_sca = σ_ext | Mie < 4 % (Genauigkeit flacher Elemente), Energie < 2 % | R4 | ✅ | `test_adapter_cliffordbem.py` |
+| C3 | Verschiebung des Teilchens: Port-Amplituden ändern sich um e^(i(k_ein − k_aus)·Δ) | analytisch | < 1e−5 | R4 | ✅ | `test_adapter_cliffordbem.py` |
+| K3 | Pilot: Teilchen im Fokus eines Objektivs (NA 0,8), Rückstreuung ins Objektiv | Fokusfeld gegen `BeamField.focused`; Leistungsanteil gegen die Rechnung allein in CliffordBem | < 1e−10 bzw. < 1e−6; Anteil 3,70 % | R4 | ✅ | `test_pilot_k3.py` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die
@@ -65,3 +70,36 @@ zwischen gleichen Medien liegt); die Energie über alle Ordnungen ist erhalten.
 3. Reflektierte Ordnungen eines Transmissionsgitters (hier bis 26 %) sind in einem sequenziellen
    Pfad nur über einen zweiten Pfad mit `reflect` erreichbar; die Tabelle muss beide Seiten
    liefern (der Adapter tut es).
+
+## C1–C3, K3: CliffordBem und Teilchen im Fokus (R4)
+
+CliffordBem 0.63 (Commit `41e64e6`), Kugel aus 720 flachen Dreiecken, R = 0,25 µm, n = 1,5 in
+Vakuum, λ = 0,6 µm.
+
+- **C1:** Eine ebene Welle über den Adapter (Phase 1 am vorderen Port, 2 µm vor dem Mittelpunkt)
+  ergibt dieselbe Spur wie `solve_plane_wave` mal e^(ik·2 µm), auf 10⁻⁷.
+- **C2:** σ_ext 3,0 % unter Mie, Fernfeld bei 0,3 und 1,0 rad 2,8 % – die bekannte Genauigkeit
+  flacher Elemente bei dieser Auflösung (CliffordBem selbst: 1,1 % bei 2 000 Dreiecken).
+  σ_sca aus den Port-Spektren gegen σ_ext 1,4 %.
+- **C3:** Verschiebung um (0,3; −0,1; 0,4) µm: Amplituden auf 10⁻⁵ wie vorhergesagt.
+- **K3:** Das Richards-Wolf-Spektrum (`couplings.focus`) gleicht `BeamField.focused` auf 10⁻¹³
+  nach Normierung (reeller Faktor: gleiche Phasenkonvention). Vom Strahl kehren **3,70 %** der
+  Leistung in die NA 0,8 zurück, über Ports und Spektren wie direkt in CliffordBem (< 10⁻⁶);
+  insgesamt streut die Kugel das 2,16-fache der Strahlleistung (möglich bis 4×, weil die
+  Extinktion die Interferenz mit dem Strahl enthält).
+
+**Befunde für den Fusion-ADR (R5):**
+
+1. **Fernfeld → Port-Spektrum:** Die Weyl-Darstellung E_s = (ik/2π)∫E∞ e^(ik k̂·r) dΩ ist nur
+   mit evaneszenten Anteilen exakt. Lässt man sie weg, fehlt in einer Port-Ebene in endlichem
+   Abstand ein Beitrag, der nur wie 1/r abfällt (Randterm streifender Richtungen): gemessen 6 %
+   auf der Achse in 2–6 µm Abstand. Für alles, was ein Objektiv mit NA < n erreicht, ist das
+   Spektrum dagegen exakt. Ports zu Streukörpern sollten deshalb **Spektren** (S) sein, nicht
+   Gitterfelder in einer nahen Ebene.
+2. **Kontinuierliche Spektren brauchen Gewichte:** Ein auf Quadraturrichtungen diskretisiertes
+   Spektrum (Strahl, Fernfeld) hat eine Leistung (2π)²/k Σ|A|²dΩ; die Port-Typen tragen dafür
+   `solid_angle`. Diskrete Wellen (Gitterordnungen) und Spektren lassen sich nicht ohne diese
+   Unterscheidung addieren.
+3. **Numerische Transversalität:** Das Fernfeld flacher Elemente ist nur auf etwa 1 % transversal;
+   die Rekonstruktion von E_z aus (E_x, E_y) verstärkt das nahe streifender Richtungen
+   (σ_sca vorher 6 % zu groß). Der Adapter projiziert transversal.

@@ -136,7 +136,7 @@ def far_field_spectrum_dipole() -> dict[str, Any]:
     dirs, w = hemisphere(10, 20, True)
     p = np.array([1.0, 0.0, 0.0])
     e_inf = (p[None, :] - (dirs @ p)[:, None] * dirs).astype(np.complex128)
-    e_inf[:, 0] += 1e-3 * dirs[:, 0]  # a small radial part, as from a numerical far field
+    e_inf += 1e-3 * dirs  # a small radial part, as from a numerical far field (removed)
     s = far_field_to_spectrum(port, center, dirs, w, e_inf)
     k = port.k0
     return field_reference(

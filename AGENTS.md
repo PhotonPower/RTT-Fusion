@@ -18,6 +18,10 @@ pytest
 ruff check . && ruff format --check . && mypy
 ```
 
+Sollwertdateien für den C++-Port: `python tools/export_reference.py` schreibt
+`reference/*.result.json` (Format `raytatouille-result`); `tests/test_reference_files.py`
+prüft, dass sie aktuell sind.
+
 Das Extra `modules` installiert die Löser aus ihren Repositories auf festen Commits
 (`pyproject.toml`). Ohne ein Modul werden dessen Tests übersprungen, außer mit
 `RTT_FUSION_REQUIRE_MODULES=1` (CI), dann schlagen sie fehl.

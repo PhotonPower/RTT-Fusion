@@ -1,0 +1,178 @@
+{
+ "format": "raytatouille-result",
+ "schema_version": "0.1.13",
+ "type": "FieldReference",
+ "data": {
+  "case": "fouriergrating_stack",
+  "description": "FourierGrating adapter: planar stack, oblique with azimuth, reflected and transmitted.",
+  "source": "rtt_fusion.adapters.fouriergrating (test F2); FourierGrating 0.16.0",
+  "parameters": {
+   "fouriergrating_config": "{\"dimension\": \"1D\", \"layers\": [{\"material\": \"mid\", \"thickness_um\": 0.13, \"type\": \"homogeneous\"}, {\"material\": \"lossy\", \"thickness_um\": 0.21, \"type\": \"homogeneous\"}, {\"material\": \"hi\", \"thickness_um\": 0.09, \"type\": \"homogeneous\"}], \"materials\": {\"air\": {\"n\": 1.0}, \"glass\": {\"n\": 1.5}, \"hi\": {\"n\": 2.1}, \"lossy\": {\"n\": [1.8, 0.05]}, \"mid\": {\"n\": 1.45}}, \"period_um\": {\"x\": 0.7, \"z\": 0.0}, \"solver\": \"rcwa\", \"substrate\": \"glass\", \"superstrate\": \"air\", \"truncation\": {\"Nx\": 3, \"Nz\": 0}}",
+   "wavelength_um": 0.6,
+   "thickness_mm": 0.00042999999999999994
+  },
+  "inputs": {
+   "incident_kx_per_mm": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     3895.84246976497
+    ]
+   },
+   "incident_ky_per_mm": {
+    "dtype": "float64",
+    "shape": [
+     1
+    ],
+    "values": [
+     1205.1252986669876
+    ]
+   },
+   "incident": {
+    "dtype": "complex128",
+    "shape": [
+     1,
+     2
+    ],
+    "values": [
+     [
+      0.4,
+      -0.1
+     ],
+     [
+      0.2,
+      0.7
+     ]
+    ]
+   }
+  },
+  "expected": {
+   "front_orders": {
+    "dtype": "int64",
+    "shape": [
+     2,
+     2
+    ],
+    "values": [
+     -1,
+     0,
+     0,
+     0
+    ]
+   },
+   "front_kx_per_mm": {
+    "dtype": "float64",
+    "shape": [
+     2
+    ],
+    "values": [
+     -5080.136540492,
+     3895.842469765
+    ]
+   },
+   "front_amplitude": {
+    "dtype": "complex128",
+    "shape": [
+     2,
+     2
+    ],
+    "values": [
+     [
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0
+     ],
+     [
+      -0.13968364863950153,
+      0.007122949320551797
+     ],
+     [
+      -4.883947678693823e-05,
+      -0.2839193308787318
+     ]
+    ]
+   },
+   "back_orders": {
+    "dtype": "int64",
+    "shape": [
+     4,
+     2
+    ],
+    "values": [
+     -2,
+     0,
+     -1,
+     0,
+     0,
+     0,
+     1,
+     0
+    ]
+   },
+   "back_kx_per_mm": {
+    "dtype": "float64",
+    "shape": [
+     4
+    ],
+    "values": [
+     -14056.115550748,
+     -5080.136540492,
+     3895.842469765,
+     12871.821480022
+    ]
+   },
+   "back_amplitude": {
+    "dtype": "complex128",
+    "shape": [
+     4,
+     2
+    ],
+    "values": [
+     [
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0
+     ],
+     [
+      0.1101512941541324,
+      0.26352199612221755
+     ],
+     [
+      -0.42298449859440207,
+      0.22369788786225978
+     ],
+     [
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0
+     ]
+    ]
+   }
+  },
+  "tolerance": {
+   "rel": 1e-09,
+   "abs": 1e-11
+  },
+  "reference": {},
+  "reference_tolerance": {}
+ }
+}

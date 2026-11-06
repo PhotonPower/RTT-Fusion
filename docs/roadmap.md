@@ -11,7 +11,7 @@
 | **R1 FourierGrating-Adapter** | Adapter mit Umrechnung der Konventionen, Konformität: Fresnel/Airy, Transfer-Matrix, Gittergleichung, Energie, Querprobe gegen den BWPM-Adapter | alle Konformitätstests grün ✅ (F1–F5) |
 | **R2 BWPM-Adapter** | `bwpm.adapter` in die gemeinsamen Port-Typen eingebunden | Konformität wie R1, Querprobe ✅ (B1) |
 | **R3 Pilot K1** | Gitterspektrometer: FourierGrating-Effizienzen als Tabelle im Raytracer (Python-API von Raytatouille) | Gittergleichung, Energie über die Ordnungen ✅ (K1, Befunde für R5 in `docs/testfaelle.md`) |
-| **R4 Pilot K3** | Partikel im Fokus mit CliffordBem (zweiter Löser) | Mie |
+| **R4 Pilot K3** | Partikel im Fokus mit CliffordBem (zweiter Löser) | Mie ✅ (C1–C3, K3) |
 | **R5 Fusion-ADR** | Entwurf für Raytatouille aus den Erfahrungen R1–R4, vor dem M9-ADR | Freigabe |
 
 ## Entscheidungen

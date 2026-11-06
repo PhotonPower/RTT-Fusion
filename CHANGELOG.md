@@ -19,3 +19,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   als `diffraction_efficiency` in ein Raytatouille-System) mit Test gegen Gittergleichung,
   Pfadtransmission und Energie; Raytatouille als Modul (CI baut es mit Eigen, nlohmann-json, TBB).
   Befunde für den Fusion-ADR in `docs/testfaelle.md`.
+- R4: CliffordBem-Adapter `rtt_fusion.adapters.cliffordbem` (Einfall als Winkelspektrum, Fernfeld →
+  Port-Spektren über Weyl), `couplings.focus.richards_wolf`, `ports.spectrum_power` und
+  `PlaneWaves.solid_angle`; Tests C1–C3 und Pilot K3 (Teilchen im Fokus, Rückstreuung ins
+  Objektiv). Befunde für den Fusion-ADR in `docs/testfaelle.md`.

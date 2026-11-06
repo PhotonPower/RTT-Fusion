@@ -36,9 +36,11 @@ jobs:
           python-version: ${{ matrix.python }}
       # solver modules from their repositories at pinned commits (extra "modules"); BWPM and
       # FourierGrating build their CPU cores from source
-      - run: sudo apt-get update && sudo apt-get install -y libeigen3-dev nlohmann-json3-dev libtbb-dev
+      - run: sudo apt-get update && sudo apt-get install -y libeigen3-dev nlohmann-json3-dev libtbb-dev libopenblas-dev liblapack-dev
       - run: pip install -r requirements-dev.txt
       - run: pip install -e ".[modules]"
+        env:
+          PIP_CONSTRAINT: ${{ github.workspace }}/constraints-modules.txt
       - run: pytest -q
         env:
           RTT_FUSION_REQUIRE_MODULES: "1"

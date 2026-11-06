@@ -1,0 +1,2 @@
+# SpeckleBem (4f04efe) does not build with pybind11 3.x (docs/testfaelle.md, X1-X4)
+pybind11<3

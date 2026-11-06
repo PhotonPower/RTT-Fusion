@@ -28,6 +28,11 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 
 | S1 | Sollwertdateien für den C++-Port (`reference/*.result.json`): G → S, Halbkugel-Quadratur, Richards-Wolf-Strahl, Fernfeld → Spektrum, Beugungstabelle, FourierGrating-Stapel | unabhängig: Einzelwelle, Σw = 2π, ∫cos θ dΩ = π, Strahlleistung (2π)²/k·π NA², Dipolleistung k·4π/3, Tabelle gegen FourierGrating direkt | Dateien aktuell, unabhängige Werte < 1e−12 (Tabelle 5e−3), Rundreise | R7 | ✅ | `test_reference_files.py` |
 
+| X1 | SpeckleBem-Adapter (exp(+jωt)): absorbierende Kugel ε = 2,25 + 0,3i, Fernfeld | Mie | < 3 % | R8 | ✅ | `test_adapter_specklebem.py` |
+| X2 | Vorzeichen der Absorption (falsche Konjugation wäre Verstärkung) | Mie: σ_ext, σ_sca, σ_abs | σ_abs > 0,2 σ_ext; σ_ext < 3 % | R8 | ✅ | `test_adapter_specklebem.py` |
+| X3 | Querprobe SpeckleBem gegen CliffordBem, schräger Einfall, elliptische Polarisation, Port-Spektren vorn und hinten | zweiter BEM-Löser mit anderen Konventionen | < 4 % | R8 | ✅ | `test_adapter_specklebem.py` |
+| X4 | Überlagerung zweier Einfallswellen (Operator wiederverwendet) | Summe der Einzellösungen | < 1e−6 | R8 | ✅ | `test_adapter_specklebem.py` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die
@@ -132,3 +137,26 @@ Eintrags von J_m gegen FourierGrating direkt):
 Schritt 0,025 / 0,0125 / 0,0063 (≈ √h), Zellen daneben 5,9·10⁻⁴ / 1,4·10⁻⁴. Die Prüfung
 `near_rayleigh_anomaly` (Vorzeichenwechsel von |σ + m′λ/Λ| − n über der Zelle, alle Ordnungen,
 beide Medien) erkennt genau die schlechten Zellen.
+
+## X1–X4: SpeckleBem (R8)
+
+SpeckleBem 0.1.0 (Commit `4f04efe`), Kugel R = 0,25 µm aus `make_sphere` mit Kanten ≤ λ/10
+(1 280 Dreiecke), ε = 2,25 + 0,3i (in SpeckleBem 2,25 − 0,3j), λ = 0,6 µm, dicht, GMRES 10⁻⁸.
+
+| Größe | Adapter | Mie | Abweichung |
+| --- | --- | --- | --- |
+| σ_ext (µm²) | 0,5353 | 0,5402 | −0,9 % |
+| σ_sca aus den Port-Spektren | 0,3716 | 0,3751 | −0,9 % |
+| σ_abs = σ_ext − σ_sca | 0,1637 | 0,1650 | −0,8 % |
+
+Querprobe gegen CliffordBem (720-Dreieck-Kugel aus `make_icosphere(8)`, 17,5° Einfall,
+Polarisation (0,8; 0,2 + 0,4i)): Port-Spektren vorn 1,7 %, hinten 0,7 % (größte Abweichung
+relativ zum Maximum), Leistungen 2,7 % bzw. 1,2 %. Die Unterschiede liegen im Bereich der
+Diskretisierung beider Löser; ein Konventionsfehler (Konjugation, Einheiten, Phasenbezug) gäbe
+Abweichungen der Größenordnung 1 (X2: Verstärkung statt Absorption).
+
+**Befund für SpeckleBem (Vorschlag, dort nur lesend):** Der Bau scheitert mit pybind11 3.x
+(`bind_excitation.cpp:151`: Lambda mit zwei verschiedenen `pybind11::typing::Tuple`-Rückgabetypen,
+3er-Vektor und N×3-Matrix). Mit pybind11 < 3 baut es; die CI von RTT-Fusion setzt deshalb
+`PIP_CONSTRAINT` mit `pybind11<3`. Abhilfe in SpeckleBem: expliziter Rückgabetyp der Lambda oder
+zwei getrennte Überladungen.

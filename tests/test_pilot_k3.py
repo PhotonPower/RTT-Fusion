@@ -26,6 +26,7 @@ except ImportError:
     pytest.skip("cliffordbem not installed", allow_module_level=True)
 
 from rtt_fusion.adapters import cliffordbem as cba
+from rtt_fusion.convert import hemisphere
 from rtt_fusion.couplings.focus import richards_wolf
 from rtt_fusion.ports import spectrum_power
 
@@ -75,7 +76,7 @@ def test_collected_backscatter_fusion_equals_direct(setup: Any) -> None:
     b = np.asarray(reference.project(mesh, medium))
     r = cba._problem(handle, LAM).solve_rhs(b, cb.SolveOptions(tol=1e-8))
     h_scat = np.asarray(r.h) - b
-    dirs, w = cba.hemisphere(40, 80, False)
+    dirs, w = hemisphere(40, 80, False)
     e = np.asarray(cb.far_field_E(mesh, h_scat, K_UM, 1.0, dirs))
     e = e - np.sum(e * dirs, axis=1, keepdims=True) * dirs
     inside = np.sqrt(1 - dirs[:, 2] ** 2) <= NA

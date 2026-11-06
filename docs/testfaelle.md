@@ -26,6 +26,8 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 | J4 | Phasenbezug am Gitterursprung | verschobenes Gitter: Faktor e^(−i m 2π x₀/Λ) | < 1e−10 | R6 | ✅ | `test_jones_table.py` |
 | J5 | Interpolation (kubisch) und Rayleigh-Anomalien | FourierGrating direkt an Kontrollpunkten | Tabelle 4 × 5 × 4: < 5e−3; Anomaliezellen erkannt | R6 | ✅ | `test_jones_table.py` |
 
+| S1 | Sollwertdateien für den C++-Port (`reference/*.result.json`): G → S, Halbkugel-Quadratur, Richards-Wolf-Strahl, Fernfeld → Spektrum, Beugungstabelle, FourierGrating-Stapel | unabhängig: Einzelwelle, Σw = 2π, ∫cos θ dΩ = π, Strahlleistung (2π)²/k·π NA², Dipolleistung k·4π/3, Tabelle gegen FourierGrating direkt | Dateien aktuell, unabhängige Werte < 1e−12 (Tabelle 5e−3), Rundreise | R7 | ✅ | `test_reference_files.py` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die

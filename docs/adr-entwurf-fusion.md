@@ -8,7 +8,7 @@
 > Fusionsplan `docs/rtt-fusion/plan.md`. Grundsatzentscheidungen D1, D2, D10, D11 des Maintainers
 > vom 2026-11-05/06 in RTT-Fusion `docs/roadmap.md`.
 
-**Status:** vorgeschlagen
+**Status:** vorgeschlagen (für Raytatouille; in RTT-Fusion freigegeben am 2026-11-06, Entscheidung E1)
 
 ## Kontext
 
@@ -140,6 +140,26 @@ dem ersten Modul, das sie braucht; jede weitere Darstellung braucht ein ADR.
 
 ADR 0013 bleibt für den Kern. Löser dürfen die GPU in ihrem eigenen Prozess nutzen (B7).
 
+### 9. `rtt-fusion` in C++ (Maintainer, 2026-11-06)
+
+- Neue Bibliothek `rtt-fusion` in C++20 in der Schicht Workflows, wie die übrigen Bibliotheken
+  (ADR 0001, 0003, 0004): Port-Typen (Port, GriddedField, PlaneWaves mit Ordnungen und dΩ),
+  Umwandlungen (G ↔ S, Fernfeld → S), Leistung, Kohärenzregeln, Inhalts-Hash, die abstrakte
+  Adapter-Schnittstelle mit Registry und später der Planer. Python-Anbindung über `rtt-py`
+  (nanobind, ADR 0002).
+- **Adapter bleiben außerhalb.** Die Schnittstelle ist eine abstrakte C++-Klasse
+  (`describe`, `prepare`, `apply`, `estimate`); Umsetzungen gibt es auf drei Wegen:
+  1. Adapter in Python (die vorhandenen Löser haben Python-Anbindungen): Sie implementieren die
+     Schnittstelle über `rtt-py` und werden nur aus Python-Workflows aufgerufen – im Einklang
+     mit der Regel, dass Python-Callbacks nur über die API kommen (O2/F3), nie aus dem
+     Dateiformat;
+  2. Adapter in C++ als eigene Bibliothek außerhalb von Raytatouille, die gegen die öffentlichen
+     Header von `rtt-fusion` baut (für Löser mit C++-Kern, z. B. BWPM);
+  3. Unterprozess-Adapter: ein Protokoll mit Werten im Format `raytatouille-result` über
+     Dateien oder Pipes, für Löser mit GPU, eigenem MPI oder fremder Lizenz.
+- Der Python-Prototyp in RTT-Fusion bleibt die Referenz: Seine Sollwertdateien sind die Abnahme
+  des Ports, wie bei `rtt-field` (Fieldtracing → Raytatouille).
+
 ## Verworfen
 
 - **Löser in den Kern:** Lizenzen, Build-Abhängigkeiten (Eigen, CUDA, MPI) und Wartung von fünf
@@ -164,5 +184,16 @@ ADR 0013 bleibt für den Kern. Löser dürfen die GPU in ihrem eigenen Prozess n
 - **Reihenfolge** (Fusionsplan P3–P5): (1) `diffraction_table` und Adapter FourierGrating
   (direkter Nutzen im sequenziellen Tracer), (2) S in `rtt-field` mit Port-Typen, (3)
   `regions` und Pfade zusammen mit M9, (4) Planer.
-- **Offen für den Maintainer:** Nummer und Zeitpunkt relativ zu M9; ob Punkt 4 ein eigenes ADR
-  wird; ob `rtt-fusion` zunächst Python bleibt (wie der Prototyp) oder gleich in C++ entsteht.
+- **Vorschläge zu den offenen Punkten** (RTT-Fusion, 2026-11-06, zur Entscheidung in Raytatouille):
+  1. **Nummer und Zeitpunkt:** Dieser Grundsatz-ADR wird das erste ADR nach dem Release v1.0,
+     mit der dann nächsten freien Nummer (heute 0043), **vor** dem ADR zu M9. M8 bleibt frei von
+     Fusion-Themen; der M9-ADR verweist auf Punkt 6.
+  2. **Tabellierte Interaktion als eigenes ADR:** Ja – Punkt 4 wird ein eigener, genauer ADR
+     („Tabellierte Beugungsinteraktion“, Nummer direkt nach diesem) mit Tabellenformat, Basis,
+     Interpolationsregel, Gültigkeitsbereich, Diagnosecodes und Abnahme aus Pilot K1. Er hängt
+     nicht von `regions` ab und kann in einem Release 1.x vor M9 umgesetzt werden; er bringt den
+     ersten Nutzen der Fusion im sequenziellen Tracer.
+  3. **Reihenfolge nach v1.0:** (a) Port von `rtt-field` (Fieldtracing, angenommen), (b)
+     tabellierte Beugungsinteraktion mit FourierGrating-Adapter in Python, (c) `rtt-fusion` in
+     C++ mit Port-Typen und Umwandlungen, Abnahme gegen die Sollwertdateien von RTT-Fusion,
+     (d) `regions` und Pfade zusammen mit M9, (e) Planer.

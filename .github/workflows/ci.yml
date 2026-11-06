@@ -51,15 +51,15 @@ jobs:
       - name: install cliffordbem
         run: pip install "cliffordbem @ git+https://github.com/PhotonPower/CliffordBem.git@41e64e627b82f96766c7cfe4f7d663864a5e5cfe"
       - name: install specklebem
-        # on failure the last error lines become annotations (readable through the API)
+        # SpeckleBem (4f04efe) does not build with pybind11 3.x, and CMake finds the pybind11 of
+        # this environment (installed by an earlier module) even under build isolation: build it
+        # without isolation against pybind11 < 3. On failure the error lines become annotations.
         run: |
-          pip install -v "specklebem @ git+https://github.com/PhotonPower/SpeckleBem.git@4f04efe26b71f95122ff58cc7589641ba7e8b28f#subdirectory=python" > sb.log 2>&1 || {
+          pip install -c constraints-modules.txt "pybind11<3" "scikit-build-core>=0.10" numpy
+          pip install -v --no-build-isolation "specklebem @ git+https://github.com/PhotonPower/SpeckleBem.git@4f04efe26b71f95122ff58cc7589641ba7e8b28f#subdirectory=python" > sb.log 2>&1 || {
             grep -iE "error|fatal|not found|could not" sb.log | tail -n 9 | while IFS= read -r line; do echo "::error::${line}"; done
-            echo "::error::$(tail -n 1 sb.log)"
             exit 1
           }
-        env:
-          PIP_CONSTRAINT: ${{ github.workspace }}/constraints-modules.txt
       - run: pip install -e .
       - run: pytest -q
         env:

@@ -18,6 +18,10 @@ pytest
 ruff check . && ruff format --check . && mypy
 ```
 
+Die CI baut die Löser einmal in einen zwischengespeicherten Wheelhouse (Schlüssel: Commits in
+`pyproject.toml`, `constraints-modules.txt`, Workflow, Python-Version); ein neuer Commit eines
+Moduls baut nur nach Änderung dieser Dateien neu.
+
 Sollwertdateien für den C++-Port: `python tools/export_reference.py` schreibt
 `reference/*.result.json` (Format `raytatouille-result`); `tests/test_reference_files.py`
 prüft, dass sie aktuell sind.

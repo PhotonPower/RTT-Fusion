@@ -42,3 +42,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   CI baut SpeckleBem mit `pybind11<3` (`constraints-modules.txt`).
 - CI: jedes Löser-Modul in einem eigenen Schritt; SpeckleBem ohne Isolation gegen pybind11 < 3;
   Issue-Entwurf für SpeckleBem `docs/vorschlaege/specklebem-pybind11.md`.
+- R9: hp-FEM-Adapter für Gitter `rtt_fusion.adapters.hpfem` (`grating.jones` → kartesische
+  Felder in den Port-Konventionen) mit Tests H1–H3: Fresnel (3e−15), Querprobe gegen
+  FourierGrating mit allen Ordnungen (starke < 0,6 %, schwache < 3 %), Energie.

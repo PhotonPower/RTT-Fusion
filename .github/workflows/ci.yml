@@ -36,7 +36,7 @@ jobs:
           python-version: ${{ matrix.python }}
       # solver modules from their repositories at pinned commits (extra "modules"); BWPM and
       # FourierGrating build their CPU cores from source
-      - run: sudo apt-get update && sudo apt-get install -y libeigen3-dev nlohmann-json3-dev libtbb-dev libopenblas-dev liblapack-dev
+      - run: sudo apt-get update && sudo apt-get install -y libeigen3-dev nlohmann-json3-dev libtbb-dev libopenblas-dev liblapack-dev libglu1-mesa libxcursor1 libxinerama1 libxft2
       - run: pip install -r requirements-dev.txt
       # one step per solver module (same pinned commits as the extra "modules" in pyproject.toml),
       # so a failing build names its module
@@ -50,6 +50,8 @@ jobs:
         run: pip install "raytatouille @ git+https://github.com/PhotonPower/Raytatouille.git@708b6dda655a4bd0f20fb9f34b51c61d51761590"
       - name: install cliffordbem
         run: pip install "cliffordbem @ git+https://github.com/PhotonPower/CliffordBem.git@41e64e627b82f96766c7cfe4f7d663864a5e5cfe"
+      - name: install hpfem
+        run: pip install gmsh "hpfem @ git+https://github.com/PhotonPower/hp-FEM.git@dce07d5d5cc52681715044310c03a10c088d20e7"
       - name: install specklebem
         # SpeckleBem (4f04efe) does not build with pybind11 3.x, and CMake finds the pybind11 of
         # this environment (installed by an earlier module) even under build isolation: build it

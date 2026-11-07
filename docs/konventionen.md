@@ -49,6 +49,7 @@ Port-Grenze nach Fieldtracing ADR 0004 (folgt mit dem Strahlen-Port).
 | Löser | Unterschied | Umrechnung |
 | --- | --- | --- |
 | BWPM | keiner | – |
+| hp-FEM (Gitter) | SI-Meter; Rahmen x = Periode, y = Normale (Licht von +y), z = Rillen; Jones-Matrizen leistungsnormiert in ŝ = k̂ × ŷ (ẑ bei senkrechtem Einfall), p̂ = ŝ × k̂; Bezug am linken Zellrand und an den Stapelgrenzen | wie FourierGrating gedreht; kartesische Felder mit hp-FEMs Basis; Leistungsnormierung entfernen; Phasen auf x = 0 und die Port-Ebenen verschieben |
 | SpeckleBem | Zeitfaktor e^(+jωt) (passive Medien Im ε ≤ 0), SI-Meter, Phasenbezug der ebenen Welle am Netzursprung, Fernfeld E_s ≈ F e^(−jkr)/r | ε, Einfallsamplitude und Fernfeld komplex konjugieren; F[mm] = F[m]·10³; Amplitude am Körpermittelpunkt |
 | CliffordBem | Längen in einer freien Einheit (hier 1 µm), ω = k₀; Einfall als Winkelspektrum mit Brennpunkt; Fernfeld E∞ mit E_s ≈ E∞ e^(ikr)/r | Einheiten; Brennpunkt = Port-Ursprung; Fernfeld → Port-Spektrum über Weyl, transversal projiziert |
 | FourierGrating | Schichtung in y, Licht von oben (−y); x′ = x, y′ = z, z′ = −y (Drehung um x); Amplituden je Ordnung als (E·s, E·p) mit s = (γ, 0, −α)/|κ|, bei κ = 0 aber s = (0, 0, 1); Einfall A = cos δ·s_ein + sin δ·p_ein mit s_ein = (sin ψ, 0, −cos ψ) auch bei φ = 0; Phasenbezug lokal an der oberen bzw. unteren Grenzfläche; Längen in µm, Winkel in Grad | Felder kartesisch rekonstruieren, drehen; Einfall als Überlagerung zweier Läufe (δ = 0°, 90°) mit komplexen Gewichten |

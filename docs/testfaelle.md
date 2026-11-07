@@ -37,6 +37,8 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 | H2 | Querprobe hp-FEM gegen FourierGrating: Lamellengitter aus K1, 0°, 4,6°, 4,6° konisch (φ = 40°), komplexe Vektoramplituden aller Ordnungen | zweites rigoroses Verfahren | starke Ordnungen < 0,6 %, R±1 < 3 % | R9 | ✅ | `test_adapter_hpfem.py` |
 | H3 | Energie über alle Ordnungen (verlustfrei) | Energieerhaltung | < 5e−3 | R9 | ✅ | `test_adapter_hpfem.py` |
 
+| K4 | Pilot: SPR-Biosensor (Prisma 1,515 / Gold 50 nm / Adlayer n(z) aus BioOptoMD-Format / Wasser, 633 nm); Datenport N | FourierGrating-Adapter gegen Transfer-Matrix; de Feijter (Verschiebung ∝ ∫(n − n_w) dz); Linearität; Vergröberung der Schichten | < 1e−9; 0,5 %; 6 %; 1 % | R10 | ✅ | `test_pilot_k4.py` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die
@@ -187,3 +189,27 @@ p-Konvergenz, verfeinert werden muss das Netz (h). Auf dem feinsten Netz (`p=1`,
 0,3162). Die Querprobe bestätigt beide Adapter mit allen Konventionsumrechnungen: Rahmen, s/p-
 Vorzeichen (hp-FEM: ŝ = k̂ × ŷ, p̂ = ŝ × k̂), Leistungsnormierung, Bezug auf Zellrand und
 Stapelgrenzen; ein Fehler darin gäbe Abweichungen der Größenordnung 1.
+
+## K4: Biosensor mit Brechzahlprofil aus der Molekulardynamik (R10)
+
+BioOptoMD braucht CUDA und lief hier nicht; der Adapter liest seine Ausgabeformate
+(`analysis.export_refractive_index`, Tracker-Zeitreihen; Commit `4a4c492`), die Testprofile sind
+synthetisch in diesem Format (2 Replicas, Δz = 0,05 nm, 400 Bins). Kretschmann-Anordnung,
+p-Polarisation, Resonanz ohne Schicht bei 72,214°:
+
+| Profil | ∫(n − n_w) dz | Verschiebung | 1-nm-Schichten statt 0,05 nm |
+| --- | --- | --- | --- |
+| exponentiell, 0,12·e^(−z/3 nm) | 0,3559 nm | 0,5403° | +1,4·10⁻⁴ |
+| Kasten, 0,06 auf 6 nm | 0,3564 nm | 0,5407° | 0 |
+| exponentiell, doppelte Amplitude | 0,7119 nm | 1,0581° | +4,7·10⁻⁴ |
+
+Verschiebung je optischer Überschussdicke: 1,5182 bzw. 1,5172 °/nm – formunabhängig auf
+0,07 % (de Feijter); bei doppelter Amplitude 1,958-fach (2 % nichtlinear). Die Vergröberung auf
+1-nm-Schichten ändert die Verschiebung um < 5·10⁻⁴: Für Plasmonensensoren genügt ein grobes
+Profil, die MD-Auflösung von 0,05 nm wird nicht gebraucht.
+
+**Befund für den Fusion-ADR:** Ein Datenport (N, Q) unterscheidet sich von einem Lichtport: Er
+hat keine Richtung und keine Leistung, wohl aber eine Wellenlänge (n(z) gilt nur bei der λ des
+MD-Laufs), eine Streuung über Replicas und eine Lage relativ zur Sensoroberfläche. Die Wahl der
+Beleuchtungsseite ist eine Spiegelung (z → −z), keine Drehung – für Orientierungen von Dipolen
+wichtig.

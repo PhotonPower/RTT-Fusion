@@ -210,3 +210,14 @@ Regel ab. Die Tabelle verwendet deshalb die **transversalen kartesischen Kompone
 im lokalen Flächensystem** (x = Gittervektor, y = Rillen, z = Normale), mit leistungsnormierter
 Jones-Matrix und der PRT-Matrix P_m = L_m J_m Π (I − k_ein k_einᵀ) + k_m k_einᵀ. Einzelheiten im
 eigenen Entwurf `docs/adr-entwurf-beugungstabelle.md`.
+
+## Nachtrag (R8–R10, 2026-11-07): weitere Löser und Datenports
+
+- SpeckleBem (exp(+jωt)) und hp-FEM (Gitter) sind mit demselben Konformitätssatz angebunden;
+  Querproben SpeckleBem ↔ CliffordBem (0,7–1,7 %) und hp-FEM ↔ FourierGrating (0,1–2 %, auf
+  feinem Netz 0,1–0,3 %) bestätigen, dass Punkt 5 (Konventionen nur im Adapter, Querprobe als
+  Aufnahmebedingung) trägt.
+- Datenports (Punkt 3, „mit dem ersten Modul, das sie braucht“): BioOptoMD liefert n(z) (N) und
+  Dipole (Q). Ein Datenport trägt Wellenlänge, Bezugsfläche, Seite (Spiegelung, nicht Drehung)
+  und die Streuung über Replicas, aber weder Richtung noch Leistung. Vorschlag: N und Q als
+  Datentypen von `rtt-fusion` mit diesen Feldern; Abnahme aus Pilot K4.

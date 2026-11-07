@@ -27,6 +27,9 @@ Ein Port ist eine Ebene z = const mit
 
 E_z folgt aus der Transversalität: E_z = −Richtung·(k_x E_x + k_y E_y)/k_z.
 
+**Datenports** (N: Brechzahlprofil, Q: Dipole) tragen keine Leistung und keine Richtung, aber die
+Wellenlänge, für die sie gelten, ihre Lage zur Bezugsfläche und die Streuung über Replicas.
+
 **Kontinuierliche Spektren** (Strahl, Fernfeld eines Streukörpers) werden auf Quadraturrichtungen
 diskretisiert; jede Welle trägt dann A(k̂)·dΩ und die Port-Daten das Gewicht dΩ (`solid_angle`).
 Ihre Leistung ist (2π)²/k Σ |A|² dΩ (`ports.spectrum_power`).
@@ -50,6 +53,7 @@ Port-Grenze nach Fieldtracing ADR 0004 (folgt mit dem Strahlen-Port).
 | --- | --- | --- |
 | BWPM | keiner | – |
 | hp-FEM (Gitter) | SI-Meter; Rahmen x = Periode, y = Normale (Licht von +y), z = Rillen; Jones-Matrizen leistungsnormiert in ŝ = k̂ × ŷ (ẑ bei senkrechtem Einfall), p̂ = ŝ × k̂; Bezug am linken Zellrand und an den Stapelgrenzen | wie FourierGrating gedreht; kartesische Felder mit hp-FEMs Basis; Leistungsnormierung entfernen; Phasen auf x = 0 und die Port-Ebenen verschieben |
+| BioOptoMD (Daten) | nm; Sensoroberfläche bei z = 0, Lösung z > 0; n(z) reell bei der λ des Laufs; Dipole (R_F, μ̂, d) | nm → mm; Beleuchtung von der Substratseite: z übernehmen, von der Lösung: spiegeln (z → −z, μ̂_z → −μ̂_z) |
 | SpeckleBem | Zeitfaktor e^(+jωt) (passive Medien Im ε ≤ 0), SI-Meter, Phasenbezug der ebenen Welle am Netzursprung, Fernfeld E_s ≈ F e^(−jkr)/r | ε, Einfallsamplitude und Fernfeld komplex konjugieren; F[mm] = F[m]·10³; Amplitude am Körpermittelpunkt |
 | CliffordBem | Längen in einer freien Einheit (hier 1 µm), ω = k₀; Einfall als Winkelspektrum mit Brennpunkt; Fernfeld E∞ mit E_s ≈ E∞ e^(ikr)/r | Einheiten; Brennpunkt = Port-Ursprung; Fernfeld → Port-Spektrum über Weyl, transversal projiziert |
 | FourierGrating | Schichtung in y, Licht von oben (−y); x′ = x, y′ = z, z′ = −y (Drehung um x); Amplituden je Ordnung als (E·s, E·p) mit s = (γ, 0, −α)/|κ|, bei κ = 0 aber s = (0, 0, 1); Einfall A = cos δ·s_ein + sin δ·p_ein mit s_ein = (sin ψ, 0, −cos ψ) auch bei φ = 0; Phasenbezug lokal an der oberen bzw. unteren Grenzfläche; Längen in µm, Winkel in Grad | Felder kartesisch rekonstruieren, drehen; Einfall als Überlagerung zweier Läufe (δ = 0°, 90°) mit komplexen Gewichten |

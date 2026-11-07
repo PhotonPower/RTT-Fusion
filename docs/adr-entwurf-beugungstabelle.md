@@ -132,3 +132,12 @@ Vorzeichen gegen den OPL-Beitrag von ADR 0025 (Abnahme 5).
      gemeldet;
   5. Phasenbezug: verschobenes Gitter (Punkt 4) gegen den OPL-Beitrag der Phasenschicht.
 - Sollwertdateien aus RTT-Fusion (Stufe R7).
+
+## Nachtrag (R12, 2026-11-07): C++-Fassung
+
+`cpp/include/rtt_fusion/diffraction_table.hpp` setzt die Punkte 2, 3, 5 und 6 in C++20 um
+(`DiffractionTable::interpolate`, `near_rayleigh_anomaly`, `validate`, `prt_matrix`). Gegen die
+Sollwertdatei `jones_table_lamellar`: Interpolation bitgleich zum Python-Prototyp, PRT-Matrizen
+auf 10⁻¹⁶, P k_ein = k_m auf 10⁻¹⁶, Anomalie-Zellen wie J5, ungleichmäßige Achsen werden
+abgelehnt. Für Raytatouille bleiben das Laden aus der Datei (`rtt-model`), das Anhängen an die
+kompilierte Fläche und `apply_event` im Tracer (Punkt „Folgen“).

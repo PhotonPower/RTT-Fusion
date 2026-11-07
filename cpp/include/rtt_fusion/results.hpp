@@ -30,6 +30,7 @@ inline double number(const json& v) {
     if (s == "-inf") return -HUGE_VAL;
     throw std::runtime_error("unknown number " + s);
   }
+  if (v.is_boolean()) return v.get<bool>() ? 1.0 : 0.0;
   if (v.is_object() && v.contains("float")) return number(v.at("float"));
   return v.get<double>();
 }

@@ -6,7 +6,7 @@
 > Prototyp: `rtt_fusion.couplings.jones_table`, Tests `tests/test_jones_table.py` (J1–J5 in
 > `docs/testfaelle.md`).
 
-**Status:** vorgeschlagen
+**Status:** vorgeschlagen (für Raytatouille; in RTT-Fusion freigegeben am 2026-11-07, Entscheidung E2)
 
 ## Kontext
 

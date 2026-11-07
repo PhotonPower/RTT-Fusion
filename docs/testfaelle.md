@@ -42,6 +42,8 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 | C++1 | C++-Prototyp von `rtt-fusion`: G → S, E_z, Leistung, Halbkugel-Quadratur, Richards-Wolf-Strahl, Fernfeld → Spektrum | Sollwertdateien `reference/*.result.json` (R7) samt unabhängigen Werten | < 1e−13 bzw. Dateitoleranz | R11 | ✅ | `cpp/tests/test_reference.cpp` |
 | C++2 | BWPM-Adapter in C++ (Weg 2: außerhalb gegen die Header gebaut, BWPM-Kern per FetchContent) über die Registry | BWPMs Sollwertdatei `bwpm3d_tilted`; Energie über `power` | 3e−16 bzw. 6e−15 | R11 | ✅ | `cpp/tests/test_bwpm_adapter.cpp` |
 
+| C++3 | Tabellierte Beugungsinteraktion in C++ (`DiffractionTable`): kubische Interpolation, Anomalie-Erkennung, PRT-Matrix, Prüfung der Tabelle | Sollwertdatei `jones_table_lamellar` (Interpolation aus der gespeicherten Tabelle, PRT aus FourierGratings direkten Matrizen); Anomalie-Zellen wie J5 | Interpolation bitgleich (0), PRT 1e−16, P k = k_m 1e−16 | R12 | ✅ | `cpp/tests/test_diffraction_table.cpp` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die

@@ -51,14 +51,15 @@ jobs:
       - run: pip install -r requirements-dev.txt
       # The solver modules are built from their repositories at pinned commits (same as the extra
       # "modules" in pyproject.toml) into a wheelhouse that is cached: the key changes with the
-      # pins, the constraints, this workflow and the Python version. A cache hit installs the
+      # pins, the constraints and the Python version; after a change of the build steps below,
+      # raise the version "v1" in the key by hand. A cache hit installs the
       # wheels in about a minute instead of building for about 20 minutes.
       - name: wheelhouse cache
         id: wheels
         uses: actions/cache@v4
         with:
           path: wheelhouse
-          key: modules-${{ matrix.os }}-py${{ matrix.python }}-${{ hashFiles('pyproject.toml', 'constraints-modules.txt', '.github/workflows/ci.yml') }}
+          key: modules-v1-${{ matrix.os }}-py${{ matrix.python }}-${{ hashFiles('pyproject.toml', 'constraints-modules.txt') }}
       - name: build bwpm
         if: steps.wheels.outputs.cache-hit != 'true'
         run: pip wheel --no-deps -w wheelhouse "bwpm @ git+https://github.com/PhotonPower/BWPM.git@ef2de941d226d364db000a977963b0eba24aea44"

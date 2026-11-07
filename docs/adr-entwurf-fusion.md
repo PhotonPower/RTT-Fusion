@@ -221,3 +221,14 @@ eigenen Entwurf `docs/adr-entwurf-beugungstabelle.md`.
   Dipole (Q). Ein Datenport trägt Wellenlänge, Bezugsfläche, Seite (Spiegelung, nicht Drehung)
   und die Streuung über Replicas, aber weder Richtung noch Leistung. Vorschlag: N und Q als
   Datentypen von `rtt-fusion` mit diesen Feldern; Abnahme aus Pilot K4.
+
+## Nachtrag (R11, 2026-11-07): C++-Schnittstelle erprobt
+
+Port-Typen und Umwandlungen (G → S, Halbkugel-Quadratur, Richards-Wolf, Fernfeld → Spektrum) sind
+in C++20 umgesetzt (`cpp/` in RTT-Fusion) und treffen die Sollwertdateien des Python-Prototyps auf
+< 10⁻¹³. Die abstrakte Adapter-Schnittstelle (`SolverAdapter`, `PortField` als Variante aus G und
+S, `AdapterRegistry`) trägt Weg 2 aus Punkt 9: Der BWPM-Adapter baut außerhalb gegen die Header,
+holt BWPMs C++-Kern per FetchContent und reproduziert BWPMs eigene Sollwertdatei auf 3·10⁻¹⁶.
+Erfahrungen für `rtt-fusion`: Strukturdaten bestehen aus JSON plus großen Feldern (Kennungen,
+Masken), die über Setter des Adapters kommen; die Rundung der Frequenzen muss der von NumPy
+gleichen (wie in BWPM, wichtig am streifenden Einfall).

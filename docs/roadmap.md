@@ -17,6 +17,7 @@
 | **R8 SpeckleBem-Adapter** | geschlossene Körper; Konventionen exp(+jωt), SI; Konformität gegen Mie, Vorzeichen der Absorption, Querprobe gegen CliffordBem | ✅ (X1–X4) |
 | **R9 hp-FEM-Adapter (Gitter)** | `grating.jones` in Port-Wellen; Querprobe gegen FourierGrating als Brute-Force-Referenz (K7) | ✅ (H1–H3) |
 | **R10 BioOptoMD (Datenports N, Q), Pilot K4** | n(z)-Profile und Dipole aus den Ausgabeformaten, SPR-Biosensor | ✅ (K4) |
+| **R11 C++-Gerüst und BWPM-Adapter in C++** | Port-Typen und Umwandlungen in C++ (`cpp/`), abstrakte Adapter-Schnittstelle mit Registry, BWPM-Adapter als externer C++-Adapter (Weg 2) | ✅ (C++1, C++2) |
 | **R7 Sollwertdateien für den C++-Port** | Export der Port-Typen, Umwandlungen und Adapter-Ergebnisse im Format `raytatouille-result` | Dateien aktuell, Rundreise ✅ (S1) |
 
 ## Entscheidungen

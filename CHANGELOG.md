@@ -52,3 +52,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 - CI: Löser-Module als Wheels in einem Cache (actions/cache); ohne Änderung der Pins entfällt der
   Bau der Module.
 - E2: ADR-Entwurf tabellierte Beugungsinteraktion freigegeben.
+- R11: C++-Prototyp von `rtt-fusion` (`cpp/`): Port-Typen, Umwandlungen, Ergebnisleser,
+  `SolverAdapter`/`AdapterRegistry`; BWPM-Adapter in C++ gegen BWPMs Kern (FetchContent); Tests
+  gegen die Sollwertdateien (C++1, C++2); CI-Job `cpp`.

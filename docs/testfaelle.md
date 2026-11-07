@@ -44,6 +44,9 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 
 | C++3 | Tabellierte Beugungsinteraktion in C++ (`DiffractionTable`): kubische Interpolation, Anomalie-Erkennung, PRT-Matrix, Prüfung der Tabelle | Sollwertdatei `jones_table_lamellar` (Interpolation aus der gespeicherten Tabelle, PRT aus FourierGratings direkten Matrizen); Anomalie-Zellen wie J5 | Interpolation bitgleich (0), PRT 1e−16, P k = k_m 1e−16 | R12 | ✅ | `cpp/tests/test_diffraction_table.cpp` |
 
+| PS1 | Phasenraum-Übergang Feld → Pakete (Husimi): Leistung, zweite Momente (Wigner + Fenster), Stokes, Kopplung in eine Gauß-Mode | analytische Gauß-Integrale | Leistung 1e−12, Momente ≤ 0,5 %, Kopplung 2 % | S9b-1 (Scattuccino D8/D10) | ✅ | `test_phasespace.py` |
+| PS2 | Fokussierter Strahl: Pakete geradlinig weitergeführt gegen Wellenausbreitung (Winkelspektrum) | Wellenmoment + Fensterverbreiterung | < 2 % (gemessen ≤ 0,8 %) | S9b-1 | ✅ | `test_phasespace.py` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die
@@ -218,3 +221,21 @@ hat keine Richtung und keine Leistung, wohl aber eine Wellenlänge (n(z) gilt nu
 MD-Laufs), eine Streuung über Replicas und eine Lage relativ zur Sensoroberfläche. Die Wahl der
 Beleuchtungsseite ist eine Spiegelung (z → −z), keine Drehung – für Orientierungen von Dipolen
 wichtig.
+
+## PS1, PS2: Phasenraum-Übergang (Scattuccino S9b-1)
+
+`rtt_fusion.phasespace`: Husimi-Verteilung des Feldes (Gauß-Fenster σ, Kurzzeit-FFT nur in den
+gezogenen Fenstern, speicherarm), Pakete mit Ort, Richtung, Gewicht, Stokes; Kopplung in eine
+Gauß-Mode über die Wigner-Dichte der Mode (Entscheidungen D8, D10 in Scattuccino #22).
+
+- Kollimierter Gauß-Strahl (w₀ = 30 µm, σ = 10 µm, 2·10⁵ Pakete): Varianzen in Ort und Wellenzahl
+  = Wigner + Fenster + Zellenzittern auf 0,1–0,5 %; Leistung exakt; Kopplung in dieselbe Mode
+  0,385 = Π[(v_x,m + v_x,Q)(v_k,m + v_k,Q)]^(−1/2) (die Glättung verringert die Kopplung kohärenten
+  Lichts – ballistisches Licht wird deshalb über das Feld gekoppelt, S9b-3).
+- Fokussierter Strahl (w₀ = 60 µm, f = 1 mm, NA ≈ 0,06): Varianz der geradlinig weitergeführten
+  Pakete in 0,5/1,0/1,5 mm gegen die Wellenausbreitung plus Fensterverbreiterung σ² + z²/(4σ²k₀²):
+  0,1 / 0,8 / 0,6 %.
+- **Befund für D9:** Im Fokus (1 mm hinter der Übergabe) ist der Paketfleck rms 12 µm breit, der
+  Wellenfokus 2 µm – die Fensterverbreiterung dominiert. Die Übergabe gehört an
+  oder hinter den Fokus, oder der Fokus in den wellenoptischen Bereich; das kleinste Verschmieren
+  bei σ_opt = sqrt(z/(2nk₀)).

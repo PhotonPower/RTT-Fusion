@@ -60,3 +60,5 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 - R12: tabellierte Beugungsinteraktion in C++ (`DiffractionTable`: kubische Interpolation,
   Rayleigh-Anomalien, PRT-Matrix, Prüfung) mit Test C++3 gegen die Sollwertdatei; Leser für
   boolesche Werte.
+- Phasenraum-Übergang `rtt_fusion.phasespace` (Feld → Husimi-Pakete, Kopplung in eine Gauß-Mode)
+  für Scattuccino S9b; Tests PS1, PS2.

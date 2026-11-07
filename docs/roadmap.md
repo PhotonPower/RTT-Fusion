@@ -15,6 +15,7 @@
 | **R5 Fusion-ADR** | Entwurf für Raytatouille aus den Erfahrungen R1–R4, vor dem M9-ADR ([docs/adr-entwurf-fusion.md](adr-entwurf-fusion.md)) | Freigabe ✅ (E1) |
 | **R6 ADR-Entwurf tabellierte Beugungsinteraktion** | Tabellenformat (Jones-Matrix je Ordnung über λ und Einfall, Convention A), Interpolation, PRT-Matrix nach ADR 0021, Diagnosecodes; Python-Prototyp der Interaktion gegen FourierGrating direkt (Winkel- und λ-Scan) | Prototyp gegen FourierGrating ✅ (J1–J5, [Entwurf](adr-entwurf-beugungstabelle.md)), Freigabe offen |
 | **R8 SpeckleBem-Adapter** | geschlossene Körper; Konventionen exp(+jωt), SI; Konformität gegen Mie, Vorzeichen der Absorption, Querprobe gegen CliffordBem | ✅ (X1–X4) |
+| **R9 hp-FEM-Adapter (Gitter)** | `grating.jones` in Port-Wellen; Querprobe gegen FourierGrating als Brute-Force-Referenz (K7) | ✅ (H1–H3) |
 | **R7 Sollwertdateien für den C++-Port** | Export der Port-Typen, Umwandlungen und Adapter-Ergebnisse im Format `raytatouille-result` | Dateien aktuell, Rundreise ✅ (S1) |
 
 ## Entscheidungen

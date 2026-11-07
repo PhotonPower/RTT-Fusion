@@ -9,3 +9,4 @@
 | bohren-huffman | C. F. Bohren, D. R. Huffman, Absorption and Scattering of Light by Small Particles, Wiley (1983), Kap. 4 | Standardformeln (a_n, b_n, S1, S2, Q_ext), unabhängig nachgerechnet gegen CliffordBem | Mie-Referenz `tests/mie_reference.py` |
 | cbem | CliffordBem `docs/python.md`, `docs/results_beams.md` (Commit `41e64e6`) | gelesen | Adapter, Richards-Wolf-Strahl |
 | sbem | SpeckleBem `docs/06_conventions.md`, `docs/10_python_api.md` (Commit `4f04efe`) | gelesen | SpeckleBem-Adapter |
+| hpfem | hp-FEM `docs/python.md` (Gitter, Konventionen), `python/hpfem/grating.py` (`jones`, Commit `dce07d5`) | gelesen | hp-FEM-Adapter |

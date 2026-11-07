@@ -22,6 +22,8 @@ modules = [
     "raytatouille @ git+https://github.com/PhotonPower/Raytatouille.git@708b6dda655a4bd0f20fb9f34b51c61d51761590",
     "cliffordbem @ git+https://github.com/PhotonPower/CliffordBem.git@41e64e627b82f96766c7cfe4f7d663864a5e5cfe",
     # needs pybind11 < 3 to build (PIP_CONSTRAINT in CI) and BLAS/LAPACK
+    "hpfem @ git+https://github.com/PhotonPower/hp-FEM.git@dce07d5d5cc52681715044310c03a10c088d20e7",
+    "gmsh",
     "specklebem @ git+https://github.com/PhotonPower/SpeckleBem.git@4f04efe26b71f95122ff58cc7589641ba7e8b28f#subdirectory=python",
 ]
 
@@ -51,5 +53,5 @@ python_version = "3.10"
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["scipy", "scipy.*", "fouriergrating", "fouriergrating.*", "bwpm", "bwpm.*", "fieldtracing", "fieldtracing.*", "raytatouille", "raytatouille.*", "cliffordbem", "cliffordbem.*", "specklebem", "specklebem.*", "mie_reference", "reference_cases"]
+module = ["scipy", "scipy.*", "fouriergrating", "fouriergrating.*", "bwpm", "bwpm.*", "fieldtracing", "fieldtracing.*", "raytatouille", "raytatouille.*", "cliffordbem", "cliffordbem.*", "specklebem", "specklebem.*", "hpfem", "hpfem.*", "mie_reference", "reference_cases"]
 ignore_missing_imports = true

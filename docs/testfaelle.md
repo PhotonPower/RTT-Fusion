@@ -33,6 +33,10 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 | X3 | Querprobe SpeckleBem gegen CliffordBem, schräger Einfall, elliptische Polarisation, Port-Spektren vorn und hinten | zweiter BEM-Löser mit anderen Konventionen | < 4 % | R8 | ✅ | `test_adapter_specklebem.py` |
 | X4 | Überlagerung zweier Einfallswellen (Operator wiederverwendet) | Summe der Einzellösungen | < 1e−6 | R8 | ✅ | `test_adapter_specklebem.py` |
 
+| H1 | hp-FEM-Adapter: ebene Grenzfläche Luft/Glas, senkrecht, schräg, konisch | vektorieller Fresnel (Convention A) | < 1e−12 (gemessen 3e−15) | R9 | ✅ | `test_adapter_hpfem.py` |
+| H2 | Querprobe hp-FEM gegen FourierGrating: Lamellengitter aus K1, 0°, 4,6°, 4,6° konisch (φ = 40°), komplexe Vektoramplituden aller Ordnungen | zweites rigoroses Verfahren | starke Ordnungen < 0,6 %, R±1 < 3 % | R9 | ✅ | `test_adapter_hpfem.py` |
+| H3 | Energie über alle Ordnungen (verlustfrei) | Energieerhaltung | < 5e−3 | R9 | ✅ | `test_adapter_hpfem.py` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die
@@ -162,3 +166,24 @@ reicht in der CI nicht: Ein früher installiertes Modul bringt pybind11 3.x in d
 CMake findet es auch bei isoliertem Bau. Die CI installiert deshalb pybind11 < 3 und baut
 SpeckleBem ohne Isolation (`.github/workflows/ci.yml`). Issue-Entwurf für SpeckleBem:
 `docs/vorschlaege/specklebem-pybind11.md`.
+
+## H1–H3: hp-FEM-Gitter und Querprobe mit FourierGrating (R9)
+
+hp-FEM 0.4.0 (Commit `dce07d5`), `grating.jones` auf einer Einheitszelle aus `hpfem.meshing`
+(gmsh, `element_sizes(p=2)`, Ordnung 5; 822 Zellen), Lamellengitter wie K1. Größte Abweichung
+der komplexen Vektoramplituden gegen FourierGrating (Nx = 15, selbst auf 10⁻⁴ konvergiert),
+relativ zum Betrag der Ordnung:
+
+| Einfall | R(−1) | R(0) | R(+1) | T(−1) | T(0) | T(+1) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0° | 1,3 % | 0,21 % | 0,82 % | 0,10 % | 0,22 % | 0,21 % |
+| 4,6° | 2,2 % | 0,23 % | 1,1 % | 0,45 % | 0,23 % | 0,45 % |
+| 4,6°, φ = 40° | 2,0 % | 0,23 % | 0,96 % | 0,31 % | 0,15 % | 0,40 % |
+
+Ordnung 6 statt 5 auf demselben Netz ändert nichts: Die Ecken der Lamelle begrenzen die
+p-Konvergenz, verfeinert werden muss das Netz (h). Auf dem feinsten Netz (`p=1`, Ordnung 6,
+2 426 Zellen) liegen die Effizienzen bei s und 0° auf 0,1–0,3 % an FourierGrating (R(±1) 0,03221
+/ 0,03223 gegen 0,0323; R(0) 0,22611 gegen 0,2263; T(0) 0,07676 gegen 0,0768; T(±1) 0,3165 gegen
+0,3162). Die Querprobe bestätigt beide Adapter mit allen Konventionsumrechnungen: Rahmen, s/p-
+Vorzeichen (hp-FEM: ŝ = k̂ × ŷ, p̂ = ŝ × k̂), Leistungsnormierung, Bezug auf Zellrand und
+Stapelgrenzen; ein Fehler darin gäbe Abweichungen der Größenordnung 1.

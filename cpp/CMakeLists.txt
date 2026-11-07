@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(nlohmann_json 3 CONFIG REQUIRED)
 
-add_library(rtt_fusion_core STATIC src/ports.cpp)
+add_library(rtt_fusion_core STATIC src/ports.cpp src/diffraction_table.cpp)
 target_include_directories(rtt_fusion_core PUBLIC include)
 target_include_directories(rtt_fusion_core SYSTEM PRIVATE third_party/pocketfft)
 if(MSVC)
@@ -22,6 +22,9 @@ add_executable(test_reference tests/test_reference.cpp)
 target_link_libraries(test_reference PRIVATE rtt_fusion_core nlohmann_json::nlohmann_json)
 target_link_libraries(rtt_fusion_core PUBLIC nlohmann_json::nlohmann_json)
 add_test(NAME reference COMMAND test_reference ${CMAKE_CURRENT_SOURCE_DIR}/../reference)
+add_executable(test_diffraction_table tests/test_diffraction_table.cpp)
+target_link_libraries(test_diffraction_table PRIVATE rtt_fusion_core)
+add_test(NAME diffraction_table COMMAND test_diffraction_table ${CMAKE_CURRENT_SOURCE_DIR}/../reference)
 
 # BWPM adapter (way 2: external C++ adapter against the public headers) – BWPM's C++ core from
 # its repository at the pinned commit of pyproject.toml.

@@ -57,3 +57,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   gegen die Sollwertdateien (C++1, C++2); CI-Job `cpp`.
 - CI: Cache-Schlüssel ohne den Workflow (Änderungen an anderen Jobs bauen die Module nicht mehr
   neu); Version `v1` im Schlüssel für Änderungen der Bauschritte.
+- R12: tabellierte Beugungsinteraktion in C++ (`DiffractionTable`: kubische Interpolation,
+  Rayleigh-Anomalien, PRT-Matrix, Prüfung) mit Test C++3 gegen die Sollwertdatei; Leser für
+  boolesche Werte.

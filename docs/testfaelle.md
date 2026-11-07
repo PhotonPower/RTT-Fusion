@@ -39,6 +39,9 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 
 | K4 | Pilot: SPR-Biosensor (Prisma 1,515 / Gold 50 nm / Adlayer n(z) aus BioOptoMD-Format / Wasser, 633 nm); Datenport N | FourierGrating-Adapter gegen Transfer-Matrix; de Feijter (Verschiebung ∝ ∫(n − n_w) dz); Linearität; Vergröberung der Schichten | < 1e−9; 0,5 %; 6 %; 1 % | R10 | ✅ | `test_pilot_k4.py` |
 
+| C++1 | C++-Prototyp von `rtt-fusion`: G → S, E_z, Leistung, Halbkugel-Quadratur, Richards-Wolf-Strahl, Fernfeld → Spektrum | Sollwertdateien `reference/*.result.json` (R7) samt unabhängigen Werten | < 1e−13 bzw. Dateitoleranz | R11 | ✅ | `cpp/tests/test_reference.cpp` |
+| C++2 | BWPM-Adapter in C++ (Weg 2: außerhalb gegen die Header gebaut, BWPM-Kern per FetchContent) über die Registry | BWPMs Sollwertdatei `bwpm3d_tilted`; Energie über `power` | 3e−16 bzw. 6e−15 | R11 | ✅ | `cpp/tests/test_bwpm_adapter.cpp` |
+
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die

@@ -19,8 +19,11 @@ ruff check . && ruff format --check . && mypy
 ```
 
 Die CI baut die Löser einmal in einen zwischengespeicherten Wheelhouse (Schlüssel: Commits in
-`pyproject.toml`, `constraints-modules.txt`, Workflow, Python-Version); ein neuer Commit eines
-Moduls baut nur nach Änderung dieser Dateien neu.
+`pyproject.toml`, `constraints-modules.txt`, Python-Version und eine Version `v1` im Schlüssel,
+die bei Änderungen der Bauschritte von Hand erhöht wird).
+
+C++-Prototyp (`cpp/`): `cmake -S cpp -B build/cpp -G Ninja && cmake --build build/cpp &&
+ctest --test-dir build/cpp` (braucht nlohmann-json; holt BWPM per FetchContent).
 
 Sollwertdateien für den C++-Port: `python tools/export_reference.py` schreibt
 `reference/*.result.json` (Format `raytatouille-result`); `tests/test_reference_files.py`

@@ -51,3 +51,4 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   auf 1 nm < 5e−4; Nachtrag zum Fusion-ADR (Datenports, weitere Querproben).
 - CI: Löser-Module als Wheels in einem Cache (actions/cache); ohne Änderung der Pins entfällt der
   Bau der Module.
+- E2: ADR-Entwurf tabellierte Beugungsinteraktion freigegeben.

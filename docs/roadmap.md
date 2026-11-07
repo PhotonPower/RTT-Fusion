@@ -13,7 +13,7 @@
 | **R3 Pilot K1** | Gitterspektrometer: FourierGrating-Effizienzen als Tabelle im Raytracer (Python-API von Raytatouille) | Gittergleichung, Energie über die Ordnungen ✅ (K1, Befunde für R5 in `docs/testfaelle.md`) |
 | **R4 Pilot K3** | Partikel im Fokus mit CliffordBem (zweiter Löser) | Mie ✅ (C1–C3, K3) |
 | **R5 Fusion-ADR** | Entwurf für Raytatouille aus den Erfahrungen R1–R4, vor dem M9-ADR ([docs/adr-entwurf-fusion.md](adr-entwurf-fusion.md)) | Freigabe ✅ (E1) |
-| **R6 ADR-Entwurf tabellierte Beugungsinteraktion** | Tabellenformat (Jones-Matrix je Ordnung über λ und Einfall, Convention A), Interpolation, PRT-Matrix nach ADR 0021, Diagnosecodes; Python-Prototyp der Interaktion gegen FourierGrating direkt (Winkel- und λ-Scan) | Prototyp gegen FourierGrating ✅ (J1–J5, [Entwurf](adr-entwurf-beugungstabelle.md)), Freigabe offen |
+| **R6 ADR-Entwurf tabellierte Beugungsinteraktion** | Tabellenformat (Jones-Matrix je Ordnung über λ und Einfall, Convention A), Interpolation, PRT-Matrix nach ADR 0021, Diagnosecodes; Python-Prototyp der Interaktion gegen FourierGrating direkt (Winkel- und λ-Scan) | Prototyp gegen FourierGrating ✅ (J1–J5, [Entwurf](adr-entwurf-beugungstabelle.md)), Freigabe ✅ (E2) |
 | **R8 SpeckleBem-Adapter** | geschlossene Körper; Konventionen exp(+jωt), SI; Konformität gegen Mie, Vorzeichen der Absorption, Querprobe gegen CliffordBem | ✅ (X1–X4) |
 | **R9 hp-FEM-Adapter (Gitter)** | `grating.jones` in Port-Wellen; Querprobe gegen FourierGrating als Brute-Force-Referenz (K7) | ✅ (H1–H3) |
 | **R10 BioOptoMD (Datenports N, Q), Pilot K4** | n(z)-Profile und Dipole aus den Ausgabeformaten, SPR-Biosensor | ✅ (K4) |
@@ -28,3 +28,4 @@
 | D10 | Reihenfolge der Löser | FourierGrating zuerst, CliffordBem als zweiter Löser (2026-11-06) |
 | D11 | BWPM | eigenes Repository `PhotonPower/BWPM` (2026-11-05) |
 | E1 | Fusion-ADR | Entwurf freigegeben; `rtt-fusion` entsteht in **C++** (Maintainer, 2026-11-06). Vorschläge zu Nummer, Zeitpunkt und eigenem ADR für die tabellierte Interaktion im Entwurf, Abschnitt „Folgen“ |
+| E2 | ADR-Entwurf tabellierte Beugungsinteraktion und Nachtrag zum Fusion-ADR (Basis) | freigegeben (Maintainer, 2026-11-07) |

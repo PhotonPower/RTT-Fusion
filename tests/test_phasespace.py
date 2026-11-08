@@ -62,3 +62,13 @@ def test_focused_beam_packets_follow_the_wave() -> None:
         pred = wave + sig**2 + z**2 / (4 * sig**2) / K0**2 + dx**2 / 12
         packets = np.var(pk.x + z * pk.ux / pk.uz)
         assert abs(packets / pred - 1) < 0.02  # measured ≤ 0.8 %
+
+
+def test_periodic_windows_keep_the_power_of_a_wide_field() -> None:
+    # a beam filling much of a periodic grid: with wrapping windows no power is lost at the edges
+    g = _beam(96, 0.002, 0.08, None)
+    lim = field_to_packets(g, 50_000, 0.008, np.random.default_rng(3), pad=2)
+    per = field_to_packets(g, 50_000, 0.008, np.random.default_rng(3), pad=2, periodic=True)
+    assert abs(per.weight.sum() - power(g)) < 1e-12 * power(g)
+    # the restricted centres misplace the edge power onto the inner centres (narrower spread)
+    assert np.var(per.x) > np.var(lim.x)

@@ -64,21 +64,34 @@ def _window(g: GriddedField, sigma: float, pad: int) -> tuple[int, int, FloatArr
 
 
 def field_to_packets(
-    g: GriddedField, n: int, sigma: float, rng: np.random.Generator, stride: int = 1, pad: int = 4
+    g: GriddedField,
+    n: int,
+    sigma: float,
+    rng: np.random.Generator,
+    stride: int = 1,
+    pad: int = 4,
+    periodic: bool = False,
 ) -> Packets:
     """n packets from the Husimi distribution of g (window σ in mm; window centres every
-    `stride` grid points; spectrum zero-padded by `pad`)."""
+    `stride` grid points; spectrum zero-padded by `pad`). periodic: the field is periodic on its
+    grid (e.g. BWPM without absorbing boundary) – windows wrap around and every grid point can be
+    a centre; otherwise only centres whose window lies inside the grid."""
     e = np.asarray(g.field)
     ny, nx = g.shape
     half, size, win, k = _window(g, sigma, pad)
+    if 2 * half + 1 > min(nx, ny):
+        raise ValueError("the window (±5σ) must be smaller than the grid")
     # power per window centre: Σ |E|² |φ|² (Parseval), on the centres
     inten = np.sum(np.abs(e) ** 2, axis=2)
     pad_ker = np.zeros((ny, nx))
     pad_ker[: 2 * half + 1, : 2 * half + 1] = win**2
     ker = np.roll(pad_ker, (-half, -half), axis=(0, 1))
     conv = np.real(np.fft.ifft2(np.fft.fft2(inten) * np.conj(np.fft.fft2(ker))))
-    ic = np.arange(half, nx - half, stride)
-    jc = np.arange(half, ny - half, stride)
+    if periodic:
+        ic, jc = np.arange(0, nx, stride), np.arange(0, ny, stride)
+    else:
+        ic = np.arange(half, nx - half, stride)
+        jc = np.arange(half, ny - half, stride)
     wsum = np.maximum(conv[np.ix_(jc, ic)], 0.0)
     counts = rng.multinomial(n, (wsum / wsum.sum()).ravel()).reshape(wsum.shape)
     xs = (np.arange(nx) - nx // 2) * g.dx
@@ -92,7 +105,14 @@ def field_to_packets(
     for a, b in zip(*np.nonzero(counts), strict=True):
         c = int(counts[a, b])
         j, i = jc[a], ic[b]
-        patch = e[j - half : j + half + 1, i - half : i + half + 1, :] * win[:, :, None]
+        if periodic:
+            rows = np.arange(j - half, j + half + 1)
+            cols_ = np.arange(i - half, i + half + 1)
+            patch = (
+                e.take(rows, axis=0, mode="wrap").take(cols_, axis=1, mode="wrap") * win[:, :, None]
+            )
+        else:
+            patch = e[j - half : j + half + 1, i - half : i + half + 1, :] * win[:, :, None]
         fx = np.fft.fft2(patch[:, :, 0], s=(size, size))
         fy = np.fft.fft2(patch[:, :, 1], s=(size, size))
         q = np.abs(fx) ** 2 + np.abs(fy) ** 2

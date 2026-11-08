@@ -62,3 +62,5 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   boolesche Werte.
 - Phasenraum-Übergang `rtt_fusion.phasespace` (Feld → Husimi-Pakete, Kopplung in eine Gauß-Mode)
   für Scattuccino S9b; Tests PS1, PS2.
+- `phasespace.field_to_packets(periodic=True)`: wrapping windows for periodic fields (BWPM ohne
+  Absorberrand), Fenstergröße geprüft.

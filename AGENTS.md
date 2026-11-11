@@ -8,7 +8,7 @@ Diese Datei liest jeder Agent zu Beginn jeder Sitzung. Sie gilt zusammen mit `do
 RTT-Fusion ist der Prototyp der „Raytatouille Fusion“: Er bindet wellenoptische Löser
 (BWPM, FourierGrating, später CliffordBem, hp-FEM, SpeckleBem, BioOptoMD) über eine gemeinsame
 Port-Schnittstelle an Raytatouille und Field Tracing an und prüft die Kopplung an Pilotfällen,
-bevor sie in Raytatouille portiert wird (Plan: Fieldtracing `docs/rtt-fusion/plan.md`).
+bevor sie in Raytatouille portiert wird (Plan: `docs/fusionsplan.md`, aus Fieldtracing übernommen).
 
 ## Bauen und testen
 

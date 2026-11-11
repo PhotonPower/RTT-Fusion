@@ -6,6 +6,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- L11: Fusionsplan aus Fieldtracing (Zweig `docs-fusion-plan`, Commit `3e0d5f8`) als
+  `docs/fusionsplan.md` übernommen; Verweise angepasst.
+
 - R13: Konzept Node-Workflow (freigegeben, E3) `docs/konzept-node-workflow.md` – Arbeitsgraph aus
   Blöcken, Sockets und Bändern als bearbeitbare Form des Planers, Kohärenz-Kennungen,
   Meta-Blöcke für Schleifen, Ort von Logik (RTT-Fusion / `rtt-fusion`) und GUI (Raytatouille

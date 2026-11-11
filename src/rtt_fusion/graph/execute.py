@@ -6,8 +6,11 @@ type, its parameters, the socket, the transports and the hashes of everything up
 changing a parameter recomputes only what lies downstream (Blender-like). A muted block passes
 its light through unchanged (light outputs) or yields nothing (data outputs).
 
-R15 has no planner: links carry representation R (ray bundles, `rtt_fusion.graph.light`); "auto"
-means R. Other fixed transports raise `exec.transport_unsupported` until their stage.
+Before running, the planner (stage R17, `rtt_fusion.graph.planner`) fixes the representation of
+every light link from the representations the executor can run (`EXECUTABLE`, so far R: ray
+bundles, `rtt_fusion.graph.light`). "auto" therefore still means R, with the same results as in
+R15; other fixed transports raise `exec.transport_unsupported` until their stage. The plan is kept
+in `Executor.plan`.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from rtt_fusion.graph.model import Direction, Graph, Node, SocketKind
+from rtt_fusion.graph.planner import Plan, Requirements, link_key, plan
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.graph.validate import errors, node_sockets, node_through, validate
 
@@ -26,7 +30,9 @@ from rtt_fusion.graph.validate import errors, node_sockets, node_through, valida
 #: Light inputs and outputs are lists of RayBundle; data values are free objects.
 Evaluator = Callable[["Context", Node, str, dict[str, Any]], Any]
 
-SUPPORTED_TRANSPORTS = frozenset({"auto", "R"})
+#: Representations the evaluators can run (R18 adds H).
+EXECUTABLE = frozenset({"R"})
+SUPPORTED_TRANSPORTS = frozenset({"auto"}) | EXECUTABLE
 
 
 class ExecutionError(RuntimeError):
@@ -60,10 +66,12 @@ class Executor:
         self.context = Context(graph, dict(shared or {}))
         self.cache: dict[str, Any] = {}
         self.calls: dict[tuple[str, str], int] = {}  # evaluator calls per output (tests, profiling)
+        self.plan: Plan | None = None
 
     # ------------------------------------------------------------------ public
     def check(self) -> None:
-        """Raises for errors of the graph check and for transports R15 cannot run."""
+        """Raises for errors of the graph check, for transports that cannot run yet and for
+        errors of the plan; keeps the plan in `self.plan`."""
         found = errors(validate(self.graph, self.registry))
         if found:
             d = found[0]
@@ -75,6 +83,10 @@ class Executor:
                     f"transport {lk.transport} comes with a later stage (R15 runs R)",
                     f"{lk.source[0]}.{lk.source[1]} -> {lk.target[0]}.{lk.target[1]}",
                 )
+        self.plan = plan(self.graph, self.registry, Requirements(available=EXECUTABLE))
+        for d in self.plan.diagnostics:
+            if d.severity == "error":
+                raise ExecutionError(d.code, d.message, d.location)
 
     def evaluate(self, node_id: str, socket: str) -> Any:
         """The value of an output socket (computing what it needs)."""
@@ -112,7 +124,8 @@ class Executor:
             lk = links[0]
             value, key = self._value(lk.source[0], lk.source[1], (*stack, here))
             inputs[in_name] = value
-            input_keys.append(f"{in_name}={key}|{lk.transport}")
+            rep = self.plan.representations.get(link_key(lk), "") if self.plan else ""
+            input_keys.append(f"{in_name}={key}|{rep or lk.transport}")
         key = _hash(
             {
                 "type": node.type_id,

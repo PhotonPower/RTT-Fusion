@@ -260,6 +260,8 @@ So bleibt der Graph ohne GUI nutzbar, skriptbar und mit Sollwerten testbar – n
 
 ## 10. Lücken aus dem Inventar
 
+Vorschläge dazu in Abschnitt 10a.
+
 - **Zwei Gitterfeld-Typen:** RTT-Fusion `GriddedField` (ny, nx, 2), ohne Trägerphase; Fieldtracing
   `GriddedField` quadratisch N × N × 3 mit quadratischer Trägerphase C und Gitter L. Vorschlag: ein
   G-Typ mit optionaler Trägerphase, Umwandlung mit Sollwerten.
@@ -273,6 +275,173 @@ So bleibt der Graph ohne GUI nutzbar, skriptbar und mit Sollwerten testbar – n
   geschlossene Körper (raue Fläche fehlt, Einfall mit beliebigem Spektrum fehlt, D12).
 - **Scattuccino** braucht P und eine Statistik-Schnittstelle (Phasenfunktion, Mueller), die noch
   kein Modul liefert.
+
+## 10a. Vorschläge zu den offenen Punkten
+
+Je Lücke ein Vorschlag mit Abnahme. Was ein Modul-Repository ändern müsste, wird dort als
+Issue-Entwurf vorgeschlagen (Regel 4), nicht hier umgesetzt.
+
+### L1 Ein Gitterfeld-Typ G
+
+- **Kanonische Form** (wie heute in RTT-Fusion): transversale Komponenten (E_x, E_y) auf einem
+  zentrierten, rechteckigen Gitter (n_x, n_y, dx, dy) in der Port-Ebene; E_z folgt aus der
+  Transversalität (Port in homogenem Medium, `docs/konventionen.md`).
+- **Optionale Trägerphase** wie in Fieldtracing: physikalisches Feld = Werte · exp(i/2·ρᵀCρ) mit
+  C (2 × 2, 1/mm²) und optional ein linearer Kipp k₀⊥ (exp(i k₀⊥·ρ)). Ohne Träger gilt C = 0,
+  k₀⊥ = 0 – alle heutigen Ports bleiben gültig.
+- **Gitter (Lattice) L** und der Frequenzbereich bleiben intern in Fieldtracing bzw. `rtt-field`;
+  an einem Port der Fusion liegt G immer im Ortsraum auf einem achsparallelen Gitter. Die
+  Umwandlung „Träger abziehen / neu abtasten“ ist ein eigener geprüfter Operator.
+- **Abnahme:** Rundreise Fieldtracing-Gitterfeld (quadratisch, 3 Komponenten, mit C) → G mit
+  Träger → G ohne Träger (abgetastet) → S gegen das analytische Spektrum eines Gauß-Strahls mit
+  Krümmung; Leistung nach Parseval vor und nach jeder Stufe gleich.
+
+### L2 FFT-Normierung
+
+Die beiden Normierungen beschreiben dasselbe Feld E(ρ) = ∫∫ A(k⊥) e^(i k⊥·ρ) d²k⊥ (kontinuierliche
+Winkelspektrum-Dichte A, Fieldtracing) bzw. E(ρ) = Σ Ẽ_mn e^(i k_mn·ρ) (diskrete ebene Wellen Ẽ,
+RTT-Fusion S). Auf einem periodischen Fenster L_x × L_y mit Δk_x = 2π/L_x, Δk_y = 2π/L_y ist die
+Summe die Riemann-Summe des Integrals, also (Herleitung hier, keine fremde Gleichung)
+
+    Ẽ_mn = A(k_mn) · Δk_x Δk_y = A(k_mn) · (2π)² / (L_x L_y).
+
+- **Festlegung:** S trägt Amplituden Ẽ (Phase 1 am Port-Ursprung, wie heute); kontinuierliche
+  Spektren tragen zusätzlich das Gewicht dΩ (B5). Die Dichte A gibt es nur innerhalb von
+  Fieldtracing; der Operator H/G → S rechnet um.
+- **Abnahme:** ebene Welle (ein Ẽ), Gauß-Strahl (analytisches A) und Fieldtracing-Gitterfeld liefern
+  über beide Wege dieselbe Leistung (Parseval) und dieselben Ẽ auf 10⁻¹².
+
+### L3 Fehlende Port-Typen
+
+Jeder Typ kommt mit dem ersten Nutzer (Fusion-ADR Punkt 3) und Sollwertdateien:
+
+| Typ | Felder | Erster Nutzer | Abnahme |
+| --- | --- | --- | --- |
+| R | Port + `RayBatch` (Ort in der Port-Ebene, Richtung, OPL, PRT-Matrix P, Gewicht, Wellenlängen-Index, Feld-Index) + Kohärenz-Kennung | Linnik (R15) | Strahlen eines Pfads, an der Port-Ebene geschnitten, gegen Raytatouilles eigene Spur; Leistung = Σ Gewicht |
+| H | Fieldtracing `GridlessField` (Punkte, ψ, ∇ψ, Hesse, U) | R18 | R → H nach Fieldtracing ADR 0004 (Leistung n|U|² cos γ dA = Σ Gewicht); Fokus gegen Richards-Wolf |
+| P | Pakete (Ort, Richtung, Gewicht, Weg, Stokes, Seed) | Scattuccino (mit M9) | G → P aus `phasespace` mit dokumentierter Unschärfe; Energie |
+| M | Tabelle über Orte/Zustände (Antworttensoren) | BindOptiX (K8) | wie dort DP1–DP8 |
+
+**Leistung zwischen R und Feldern:** Strahlen sind leistungsnormiert (P, Gewicht), Felder sind
+Amplituden; die Umrechnung an jedem Übergang folgt Fieldtracing ADR 0004 (U_aus aus P_T, s, cos γ,
+Flächenverhältnis und Maslov-Index). Ein R-Port trägt deshalb die Quellleistung je Kohärenz-Kennung
+als absolute Größe (W), damit Strahl- und Feldbeiträge an einem Vereiniger dieselbe Einheit haben.
+
+### L4 Wiederverwendbare Operatoren
+
+- **Schnittstelle:** `apply_many(handle, incidents) -> list[PortFields]` als Pflicht (darf intern
+  einzeln rechnen), dazu optional `operator(handle, basis_in, basis_out) -> SMatrix`. `SMatrix` ist
+  eine Blockmatrix zwischen den Basen der Ports (bei S: Liste der ebenen Wellen bzw. Ordnungen und
+  ihre zwei Polarisationen; bei G: Gitterpunkte × 2), mit Inhalts-Hash.
+- **Planer:** nimmt den Operator, sobald die Zahl der Einfälle (Feldpunkte × Wellenlängen ×
+  Polarisationen × Optimierungsschritte) die geschätzte Schwelle aus `estimate` übersteigt.
+- **Bei den Lösern** (Issue-Entwürfe): FourierGrating – die S-Matrix in Python freigeben; hp-FEM –
+  `ScatteringOperator`/`solve_many` über `grating` hinaus; SpeckleBem – `set_excitation` im Adapter
+  nutzen (ohne Änderung im Löser möglich); CliffordBem – Recycling im Adapter nutzen.
+- **Abnahme:** `operator` und `apply` liefern für 20 zufällige Einfälle (Seed) dasselbe auf 10⁻¹²;
+  Reziprozität Sᵀ = S in einer symmetrischen Basis, wo der Löser reziprok ist.
+
+### L5 Einfall am hinteren Port
+
+- `apply(handle, incident, port="back")`; `describe()["ports"]` erklärt je Port
+  `accepts_incidence`.
+- **FourierGrating:** im Adapter die Struktur an z spiegeln und den Lauf als Einfall von vorn
+  rechnen (Spiegelung, keine Drehung; Ports und Phasenbezüge entsprechend vertauscht) – ohne
+  Änderung im Löser.
+- **BWPM:** Die Spezifikation erlaubt Rückwärts-Einfall, `apply` setzt ihn nicht um → Issue-Entwurf
+  für BWPM.
+- **Abnahme:** symmetrische Struktur (Platte, symmetrisches Gitter) liefert vorn und hinten dasselbe;
+  unsymmetrischer Stapel gegen Transfer-Matrix von beiden Seiten; Reziprozität t₁₂ = t₂₁.
+
+### L6 Namen der Daten-Sockets
+
+Kürzel bleiben R, H, G, S, T, P (Licht) und N, Q (eingeführt). Alle weiteren Daten-Sockets heißen
+mit englischem Typnamen im Format und deutschem Namen in der Doku: `field_map` (BindOptiX F),
+`occupancy` (BindOptiX B), `voxel_materials` (Voxelspaetzle N3), `shape` (Voxelspaetzle B),
+`height_map`, `response_map` (M), `scattering_stats`. Abnahme: Prüfung des Graphen lehnt Bänder
+zwischen unverträglichen Typen mit Diagnose ab.
+
+### L7 Streustatistik für Scattuccino
+
+- **Daten-Socket `scattering_stats`** je Wellenlänge: μ_s, μ_a (1/mm), g und entweder eine
+  Phasenfunktion p(cos θ) als Tabelle oder eine Mueller-Tabelle (S11, S12, S33, S34 über cos θ,
+  Bohren-Huffman-Normierung) für kugelsymmetrische bzw. orientierungsgemittelte Streuer.
+- **Erzeuger:** Mie (unabhängige Referenz, `tests/mie_reference.py` liegt vor), dann CliffordBem
+  (Fernfeld über Orientierungen gemittelt → Mueller; Issue-Entwurf für einen Export, falls die
+  Mittelung im Löser bleiben soll).
+- **Abnahme:** Mie-Kugel über beide Erzeuger auf < 1 %; Scattuccino mit diesen Daten gegen
+  Adding-Doubling (dort vorhanden).
+
+### L8 Raue Flächen (SpeckleBem) und weitere hp-FEM-Löser
+
+Nicht für die ersten Stufen. SpeckleBem braucht Einfall mit beliebigem Spektrum (D12) und den Weg
+für offene Flächen; hp-FEM 3D/axialsymmetrisch/Wellenleiter-Ports bekommen Adapter, sobald ein
+Pilot sie braucht (K7 als Brute-Force-Referenz des Planers ist der Anlass).
+
+### L9 Gültigkeit maschinenlesbar (A5)
+
+`describe()["validity"]` als Liste von Regeln mit Kennzahl, Bereich, Folge und Beleg:
+
+```json
+{"validity": [
+  {"metric": "interface_tilt_rad", "max": 0.0, "effect": "reflection_quantitative",
+   "else": "reflection_direction_and_phase_only", "evidence": "BWPM E5"},
+  {"metric": "absorber_width_wavelengths", "min": 20, "effect": "required", "evidence": "BWPM K9"},
+  {"metric": "fresnel_min", "min": "<aus Fieldtracings Auswahlregeln>", "effect": "geometric_propagation",
+   "evidence": "<Testfall in Fieldtracing>"}
+]}
+```
+
+Nur zur Veranschaulichung des Formats: Die BWPM-Regeln geben die gemessenen Grenzen aus dem
+Fusion-ADR (B6) wieder; Schwellen und Belege der übrigen Einträge liefern die Adapter selbst.
+
+Das Vokabular der Kennzahlen beginnt mit Fieldtracings `selection.Situation` (lokale
+Fresnel-Zahlen, Kantenverhältnis, Abtastzahlen, Krümmungsradius) und den Kennzahlen aus Plan 7.2
+(Größenparameter, Winkelbreite, Zahl der Ordnungen); jede neue Kennzahl mit Definition in
+`docs/konventionen.md`. Abnahme: Der Planer wählt in den Fieldtracing-Fällen F2/F3 dieselben
+Operatoren wie `plan_propagation`.
+
+### L10 Große Nutzdaten (A6)
+
+JSON-Umschlag im Format `raytatouille-result` mit Verweisen auf Beistelldateien statt Inline-Arrays:
+`{"array": "voxels.bin", "dtype": "<u2", "shape": [nz, ny, nx], "sha256": "…"}`, rohe Daten in
+Little-Endian, zeilenweise (C-Reihenfolge), per Memory-Map lesbar. Keine HDF5-Abhängigkeit im
+Kern. Abnahme: Rundreise eines 10⁸-Voxel-Gitters ohne Kopie; Hash geprüft.
+
+### L11 Fusionsplan auf `main`
+
+Der Fusionsplan liegt nur auf dem Fieldtracing-Zweig `docs-fusion-plan`. Vorschlag: dort einen PR
+auf `main` (Entscheidung des Maintainers in Fieldtracing), oder den Plan als `docs/fusionsplan.md`
+in dieses Repository übernehmen, weil RTT-Fusion ihn heute am häufigsten zitiert.
+
+### L12 Kopplung GUI ↔ Bibliothek
+
+- Die GUI hält den Arbeitsgraphen im Dokument (`.rttf`) als `rtt-fusion-graph`-JSON und schickt ihn
+  bei jeder Änderung an einen Plugin-Prozess mit `rtt_fusion`; der Prozess antwortet mit Prüfung,
+  Plan (je Block und Band: Darstellung, Kosten, Fehlerbeitrag, Begründung) und auf Anforderung mit
+  Ergebnissen über die vorhandene Ergebnis-API (Strahlen, Felder auf Flächen, Bilder, Kurven).
+- Der Graph ist die einzige Wahrheit über die Kopplung; die Geometrie bleibt im CAD-Modell bzw.
+  im `.rtt.json`, Blöcke verweisen darauf.
+- Skizze des Formats für den Linnik:
+
+```json
+{"format": "rtt-fusion-graph", "version": 1,
+ "nodes": [
+   {"id": "src", "type": "rtt.source", "params": {"from_system": "linnik.rtt.json"}},
+   {"id": "bs", "type": "rtt.splitter", "params": {"surface": "BS"}},
+   {"id": "objA", "type": "rtt.section", "params": {"surfaces": ["A.AP", "A.L1.S1"]}},
+   {"id": "probe", "type": "rtt.mirror", "params": {"surface": "SPM"}},
+   {"id": "cam", "type": "rtt.detector", "params": {"surface": "CAM", "pixels": [512, 384]}}
+ ],
+ "links": [
+   {"from": ["src", "out"], "to": ["bs", "in"]},
+   {"from": ["bs", "t"], "to": ["objA", "front_in"], "transport": "auto"},
+   {"from": ["objA", "back_out"], "to": ["probe", "in"]},
+   {"from": ["probe", "out"], "to": ["objA", "back_in"]},
+   {"from": ["objA", "front_out"], "to": ["bs", "t_in"]},
+   {"from": ["bs", "merged"], "to": ["cam", "in"], "transport": "R"}
+ ]}
+```
 
 ## 11. Entscheidungen
 

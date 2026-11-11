@@ -1,6 +1,9 @@
-# Konzept: Node-Workflow der Raytatouille Fusion (Entwurf)
+# Konzept: Node-Workflow der Raytatouille Fusion
 
-> **Entwurf zur Abstimmung mit dem Maintainer** (2026-11-11). Anlass: Wunsch des Maintainers, Systeme
+> **Freigegeben** vom Maintainer am 2026-11-11 (Entscheidung E3 in [roadmap.md](roadmap.md)):
+> W1–W9, A1–A6, L1–L12 und die Stufen R14–R20; bei L11 ist der Weg noch zu wählen.
+>
+> Entstanden am 2026-11-11. Anlass: Wunsch des Maintainers, Systeme
 > der Fusion wie in Blender als Graph aus Blöcken („Nodes“) mit Ein- und Ausgängen zu entwerfen,
 > in einem Fenster „Node-Workflow“ der GUI Raytatouille Fusion (CAD), Repository
 > `PhotonPower/Raytatouille-Fusion`. Die Logik entsteht in diesem Repository, beim Port nach C++

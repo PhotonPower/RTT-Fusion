@@ -6,7 +6,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
-- R13 (Entwurf): Konzept Node-Workflow `docs/konzept-node-workflow.md` – Arbeitsgraph aus
+- R13: Konzept Node-Workflow (freigegeben, E3) `docs/konzept-node-workflow.md` – Arbeitsgraph aus
   Blöcken, Sockets und Bändern als bearbeitbare Form des Planers, Kohärenz-Kennungen,
   Meta-Blöcke für Schleifen, Ort von Logik (RTT-Fusion / `rtt-fusion`) und GUI (Raytatouille
   Fusion), Vorschläge A1–A6 zur Adapter-Schnittstelle, Inventar aller Module, Stufen R14–R20.

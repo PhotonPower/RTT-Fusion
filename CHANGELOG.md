@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R17: Planer, Stufen 1–2 (`rtt_fusion.graph.planner`) – Fusionspfade auf Socket-Ebene,
+  Darstellung je Licht-Band und Umwandlungen in Blöcken nach Tabelle 6.3 (auch Ketten; nach
+  Phasenverlust keine kohärente Darstellung mehr), feste Transporte, verfügbare Darstellungen,
+  Gültigkeits-Hook, „auto“ ohne P solange kohärent möglich, Warnung `plan.incoherent_merge`;
+  Plan als Datenobjekt mit JSON-Form für den Node-Editor; die Ausführung plant vor dem Rechnen
+  (`Executor.plan`). Tests W10–W12.
+
 - R15: Ausführung des Arbeitsgraphen ohne Planer – `graph.light` (Strahlenbündel R mit
   Kohärenz-Kennung), `graph.execute` (Auswertung je Ausgang, Cache nach Inhalts-Hash,
   Stummschalten, Fehlercodes `exec.*`), `graph.imaging` (kohärentes Kamerabild: Amplituden je

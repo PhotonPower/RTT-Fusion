@@ -176,6 +176,17 @@ def test_cache_recomputes_only_downstream() -> None:
     assert ex.calls[("cam", "image")] == first[("cam", "image")] + 1
 
 
+def test_execution_follows_the_plan() -> None:
+    # R17: the executor plans before running; with "auto" every light link is R (as in R15)
+    ex = michelson()
+    image(ex)
+    assert ex.plan is not None and ex.plan.ok
+    assert set(ex.plan.representations.values()) == {"R"}
+    assert len(ex.plan.representations) == len(ex.graph.links)
+    assert not ex.plan.conversions
+    assert len([p for p in ex.plan.paths if p.output == ("cam", "image")]) == 2  # two arms
+
+
 def test_muted_mirror_passes_light_through() -> None:
     # muted reference mirror: its light runs on and misses the camera – only arm A remains
     ex = michelson()

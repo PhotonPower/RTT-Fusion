@@ -8,7 +8,7 @@ Raytracing (Raytatouille) und Field Tracing, in den Konventionen von Raytatouill
 - Adapter je Löser mit `describe`, `prepare`, `apply`, `estimate` und Konformitätstests.
 - Pilotfälle, die die Kopplung gegen unabhängige Referenzen prüfen.
 
-Plan: Fieldtracing `docs/rtt-fusion/plan.md`; Stufen dieses Repositorys:
+Plan: [docs/fusionsplan.md](docs/fusionsplan.md) (aus Fieldtracing übernommen); Stufen dieses Repositorys:
 [docs/roadmap.md](docs/roadmap.md).
 
 ## Installieren und testen

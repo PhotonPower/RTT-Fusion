@@ -1,6 +1,6 @@
 # Schnittstelle der Adapter
 
-Nach dem Fusionsplan (Fieldtracing `docs/rtt-fusion/plan.md`, Abschnitt 6.4). Ein Adapter ist
+Nach dem Fusionsplan ([fusionsplan.md](fusionsplan.md), Abschnitt 6.4). Ein Adapter ist
 ein Python-Modul unter `rtt_fusion.adapters` mit vier Funktionen; Daten an der Grenze sind Werte
 in den Konventionen dieses Repositorys (`docs/konventionen.md`, Typen in `rtt_fusion.ports`).
 

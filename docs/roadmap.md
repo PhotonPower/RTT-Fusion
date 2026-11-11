@@ -1,6 +1,6 @@
 # Plan und Stufen
 
-> Maßgebliche Fassung für dieses Repository. Gesamtplan: Fieldtracing `docs/rtt-fusion/plan.md`
+> Maßgebliche Fassung für dieses Repository. Gesamtplan: [fusionsplan.md](fusionsplan.md) (aus Fieldtracing übernommen, L11)
 > (Phasen P0–P5); dieses Repository ist der Prototyp aus P2.
 
 ## Stufen
@@ -32,4 +32,4 @@
 | D11 | BWPM | eigenes Repository `PhotonPower/BWPM` (2026-11-05) |
 | E1 | Fusion-ADR | Entwurf freigegeben; `rtt-fusion` entsteht in **C++** (Maintainer, 2026-11-06). Vorschläge zu Nummer, Zeitpunkt und eigenem ADR für die tabellierte Interaktion im Entwurf, Abschnitt „Folgen“ |
 | E2 | ADR-Entwurf tabellierte Beugungsinteraktion und Nachtrag zum Fusion-ADR (Basis) | freigegeben (Maintainer, 2026-11-07) |
-| E3 | Konzept Node-Workflow: Entscheidungen W1–W9, Erweiterungen der Adapter-Schnittstelle A1–A6, Vorschläge L1–L12, Stufen R14–R20 | freigegeben (Maintainer, 2026-11-11); bei L11 ist der Weg (Fieldtracing `main` oder Übernahme hierher) noch zu wählen |
+| E3 | Konzept Node-Workflow: Entscheidungen W1–W9, Erweiterungen der Adapter-Schnittstelle A1–A6, Vorschläge L1–L12, Stufen R14–R20 | freigegeben (Maintainer, 2026-11-11); L11: Übernahme hierher als `docs/fusionsplan.md` (Maintainer, 2026-11-11) |

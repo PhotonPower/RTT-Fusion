@@ -1,14 +1,14 @@
 # Konzept: Node-Workflow der Raytatouille Fusion
 
 > **Freigegeben** vom Maintainer am 2026-11-11 (Entscheidung E3 in [roadmap.md](roadmap.md)):
-> W1–W9, A1–A6, L1–L12 und die Stufen R14–R20; bei L11 ist der Weg noch zu wählen.
+> W1–W9, A1–A6, L1–L12 und die Stufen R14–R20; L11: Plan übernommen als [fusionsplan.md](fusionsplan.md).
 >
 > Entstanden am 2026-11-11. Anlass: Wunsch des Maintainers, Systeme
 > der Fusion wie in Blender als Graph aus Blöcken („Nodes“) mit Ein- und Ausgängen zu entwerfen,
 > in einem Fenster „Node-Workflow“ der GUI Raytatouille Fusion (CAD), Repository
 > `PhotonPower/Raytatouille-Fusion`. Die Logik entsteht in diesem Repository, beim Port nach C++
 > (Entscheidung E1). Grundlagen: Fusion-ADR-Entwurf ([adr-entwurf-fusion.md](adr-entwurf-fusion.md),
-> E1, E2), Fusionsplan (Fieldtracing, Zweig `docs-fusion-plan`, `docs/rtt-fusion/plan.md`,
+> E1, E2), Fusionsplan ([fusionsplan.md](fusionsplan.md), aus Fieldtracing übernommen,
 > Abschnitte 6 und 7), Inventar der Module (Anhang A dieses Entwurfs, gelesen am 2026-11-11).
 > Nichts davon ist in den Modul-Repositories angelegt (AGENTS.md Regel 4).
 

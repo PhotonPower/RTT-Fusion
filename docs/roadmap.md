@@ -20,6 +20,7 @@
 | **R11 C++-Gerüst und BWPM-Adapter in C++** | Port-Typen und Umwandlungen in C++ (`cpp/`), abstrakte Adapter-Schnittstelle mit Registry, BWPM-Adapter als externer C++-Adapter (Weg 2) | ✅ (C++1, C++2) |
 | **R12 Beugungstabelle in C++** | `DiffractionTable` nach dem freigegebenen Entwurf (E2): Interpolation, Anomalien, PRT-Matrix, Prüfung; Vorlage für die erste Umsetzung in Raytatouille 1.x | ✅ (C++3) |
 | **R13 Konzept Node-Workflow** | Arbeitsgraph aus Blöcken, Sockets und Bändern über dem Planer; Kohärenz, Meta-Blöcke, Ort von Logik und GUI, Erweiterungen der Adapter, Inventar aller Module; Stufen R14–R20 ([Konzept](konzept-node-workflow.md)) | Freigabe ✅ (E3) |
+| **R14 Graph-Modell** | Blöcke, Sockets, Bänder, Typen, Prüfung mit Diagnosecodes, Format `rtt-fusion-graph`, Block-Typen aus `describe()` (A1/A2), Import aus Raytatouille-Pfaden (`rtt_fusion.graph`, Python; C++-Port folgt) | Linnik-Import ergibt den Graphen aus dem Konzept ✅ (W1–W3) |
 | **R7 Sollwertdateien für den C++-Port** | Export der Port-Typen, Umwandlungen und Adapter-Ergebnisse im Format `raytatouille-result` | Dateien aktuell, Rundreise ✅ (S1) |
 
 ## Entscheidungen

@@ -46,7 +46,7 @@ def _system_dict(system: Any) -> dict[str, Any]:
     if isinstance(system, dict):
         return system
     if (
-        isinstance(system, (str, Path))
+        isinstance(system, str | Path)
         and Path(str(system)).suffix == ".json"
         and Path(str(system)).exists()
     ):

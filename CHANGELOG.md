@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R15: Ausführung des Arbeitsgraphen ohne Planer – `graph.light` (Strahlenbündel R mit
+  Kohärenz-Kennung), `graph.execute` (Auswertung je Ausgang, Cache nach Inhalts-Hash,
+  Stummschalten, Fehlercodes `exec.*`), `graph.imaging` (kohärentes Kamerabild: Amplituden je
+  Kohärenzgruppe, Intensitäten über Gruppen), `graph.optics` (analytisches Backend mit ebenen
+  Elementen), `graph.backend_rtt` (importierte Raytatouille-Graphen, auch nicht zielbare Pfade);
+  Pilot W9 (Tests W4–W9).
+
 - R14: Graph-Modell des Node-Workflows `rtt_fusion.graph` – Blöcke, Sockets (Licht: R/H/G/S/T/P,
   Daten: N, Q und benannte Typen), Bänder mit Transport, Bearbeitung (Verbinden, Einfügen auf ein
   Band, Austauschen mit erhaltenen Bändern, Stummschalten), Prüfung mit Diagnosecodes und

@@ -1,0 +1,39 @@
+{
+  "name": "Linnik (structure only, for the graph import)",
+  "root": {"type": "assembly", "children": [
+    {"type": "stop", "name": "Illumination stop", "surfaces": [{"id": "STO"}]},
+    {"type": "thin_element", "name": "Beam splitter", "surfaces": [{"id": "BS"}]},
+    {"type": "assembly", "name": "Objective A", "children": [
+      {"type": "thin_element", "name": "A.Stop", "surfaces": [{"id": "A.AP"}]},
+      {"type": "lens", "name": "A.L2", "surfaces": [{"id": "A.L2.S1"}, {"id": "A.L2.S2"}]},
+      {"type": "lens", "name": "A.L1", "surfaces": [{"id": "A.L1.S1"}, {"id": "A.L1.S2"}]},
+      {"type": "mirror", "name": "Sample", "surfaces": [{"id": "SPM"}]}]},
+    {"type": "assembly", "name": "Objective B", "children": [
+      {"type": "thin_element", "name": "B.Stop", "surfaces": [{"id": "B.AP"}]},
+      {"type": "lens", "name": "B.L1", "surfaces": [{"id": "B.L1.S1"}, {"id": "B.L1.S2"}]},
+      {"type": "mirror", "name": "Reference", "surfaces": [{"id": "REF"}]}]},
+    {"type": "assembly", "name": "Tube and camera", "children": [
+      {"type": "detector", "name": "Pupil camera", "surfaces": [{"id": "PUP"}]},
+      {"type": "lens", "name": "Tube lens", "surfaces": [{"id": "T1.S1"}, {"id": "T1.S2"}]},
+      {"type": "detector", "name": "Camera", "surfaces": [{"id": "CAM"}]}]}]},
+  "paths": [
+    {"name": "measurement", "events": [
+      {"surface": "STO"}, {"surface": "BS", "kind": "transmit"}, {"surface": "A.AP"},
+      {"surface": "A.L2.S1"}, {"surface": "A.L2.S2"}, {"surface": "A.L1.S1"}, {"surface": "A.L1.S2"},
+      {"surface": "SPM", "kind": "reflect"},
+      {"surface": "A.L1.S2"}, {"surface": "A.L1.S1"}, {"surface": "A.L2.S2"}, {"surface": "A.L2.S1"},
+      {"surface": "A.AP"}, {"surface": "BS", "kind": "reflect"},
+      {"surface": "T1.S1"}, {"surface": "T1.S2"}, {"surface": "CAM"}]},
+    {"name": "reference", "events": [
+      {"surface": "STO"}, {"surface": "BS", "kind": "reflect"}, {"surface": "B.AP"},
+      {"surface": "B.L1.S1"}, {"surface": "B.L1.S2"}, {"surface": "REF", "kind": "reflect"},
+      {"surface": "B.L1.S2"}, {"surface": "B.L1.S1"}, {"surface": "B.AP"},
+      {"surface": "BS", "kind": "transmit"}, {"surface": "T1.S1"}, {"surface": "T1.S2"}, {"surface": "CAM"}]},
+    {"name": "measurement_pupil", "events": [
+      {"surface": "STO"}, {"surface": "BS", "kind": "transmit"}, {"surface": "A.AP"},
+      {"surface": "A.L2.S1"}, {"surface": "A.L2.S2"}, {"surface": "A.L1.S1"}, {"surface": "A.L1.S2"},
+      {"surface": "SPM", "kind": "reflect"},
+      {"surface": "A.L1.S2"}, {"surface": "A.L1.S1"}, {"surface": "A.L2.S2"}, {"surface": "A.L2.S1"},
+      {"surface": "A.AP"}, {"surface": "BS", "kind": "reflect"}, {"surface": "PUP"}]}
+  ]
+}

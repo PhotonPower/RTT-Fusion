@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R14: Graph-Modell des Node-Workflows `rtt_fusion.graph` – Blöcke, Sockets (Licht: R/H/G/S/T/P,
+  Daten: N, Q und benannte Typen), Bänder mit Transport, Bearbeitung (Verbinden, Einfügen auf ein
+  Band, Austauschen mit erhaltenen Bändern, Stummschalten), Prüfung mit Diagnosecodes und
+  Kreissuche auf Socket-Ebene, Format `rtt-fusion-graph`, Block-Typen aus `describe()`, Import aus
+  den Pfaden eines Raytatouille-Systems; Tests W1–W3.
+
 - L11: Fusionsplan aus Fieldtracing (Zweig `docs-fusion-plan`, Commit `3e0d5f8`) als
   `docs/fusionsplan.md` übernommen; Verweise angepasst.
 

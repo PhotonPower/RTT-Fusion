@@ -18,6 +18,7 @@ from typing import Any
 
 import numpy as np
 
+from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.imaging import coherent_image
 from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
@@ -35,11 +36,11 @@ from rtt_fusion.graph.registry import NodeTypeRegistry
 SQRT_HALF = float(np.sqrt(0.5))
 
 
-def _vec(node: Node, name: str, default: tuple[float, float, float]) -> np.ndarray:
+def _vec(node: Node, name: str, default: tuple[float, float, float]) -> FloatArray:
     return np.asarray(node.params.get(name, default), dtype=float)
 
 
-def hexapolar(rings: int) -> tuple[np.ndarray, np.ndarray]:
+def hexapolar(rings: int) -> tuple[FloatArray, FloatArray]:
     """Unit-disc points as rt.trace.HexapolarPupil: centre, then 6k points on ring k, from +y."""
     xs, ys = [0.0], [0.0]
     for k in range(1, rings + 1):

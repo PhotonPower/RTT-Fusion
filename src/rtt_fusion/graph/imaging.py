@@ -24,7 +24,7 @@ import numpy as np
 from scipy.interpolate import LinearNDInterpolator
 from scipy.spatial import Delaunay, QhullError
 
-from rtt_fusion._types import FloatArray
+from rtt_fusion._types import ComplexArray, FloatArray
 from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
 
 
@@ -87,7 +87,7 @@ def coherent_image(
     u = (np.arange(nx) + 0.5) / nx * 2 * half_u - half_u
     v = (np.arange(ny) + 0.5) / ny * 2 * half_v - half_v
     uu, vv = np.meshgrid(u, v)
-    fields: dict[CoherenceKey, np.ndarray] = {}
+    fields: dict[CoherenceKey, ComplexArray] = {}
     ray_power = 0.0
     for b in bundles:
         moved, uv = plane.intersect(b)
@@ -112,7 +112,8 @@ def coherent_image(
         e = np.where(
             np.isfinite(opl_px), a_px * np.exp(1j * (b.k0 * np.nan_to_num(opl_px) + phi0)), 0.0
         )
-        fields[b.key] = fields.get(b.key, 0.0) + e
+        e = np.asarray(e, dtype=complex)
+        fields[b.key] = fields[b.key] + e if b.key in fields else e
     values = np.zeros((ny, nx))
     for e in fields.values():
         values = values + np.abs(e) ** 2

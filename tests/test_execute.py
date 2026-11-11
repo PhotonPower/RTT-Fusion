@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 from scipy.optimize import curve_fit
 
+from rtt_fusion._types import FloatArray
 from rtt_fusion.graph import Graph, Node, builtin_registry, graph_from_raytatouille, optics
 from rtt_fusion.graph.execute import ExecutionError, Executor
 from rtt_fusion.graph.imaging import Image
@@ -88,7 +89,7 @@ def image(ex: Executor) -> Image:
 
 
 def fringe_period(
-    values: np.ndarray, extent: tuple[float, float, float, float], radius: float
+    values: FloatArray, extent: tuple[float, float, float, float], radius: float
 ) -> float:
     """Period of the fringes along the axis with the larger variation, by a cosine fit through
     the centre (inside `radius`)."""
@@ -103,7 +104,7 @@ def fringe_period(
     f = np.abs(np.fft.rfft((line - line[inside].mean()) * inside))
     f0 = (np.argmax(f[1:]) + 1) / (b - a)
 
-    def model(x: np.ndarray, c: float, d: float, fr: float, ph: float) -> np.ndarray:
+    def model(x: FloatArray, c: float, d: float, fr: float, ph: float) -> FloatArray:
         return np.asarray(c + d * np.cos(2 * np.pi * fr * x + ph))
 
     p: Any = curve_fit(

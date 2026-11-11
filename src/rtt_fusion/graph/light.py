@@ -18,8 +18,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 import numpy as np
+from numpy.typing import NDArray
 
 from rtt_fusion._types import ComplexArray, FloatArray
+
+BoolArray = NDArray[np.bool_]
 
 
 @dataclass(frozen=True)
@@ -56,7 +59,7 @@ class RayBundle:
     opl: FloatArray
     amplitude: ComplexArray
     source_xy: FloatArray
-    alive: np.ndarray
+    alive: BoolArray
     irradiance: float = 1.0
     path: tuple[str, ...] = field(default=())
 

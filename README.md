@@ -31,6 +31,7 @@ FourierGrating braucht zum Bauen einen C++-Compiler und Eigen 3.4 (wird sonst ge
 - [Testfälle](docs/testfaelle.md)
 - [ADR-Entwurf für Raytatouille](docs/adr-entwurf-fusion.md)
 - [ADR-Entwurf tabellierte Beugungsinteraktion](docs/adr-entwurf-beugungstabelle.md)
+- [Konzept Node-Workflow](docs/konzept-node-workflow.md)
 - [Quellen](docs/quellen.md)
 - [Regeln für Programmieragenten](AGENTS.md)
 

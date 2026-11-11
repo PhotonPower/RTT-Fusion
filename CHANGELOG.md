@@ -6,6 +6,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R13: Konzept Node-Workflow (freigegeben, E3) `docs/konzept-node-workflow.md` – Arbeitsgraph aus
+  Blöcken, Sockets und Bändern als bearbeitbare Form des Planers, Kohärenz-Kennungen,
+  Meta-Blöcke für Schleifen, Ort von Logik (RTT-Fusion / `rtt-fusion`) und GUI (Raytatouille
+  Fusion), Vorschläge A1–A6 zur Adapter-Schnittstelle, Inventar aller Module, Stufen R14–R20.
+  Vorschläge L1–L12 zu den offenen Punkten: ein G-Typ mit optionaler Trägerphase, Umrechnung der
+  FFT-Normierung, Port-Typen R/H/P/M, `apply_many`/`operator`, Einfall am hinteren Port, Namen der
+  Daten-Sockets, Streustatistik, maschinenlesbare Gültigkeit, Beistelldateien für große Daten,
+  Kopplung GUI ↔ Bibliothek mit Formatskizze `rtt-fusion-graph`.
+
 - R0: Gerüst (Regeln, Plan mit D1, D2, D10, D11), Konventionen, Schnittstelle der Adapter,
   Port-Typen `GriddedField` und `PlaneWaves` mit Umwandlung G ↔ S und Poynting-Leistung, CI mit
   den Löser-Modulen auf festen Commits.

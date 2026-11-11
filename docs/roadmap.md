@@ -19,6 +19,7 @@
 | **R10 BioOptoMD (Datenports N, Q), Pilot K4** | n(z)-Profile und Dipole aus den Ausgabeformaten, SPR-Biosensor | ✅ (K4) |
 | **R11 C++-Gerüst und BWPM-Adapter in C++** | Port-Typen und Umwandlungen in C++ (`cpp/`), abstrakte Adapter-Schnittstelle mit Registry, BWPM-Adapter als externer C++-Adapter (Weg 2) | ✅ (C++1, C++2) |
 | **R12 Beugungstabelle in C++** | `DiffractionTable` nach dem freigegebenen Entwurf (E2): Interpolation, Anomalien, PRT-Matrix, Prüfung; Vorlage für die erste Umsetzung in Raytatouille 1.x | ✅ (C++3) |
+| **R13 Konzept Node-Workflow** | Arbeitsgraph aus Blöcken, Sockets und Bändern über dem Planer; Kohärenz, Meta-Blöcke, Ort von Logik und GUI, Erweiterungen der Adapter, Inventar aller Module; Stufen R14–R20 ([Konzept](konzept-node-workflow.md)) | Freigabe ✅ (E3) |
 | **R7 Sollwertdateien für den C++-Port** | Export der Port-Typen, Umwandlungen und Adapter-Ergebnisse im Format `raytatouille-result` | Dateien aktuell, Rundreise ✅ (S1) |
 
 ## Entscheidungen
@@ -31,3 +32,4 @@
 | D11 | BWPM | eigenes Repository `PhotonPower/BWPM` (2026-11-05) |
 | E1 | Fusion-ADR | Entwurf freigegeben; `rtt-fusion` entsteht in **C++** (Maintainer, 2026-11-06). Vorschläge zu Nummer, Zeitpunkt und eigenem ADR für die tabellierte Interaktion im Entwurf, Abschnitt „Folgen“ |
 | E2 | ADR-Entwurf tabellierte Beugungsinteraktion und Nachtrag zum Fusion-ADR (Basis) | freigegeben (Maintainer, 2026-11-07) |
+| E3 | Konzept Node-Workflow: Entscheidungen W1–W9, Erweiterungen der Adapter-Schnittstelle A1–A6, Vorschläge L1–L12, Stufen R14–R20 | freigegeben (Maintainer, 2026-11-11); bei L11 ist der Weg (Fieldtracing `main` oder Übernahme hierher) noch zu wählen |

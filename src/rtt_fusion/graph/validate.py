@@ -15,7 +15,15 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from rtt_fusion.graph.model import Category, Direction, Graph, Node, SocketKind, SocketSpec
+from rtt_fusion.graph.model import (
+    Category,
+    Direction,
+    Graph,
+    GraphError,
+    Node,
+    SocketKind,
+    SocketSpec,
+)
 from rtt_fusion.graph.registry import NodeTypeRegistry
 
 
@@ -44,6 +52,34 @@ def node_through(node: Node, registry: NodeTypeRegistry) -> dict[str, tuple[str,
     sockets = node_sockets(node, registry)
     ins = tuple(s.name for s in sockets if s.direction is Direction.IN)
     return {s.name: ins for s in sockets if s.direction is Direction.OUT}
+
+
+def replace_block(graph: Graph, registry: NodeTypeRegistry, node_id: str, new: Node) -> Node:
+    """`Graph.replace_node` with the socket map found from the sockets: linked sockets of the old
+    block move to the new block's socket of the same name, else to the only new socket of the same
+    direction and kind (a mirror's `from_objective`/`to_objective` -> a grating's `in`/`out`).
+    Raises GraphError if a linked socket has no unique counterpart."""
+    old = graph.node(node_id)
+    new_sockets = node_sockets(new, registry)
+    names = {s.name for s in new_sockets}
+    mapping: dict[str, str] = {}
+    linked = {lk.source[1] for lk in graph.links_from(node_id)} | {
+        lk.target[1] for lk in graph.links_to(node_id)
+    }
+    for spec in node_sockets(old, registry):
+        if spec.name not in linked or spec.name in names:
+            continue
+        same = [
+            s.name for s in new_sockets if s.direction is spec.direction and s.kind is spec.kind
+        ]
+        if len(same) != 1:
+            raise GraphError(
+                f"no unique socket of {new.type_id} for {old.id}.{spec.name} ({len(same)} fit)"
+            )
+        mapping[spec.name] = same[0]
+    if len(set(mapping.values())) != len(mapping):
+        raise GraphError(f"two sockets of {old.id} would share one socket of {new.type_id}")
+    return graph.replace_node(node_id, new, mapping)
 
 
 def validate(graph: Graph, registry: NodeTypeRegistry) -> list[Diagnostic]:

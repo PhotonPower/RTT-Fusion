@@ -116,9 +116,14 @@ def _run(ctx: Context, node: Node, values: list[float]) -> MetaResult:
     measure = str(node.params.get("measure", "peak"))
     out = MetaResult(str(node.params.get("parameter", "")), measure=measure)
     try:
-        for v in values:
+        for i, v in enumerate(values):
             parameter.set(float(v))
-            result = ctx.evaluate(block, socket)
+            ctx.report(
+                i / max(len(values), 1),
+                f"{node.name or node.id}: {out.parameter} = {v:.6g} ({i + 1}/{len(values)})",
+            )
+            with ctx.span(i / max(len(values), 1), (i + 1) / max(len(values), 1)):
+                result = ctx.evaluate(block, socket)
             out.values.append(float(v))
             out.results.append(result)
             out.measures.append(measure_of(result, measure))
@@ -168,15 +173,22 @@ def optimise(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> M
         str(node.params.get("parameter", "")), measure=str(node.params.get("measure", "peak"))
     )
 
+    scan = int(node.params.get("scan", 9))
+    budget = scan + 30  # scan + a bounded search usually needs fewer; the bar then jumps to the end
+    calls = [0]
+
     def merit(x: float) -> float:
-        step = _run(ctx, node, [x])
+        i = calls[0]
+        calls[0] += 1
+        with ctx.span(min(i / budget, 0.99), min((i + 1) / budget, 1.0)):
+            step = _run(ctx, node, [x])
         trace.values += step.values
         trace.results += step.results
         trace.measures += step.measures
         return sign * step.measures[0]
 
     # a coarse scan first, so that the bounded search starts in the right basin
-    grid: FloatArray = np.linspace(lo, hi, int(node.params.get("scan", 9)))
+    grid: FloatArray = np.linspace(lo, hi, scan)
     scores = [merit(float(x)) for x in grid]
     k = int(np.argmin(scores))
     a, b = float(grid[max(k - 1, 0)]), float(grid[min(k + 1, len(grid) - 1)])

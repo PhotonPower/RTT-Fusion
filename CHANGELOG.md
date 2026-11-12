@@ -4,6 +4,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- R21: Darstellungs-Blöcke (`rtt_fusion.graph.display`: `display.image`, `display.plot`,
+  `display.beam` als Sonde an jedem Lichtausgang) mit dem Ergebnis `View`; Fortschritt der
+  Ausführung (`Context.progress`, `Context.span`, `Context.report`; Raytatouille-Detektor je
+  Pfad/Feld/λ, Feldausbreitung, Meta-Blöcke je Wert) und laufender Block (`Context.on_node`).
+  Tests W32–W34.
+
 ### Geändert
 
 - FourierGrating eingestellt auf 0.18.0 (Commit `174ef93`, statt 0.16.0 `959c93b`): baut auch mit

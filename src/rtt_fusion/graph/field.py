@@ -25,6 +25,7 @@ port plane (R → H), local Fresnel numbers ≫ 1 (H → R).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -264,6 +265,7 @@ def field_image(
     nx: int,
     ny: int,
     log: list[str] | None = None,
+    progress: Callable[[float, str], None] | None = None,
 ) -> Image:
     """Intensity on the pixel grid of `plane` from fields (amplitudes per coherence group)."""
     u = (np.arange(nx) + 0.5) / nx * 2 * half_u - half_u
@@ -272,7 +274,9 @@ def field_image(
     pixels = plane.origin + uu.reshape(-1, 1) * plane.u + vv.reshape(-1, 1) * plane.v
     sums: dict[CoherenceKey, ComplexArray] = {}
     power = 0.0
-    for fb in fields:
+    for i, fb in enumerate(fields):
+        if progress is not None:
+            progress(i / max(len(fields), 1), f"field propagation {i + 1}/{len(fields)}")
         power += field_power(fb)
         target, notes = propagate_to(fb, plane, window=2.0 * max(half_u, half_v))
         if log is not None:

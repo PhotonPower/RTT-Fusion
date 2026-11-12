@@ -4,9 +4,11 @@
 `Graph.replace_node` keeps the links) and sends every requested diffraction order on: a
 splitter whose channels are the orders (concept 3.1, fusion plan 7.1). The interaction is the
 tabulated one of stage R6 (`couplings.jones_table`): power-normalised Jones matrices J_m over
-(λ, σ) from FourierGrating, read from a stored table (`raytatouille-result` file, so the graph
-runs without the solver). Building the table from a FourierGrating configuration in the block
-(`jones_table.build_table`) comes with the solver in the plugin environment.
+(λ, σ) from FourierGrating – either read from a stored table (`raytatouille-result` file, runs
+without the solver) or, with `fouriergrating` (a FourierGrating configuration file, as in
+`docs/konventionen.md`), built by the block itself around the incident rays: λ ± 1 nm and the σ
+range of the rays plus a margin, 4 nodes per axis at least (cubic interpolation), cached per
+configuration and grid. Building needs the solver in the environment.
 
 Per ray and order m (local frame: x = grating vector, y = grooves, z = surface normal towards the
 light's side of exit for "transmitted", towards the incident side for "reflected"):
@@ -23,10 +25,12 @@ Rays whose order is evaporating or whose (λ, σ) lies outside the table or near
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import numpy as np
 
+from rtt_fusion._types import FloatArray
 from rtt_fusion.couplings import jones_table as jt
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.light import Plane, RayBundle, rotation_between
@@ -54,10 +58,61 @@ def load_table(path: str) -> jt.JonesTable:
     )
 
 
+def _grid(values: FloatArray, margin: float, step: float) -> FloatArray:
+    """At least 4 equidistant nodes around the values (cubic stencils inside)."""
+    lo, hi = float(np.min(values)) - margin, float(np.max(values)) + margin
+    n = max(4, int(np.ceil((hi - lo) / step)) + 1)
+    return np.asarray(np.linspace(lo, hi, n), dtype=np.float64)
+
+
+def _built_table(
+    ctx: Context, node: Node, wavelength_um: float, sigma: FloatArray
+) -> jt.JonesTable:
+    """A Jones table from FourierGrating around the incident directions (cached)."""
+    path = str(node.params.get("fouriergrating", ""))
+    try:
+        from rtt_fusion.adapters import fouriergrating as fga
+    except ImportError as e:  # pragma: no cover - the adapter itself imports lazily
+        raise ExecutionError("exec.solver", f"FourierGrating adapter: {e}", node.id) from e
+    try:
+        with open(path, encoding="utf-8") as f:
+            config = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ExecutionError("exec.param", f"cannot read {path}: {e}", node.id) from e
+    for key in ("incidence", "wavelength_um", "output"):
+        config.pop(key, None)  # the block sets the incidence itself
+    side = str(node.params.get("side", "reflected"))
+    orders = tuple(int(m) for m in node.params.get("orders", []) or (-1, 0, 1))
+    margin = float(node.params.get("sigma_margin", 0.01))
+    sx = _grid(sigma[:, 0], margin, 0.01)
+    sy = _grid(sigma[:, 1], margin, 0.01)
+    lam = np.linspace(wavelength_um - 1.5e-3, wavelength_um + 1.5e-3, 4)
+    key = json.dumps([config, side, orders, lam.tolist(), sx.tolist(), sy.tolist()], sort_keys=True)
+    cache = ctx.shared.setdefault("built_jones_tables", {})
+    if key not in cache:
+        try:
+            handle = fga.prepare(fga.Structure(config), tuple(float(v) for v in lam))
+            cache[key] = jt.build_table(handle, lam, sx, sy, orders, side)
+        except ImportError as e:
+            raise ExecutionError(
+                "exec.solver", f"FourierGrating is not installed: {e}", node.id
+            ) from e
+        except (ValueError, RuntimeError, KeyError) as e:
+            raise ExecutionError("exec.solver", f"FourierGrating: {e}", node.id) from e
+        ctx.log.append(
+            f"{node.id}: Jones table from FourierGrating, {len(lam)}×{len(sx)}×{len(sy)} nodes, "
+            f"orders {list(orders)}, {side}"
+        )
+    table: jt.JonesTable = cache[key]
+    return table
+
+
 def _table(ctx: Context, node: Node) -> jt.JonesTable:
     path = str(node.params.get("table", ""))
     if not path:
-        raise ExecutionError("exec.param", "the grating needs a table (Jones table file)", node.id)
+        raise ExecutionError(
+            "exec.param", "the grating needs a table or a FourierGrating configuration", node.id
+        )
     cache = ctx.shared.setdefault("jones_tables", {})
     if path not in cache:
         try:
@@ -74,12 +129,8 @@ def _inside(axis: Any, x: float) -> bool:
 
 
 def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
-    table = _table(ctx, node)
-    reflected = table.side == "reflected"
-    orders = [int(m) for m in node.params.get("orders", []) or table.orders]
-    unknown = [m for m in orders if m not in table.orders]
-    if unknown:
-        raise ExecutionError("exec.param", f"orders {unknown} not in the table", node.id)
+    built = bool(node.params.get("fouriergrating")) and not node.params.get("table")
+    table = None if built else _table(ctx, node)
     point = np.asarray(node.params.get("point", [0.0, 0.0, 0.0]), dtype=float)
     normal = np.asarray(node.params.get("normal", [0.0, 0.0, 1.0]), dtype=float)
     normal = normal / np.linalg.norm(normal)
@@ -98,8 +149,17 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
         moved, uv = plane.intersect(b)
         alive = np.asarray(moved.alive)
         d_loc = np.asarray(moved.direction) @ rot.T
-        sigma = table.n_in * d_loc[:, :2]
         lam = b.wavelength_um
+        if built:
+            n_in0 = float(node.params.get("n_in", 1.0))
+            table = _built_table(ctx, node, lam, n_in0 * d_loc[alive][:, :2])
+        assert table is not None
+        reflected = table.side == "reflected"
+        orders = [int(m) for m in node.params.get("orders", []) or table.orders]
+        unknown = [m for m in orders if m not in table.orders]
+        if unknown:
+            raise ExecutionError("exec.param", f"orders {unknown} not in the table", node.id)
+        sigma = table.n_in * d_loc[:, :2]
         if not _inside(table.wavelengths_um, lam):
             raise ExecutionError(
                 "exec.grating_range", f"wavelength {lam} µm outside the table", node.id

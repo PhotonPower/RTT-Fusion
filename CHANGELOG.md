@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R19d: Der Gitter-Block baut seine Jones-Tabelle mit FourierGrating selbst (`fouriergrating`:
+  Konfigurationsdatei, `side`: reflektiert/transmittiert), um die einfallenden Strahlen herum
+  und zwischengespeichert. Tests W26, W27 (laufen mit FourierGrating, 1D lokal in Sekunden).
+
 - R20: Meta-Blöcke (`rtt_fusion.graph.meta`) – Sweep, Replikate (Mittel der Bilder) und
   Optimierung eines Parameters um den azyklischen Graphen; Parameter als „block.param[i]“,
   gesammelter Ausgang „block.socket“, Messgrößen Spitze/Mitte/Leistung; die Ausführung bietet

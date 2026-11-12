@@ -15,14 +15,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   gesucht. Ein im Workflow gelöschter Block hinterlässt im erzeugten System eine leere Baugruppe.
   Abnahme W59.
 
-### Behoben
-
-- Geister durch gekrümmte Flächen (R27): durchlaufene Flächen wurden als `transmit` (ungebrochen)
-  gerechnet, jetzt mit der Art des Vorwärtsdurchgangs (gebrochen); Test W52b mit Raytatouilles
-  `ghost_singlet`.
-
-### Hinzugefügt (früher)
-
 - S2 (ADR Nachtrag 1): Das Raytatouille-Backend rechnet mit dem System, das der Workflow ergibt
   (`importer.system_from_graph`: Baum aus den Daten der Blöcke, Pfade aus den Ästen; kompiliert je
   Zustand). Ohne gehaltene Daten (alte Graphen) weiter mit `shared["system"]`. Knotenweise Durchgänge
@@ -265,3 +257,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   für Scattuccino S9b; Tests PS1, PS2.
 - `phasespace.field_to_packets(periodic=True)`: wrapping windows for periodic fields (BWPM ohne
   Absorberrand), Fenstergröße geprüft.
+
+### Behoben
+
+- Geister durch gekrümmte Flächen (R27): durchlaufene Flächen wurden als `transmit` (ungebrochen)
+  gerechnet, jetzt mit der Art des Vorwärtsdurchgangs (gebrochen); Test W52b mit Raytatouilles
+  `ghost_singlet`.
+

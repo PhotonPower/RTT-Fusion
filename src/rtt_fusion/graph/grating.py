@@ -34,7 +34,15 @@ from rtt_fusion._types import FloatArray
 from rtt_fusion.couplings import jones_table as jt
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.light import Plane, RayBundle, rotation_between
-from rtt_fusion.graph.model import Category, Node, NodeType, ParamSpec, light_in, light_out
+from rtt_fusion.graph.model import (
+    Category,
+    Node,
+    NodeType,
+    ParamSpec,
+    PortSpec,
+    light_in,
+    light_out,
+)
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.results import load_json
 
@@ -268,6 +276,8 @@ TYPE = NodeType(
         ParamSpec("grating_vector", "point", [1.0, 0.0, 0.0], description="local x, ⟂ grooves"),
     ),
     (("out", ("in",)),),
+    ports=(PortSpec("front", "in", "out", "front"),),
+    scatter=(("front", "front", "full", ()),),
     description="Periodic sample (FourierGrating table): diffraction orders as channels",
 )
 

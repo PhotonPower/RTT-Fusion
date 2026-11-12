@@ -217,7 +217,7 @@ class Executor:
             value, _ = self._value(lk.source[0], lk.source[1], (*stack, here))
             rep = self.plan.representations.get(link_key(lk), "R") if self.plan else "R"
             inputs[in_name] = self._convert(value, rep, node, lk)
-        if node.muted:
+        if node.muted or node.type_id == "fusion.sum":  # a junction adds what arrives
             if spec.kind is SocketKind.LIGHT:
                 value = [b for v in inputs.values() for b in (v or [])]
             else:

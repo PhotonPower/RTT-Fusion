@@ -6,6 +6,17 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R24 Ports, Äste im Modell, Format 2 (`graph/topology.py`): Licht-Ports mit zwei Kanälen
+  (`PortSpec`, `NodeType.ports`, abgeleitet aus Socket-Namen), Streutabelle (`NodeType.scatter`,
+  sonst aus `through`), ungerichtete Verbindungen (`Connection`, Transport je Richtung), Äste nur
+  vom Modellierer (`Branch`, `Step`) mit Prüfung `validate_model` (`graph.no_branch`,
+  `graph.branch_impossible`, `graph.branch_duplicate`, `graph.port_unknown`, `graph.port_links`,
+  `graph.branch_backend`, `graph.observer_ambiguous`); `unroll` erzeugt die Socket-Form als
+  minimalen Automaten der Äste (Kopien `id@k` je Besuch, Sammelblock `fusion.sum`), Planer,
+  Ausführung und Speicher unverändert; Format Version 2 (`io.model_to_dict`,
+  `io.model_from_dict`, Version 1 über `model_from_graph`); `model_from_raytatouille`, der Import
+  läuft über das Modell (Pfade als Äste, Beugungsordnungen als Kanäle). Abnahme W39–W42; Ausgabe
+  des alten Imports als Referenz in `tests/data/import_v1`.
 - ADR-Entwurf „Bidirektionale Ports, Posen, Äste und Gruppen“ (`docs/adr-entwurf-ports-posen-aeste.md`)
   mit der Festlegung P6 des Maintainers (Äste nur vom Modellierer, keine Schleifen im Framework)
   und den Stufen R24–R29; W6 im Konzept als ersetzt markiert.

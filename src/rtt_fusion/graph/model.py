@@ -122,6 +122,60 @@ def data_out(name: str, data_type: str, label: str = "") -> SocketSpec:
     return SocketSpec(name, Direction.OUT, SocketKind.DATA, frozenset({data_type}), "", label)
 
 
+@dataclass(frozen=True)
+class PortSpec:
+    """A light port (ADR ports, poses, branches, section 2): a reference surface of the node with
+    two channels, *in* (light entering the node) and *out* (light leaving it). In the derived
+    socket form each channel is a light socket; a port with one channel only (a source, a
+    detector, a converter's sides) has the other name empty.
+
+    Attributes:
+        name: unique among the node's ports.
+        in_socket: name of the light input socket of the in channel, or "".
+        out_socket: name of the light output socket of the out channel, or "".
+        side: "front", "back" or "".
+        label: display name.
+    """
+
+    name: str
+    in_socket: str = ""
+    out_socket: str = ""
+    side: str = ""
+    label: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError("port name must not be empty")
+        if not self.in_socket and not self.out_socket:
+            raise ValueError(f"port {self.name} has no channel")
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"name": self.name}
+        for key, value in (
+            ("in", self.in_socket),
+            ("out", self.out_socket),
+            ("side", self.side),
+            ("label", self.label),
+        ):
+            if value:
+                d[key] = value
+        return d
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> PortSpec:
+        return PortSpec(
+            str(d["name"]),
+            str(d.get("in", "")),
+            str(d.get("out", "")),
+            str(d.get("side", "")),
+            str(d.get("label", "")),
+        )
+
+
+#: Entries of a scattering table (ADR section 3): what a node can deliver from one port to another.
+SCATTER_KINDS = ("none", "oneway", "full", "ghost")
+
+
 class Category(str, Enum):
     """Kinds of blocks (concept section 3.1)."""
 
@@ -213,6 +267,12 @@ class NodeType:
     #: sockets every node of the type has in addition to its own (e.g. the "drive" input of an
     #: imported mirror, whose light sockets come from the import)
     extra_sockets: tuple[SocketSpec, ...] = ()
+    #: light ports (ADR ports, section 2); empty: derived from the light sockets by their names
+    #: (`topology.derive_ports`). Needed where the names do not tell, e.g. a mirror's in/out.
+    ports: tuple[PortSpec, ...] = ()
+    #: scattering table (port in, port out, kind, channels); empty: every pair of `through` is
+    #: "oneway", every other pair "none" (`topology.node_scatter`)
+    scatter: tuple[tuple[str, str, str, tuple[str, ...]], ...] = ()
 
     def socket(self, name: str) -> SocketSpec | None:
         return next((s for s in self.sockets if s.name == name), None)
@@ -222,8 +282,9 @@ class NodeType:
 class Node:
     """A block in the graph.
 
-    `sockets` and `through` are only used for types with dynamic sockets (they override the
-    type's). `position` is the place in the editor (no meaning for the computation).
+    `sockets`, `ports` and `through` override the type's (types with dynamic sockets; `through`
+    also on the nodes of the socket form unrolled from branches). `position` is the place in the
+    editor (no meaning for the computation).
     """
 
     id: str
@@ -234,6 +295,7 @@ class Node:
     muted: bool = False
     sockets: tuple[SocketSpec, ...] = ()
     through: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    ports: tuple[PortSpec, ...] = ()
 
 
 @dataclass(frozen=True)

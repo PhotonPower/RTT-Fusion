@@ -9,6 +9,12 @@ comes from (`from_<block>`) and an output socket named after the next block (`to
 same connection in several paths is one link, branches appear where one input feeds two outputs
 (beam splitter: split) and merges where two inputs feed one output (combine).
 
+Since R24 the import builds the model (`topology.Model`): the pair `from_X`/`to_X` of a block is
+its port X (named after the neighbour; port frames follow with the poses), each pair of neighbours
+one connection, and each path of the system a named branch – its runs are the steps, diffraction
+orders of its events the channels. `graph_from_raytatouille` unrolls it into the socket form,
+which is the same graph as before R24 (W39).
+
 Only the structure of the system is read (root tree, surface ids, paths); no compilation, no
 geometry. Accepts the JSON text / dict of a `.rtt.json` file or a `raytatouille.System`.
 """
@@ -22,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from rtt_fusion.graph.model import Graph, Node, SocketSpec, data_out, light_in, light_out
+from rtt_fusion.graph.topology import Branch, Model, Step, unroll
 
 # representations a Raytatouille block can take and give (rays now, fields with rtt-field)
 _SECTION_REPS = "RH"
@@ -83,8 +90,10 @@ def _safe_id(name: str, taken: set[str]) -> str:
     return candidate
 
 
-def graph_from_raytatouille(system: Any) -> Graph:
-    """The working graph of a Raytatouille system (see the module docstring)."""
+def model_from_raytatouille(system: Any) -> Model:
+    """The model of a Raytatouille system (see the module docstring): blocks with ports named
+    after their neighbours, one connection per pair of neighbours, the system's paths as named
+    branches."""
     d = _system_dict(system)
     root = d.get("root", {})
     blocks: list[_Block] = []
@@ -140,7 +149,7 @@ def graph_from_raytatouille(system: Any) -> Graph:
 
     source_outs: list[str] = []
     links: list[tuple[tuple[str, str], tuple[str, str]]] = []
-    path_blocks: dict[str, list[str]] = {}
+    path_runs: dict[str, list[tuple[str, str]]] = {}
     order: list[str] = []  # first appearance of blocks, for the layout
 
     for p_index, path in enumerate(d.get("paths", [])):
@@ -150,17 +159,22 @@ def graph_from_raytatouille(system: Any) -> Graph:
             events = [{"surface": sid} for sid in tree_order]
         # runs of consecutive events in the same block
         runs: list[tuple[_Block, list[int], list[str]]] = []
+        run_orders: list[list[str]] = []  # the channels (diffraction orders) of each run
         for ev in events:
             sid = str(ev.get("surface", ""))
             if sid not in owner:
                 raise ValueError(f"path {pname!r}: unknown surface {sid!r}")
             b, k = owner[sid]
+            channel = f"{sid}:m{ev['order']}" if "order" in ev else ""
             if runs and runs[-1][0] is b:
                 runs[-1][1].append(k)
                 runs[-1][2].append(str(ev.get("kind", "")))
+                if channel:
+                    run_orders[-1].append(channel)
             else:
                 runs.append((b, [k], [str(ev.get("kind", ""))]))
-        path_blocks[pname] = [r[0].id for r in runs]
+                run_orders.append([channel] if channel else [])
+        path_runs[pname] = [(r[0].id, " ".join(o)) for r, o in zip(runs, run_orders, strict=True)]
         prev = "source"
         for j, (b, idx, kinds) in enumerate(runs):
             if b.id not in order:
@@ -190,14 +204,14 @@ def graph_from_raytatouille(system: Any) -> Graph:
                     deps.append(in_name)
             prev = b.id
 
-    g = Graph(
+    m = Model(
         meta={
             "imported_from": "raytatouille",
             "system": str(d.get("name", "")),
-            "paths": path_blocks,
+            "raytatouille_paths": list(path_runs),
         }
     )
-    g.add(
+    m.add(
         Node(
             "source",
             "rtt.source",
@@ -225,7 +239,7 @@ def graph_from_raytatouille(system: Any) -> Graph:
         if type_id == "rtt.detector":
             sockets += (data_out("image", "result", "image"),)
         column = order.index(b.id) + 1
-        g.add(
+        m.add(
             Node(
                 b.id,
                 type_id,
@@ -241,6 +255,26 @@ def graph_from_raytatouille(system: Any) -> Graph:
                 through=tuple((o, tuple(ins)) for o, ins in b.through.items()),
             )
         )
+    # one connection per pair of neighbours: the ports are named after the neighbour
+    # (sockets from_X / to_X); their frames follow with the poses (R26)
     for src, dst in links:
-        g.connect(src, dst)
-    return g
+        a, b_end = (src[0], src[1][3:]), (dst[0], dst[1][5:])
+        if not any({c.a, c.b} == {a, b_end} for c in m.connections):
+            m.connect(a, b_end)
+    # the system's paths are the branches of the model (content of the model, ADR P6)
+    for pname, runs_of_path in path_runs.items():
+        steps = [Step("source", None, runs_of_path[0][0])]
+        for j, (bid, channel) in enumerate(runs_of_path):
+            came = "source" if j == 0 else runs_of_path[j - 1][0]
+            goes = runs_of_path[j + 1][0] if j + 1 < len(runs_of_path) else None
+            steps.append(Step(bid, came, goes, channel))
+        m.branches.append(Branch(pname, tuple(steps)))
+    return m
+
+
+def graph_from_raytatouille(system: Any) -> Graph:
+    """The working graph (socket form) of a Raytatouille system: `model_from_raytatouille`
+    unrolled (`topology.unroll`)."""
+    from rtt_fusion.graph.registry import builtin_registry
+
+    return unroll(model_from_raytatouille(system), builtin_registry())

@@ -1,0 +1,217 @@
+{
+  "format": "rtt-fusion-graph",
+  "version": 1,
+  "meta": {
+    "imported_from": "raytatouille",
+    "system": "RTT-Fusion pilot K1: lamellar transmission grating (period 0.7 um) in vacuum, orders -1, 0, +1",
+    "paths": {
+      "order -1": [
+        "stop",
+        "grating",
+        "screen"
+      ],
+      "order 0": [
+        "stop",
+        "grating",
+        "screen"
+      ],
+      "order +1": [
+        "stop",
+        "grating",
+        "screen"
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "source",
+      "type": "rtt.source",
+      "name": "Source",
+      "sockets": [
+        {
+          "name": "to_stop",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "G",
+            "H",
+            "P",
+            "R",
+            "S"
+          ],
+          "label": "stop"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "type": "rtt.section",
+      "name": "stop",
+      "params": {
+        "location": "/root/children/0",
+        "element_type": "stop",
+        "surfaces": [
+          "STO"
+        ],
+        "paths": [
+          "order +1",
+          "order -1",
+          "order 0"
+        ]
+      },
+      "position": [
+        220.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_source",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "source"
+        },
+        {
+          "name": "to_grating",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "grating"
+        }
+      ],
+      "through": {
+        "to_grating": [
+          "from_source"
+        ]
+      }
+    },
+    {
+      "id": "grating",
+      "type": "rtt.section",
+      "name": "grating",
+      "params": {
+        "location": "/root/children/1",
+        "element_type": "thin_element",
+        "surfaces": [
+          "G"
+        ],
+        "paths": [
+          "order +1",
+          "order -1",
+          "order 0"
+        ]
+      },
+      "position": [
+        440.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_stop",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "stop"
+        },
+        {
+          "name": "to_screen",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "screen"
+        }
+      ],
+      "through": {
+        "to_screen": [
+          "from_stop"
+        ]
+      }
+    },
+    {
+      "id": "screen",
+      "type": "rtt.detector",
+      "name": "screen",
+      "params": {
+        "location": "/root/children/2",
+        "element_type": "detector",
+        "surfaces": [
+          "SCR"
+        ],
+        "paths": [
+          "order +1",
+          "order -1",
+          "order 0"
+        ]
+      },
+      "position": [
+        660.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_grating",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "grating"
+        },
+        {
+          "name": "image",
+          "direction": "out",
+          "kind": "data",
+          "accepts": [
+            "result"
+          ],
+          "label": "image"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": [
+        "source",
+        "to_stop"
+      ],
+      "to": [
+        "stop",
+        "from_source"
+      ]
+    },
+    {
+      "from": [
+        "stop",
+        "to_grating"
+      ],
+      "to": [
+        "grating",
+        "from_stop"
+      ]
+    },
+    {
+      "from": [
+        "grating",
+        "to_screen"
+      ],
+      "to": [
+        "screen",
+        "from_grating"
+      ]
+    }
+  ]
+}

@@ -104,14 +104,14 @@ def plot_view(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> 
         v = np.asarray(value.values)
         ny, nx = v.shape
         u0, u1, v0, v1 = value.extent
-        u = list(u0 + (np.arange(nx) + 0.5) * (u1 - u0) / nx)
-        w = list(v0 + (np.arange(ny) + 0.5) * (v1 - v0) / ny)
+        u = [float(x) for x in u0 + (np.arange(nx) + 0.5) * (u1 - u0) / nx]
+        w = [float(x) for x in v0 + (np.arange(ny) + 0.5) * (v1 - v0) / ny]
         return View(
             "curves",
             title,
             curves=[
-                Curve("row through the centre", u, list(v[ny // 2, :].astype(float))),
-                Curve("column through the centre", w, list(v[:, nx // 2].astype(float))),
+                Curve("row through the centre", u, [float(x) for x in v[ny // 2, :]]),
+                Curve("column through the centre", w, [float(x) for x in v[:, nx // 2]]),
             ],
             x_label="position (mm)",
             y_label="intensity",

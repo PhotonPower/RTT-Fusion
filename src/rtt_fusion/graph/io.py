@@ -14,6 +14,10 @@ Version 2 (ADR ports, poses, branches; R24) is the model: topology and branches.
      "links": [... data and observer links as in version 1, "branch": name for an observer ...],
      "branches": [{"name": "...", "steps": [[node, port in | null, port out | null, channel?]]}]}
 
+A group (R28) is a node of type "group" with "variant": the active one and "variants": {name:
+{nodes, connections, links, branches (the inner branches), "ports": {port: [node, port]},
+"params": {name: "node.param[i]"}}}; a step through it names the inner branch as its channel.
+
 `to_dict`/`from_dict` read and write the socket form (version 1); `model_to_dict` writes
 version 2, `model_from_dict` reads both (version 1 via `topology.model_from_graph`). Readers reject
 other formats and newer versions with a message.
@@ -28,7 +32,9 @@ from typing import Any
 from rtt_fusion.graph.model import Graph, Link, Node, PortSpec, SocketSpec
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.graph.topology import (
+    Group,
     Model,
+    Variant,
     branch_from_dict,
     branch_to_dict,
     model_from_graph,
@@ -99,12 +105,40 @@ def _check_header(d: dict[str, Any], newest: int) -> int:
     return version
 
 
+def _group_to_dict(group: Group) -> dict[str, Any]:
+    variants = {}
+    for name, v in group.variants.items():
+        body = model_to_dict(v.model)
+        del body["format"], body["version"]
+        body["ports"] = {p: list(end) for p, end in v.ports.items()}
+        if v.params:
+            body["params"] = dict(v.params)
+        variants[name] = body
+    return {"variant": group.active, "variants": variants}
+
+
+def _group_from_dict(d: dict[str, Any], registry: NodeTypeRegistry) -> Group:
+    variants = {}
+    for name, body in d["variants"].items():
+        inner = model_from_dict({"format": FORMAT, "version": MODEL_VERSION, **body}, registry)
+        ports = {str(p): (str(e[0]), str(e[1])) for p, e in body.get("ports", {}).items()}
+        variants[str(name)] = Variant(
+            inner, ports, {str(k): str(v) for k, v in body.get("params", {}).items()}
+        )
+    return Group(variants, str(d["variant"]))
+
+
 def model_to_dict(model: Model) -> dict[str, Any]:
-    """Version 2: topology and branches."""
+    """Version 2: topology and branches; a group node carries its variants (R28)."""
     out: dict[str, Any] = {"format": FORMAT, "version": MODEL_VERSION}
     if model.meta:
         out["meta"] = model.meta
-    out["nodes"] = [_node_to_dict(n) for n in model.nodes.values()]
+    out["nodes"] = []
+    for n in model.nodes.values():
+        nd = _node_to_dict(n)
+        if n.id in model.groups:
+            nd.update(_group_to_dict(model.groups[n.id]))
+        out["nodes"].append(nd)
     connections = []
     for c in model.connections:
         e: dict[str, Any] = {"ports": [list(c.a), list(c.b)]}
@@ -132,6 +166,8 @@ def model_from_dict(d: dict[str, Any], registry: NodeTypeRegistry) -> Model:
     m = Model(meta=dict(d.get("meta", {})))
     for nd in d.get("nodes", []):
         m.add(_node_from_dict(nd))
+        if "variants" in nd:
+            m.groups[str(nd["id"])] = _group_from_dict(nd, registry)
     for cd in d.get("connections", []):
         a, b = cd["ports"]
         t = cd.get("transport", "auto")

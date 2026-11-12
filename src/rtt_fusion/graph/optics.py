@@ -211,6 +211,39 @@ def aplanatic_lens(
     return out
 
 
+def thin_lens(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
+    """Paraxial thin lens (R28): a ray at height h with direction tangents τ (transverse
+    direction over the axial component) leaves with τ − h/f, for any incidence; the OPL gains
+    −h²/(2f) (the paraxial phase of a thin lens). Exact in the sense of matrix optics."""
+    o = _vec(node, "point", (0.0, 0.0, 0.0))
+    axis = _vec(node, "axis", (0.0, 0.0, 1.0))
+    axis = axis / np.linalg.norm(axis)
+    f = float(node.params.get("focal_length", 10.0))
+    a = float(node.params.get("aperture_radius", 1e9))
+    plane = Plane.make(o, axis)
+    out = []
+    for b in inputs.get("in", []):
+        moved, _ = plane.intersect(b)
+        h_vec = np.asarray(moved.position) - o
+        h_vec = h_vec - (h_vec @ axis)[:, None] * axis
+        h2 = np.sum(h_vec * h_vec, axis=1)
+        d = np.asarray(moved.direction)
+        dz = d @ axis
+        tau = (d - dz[:, None] * axis) / np.where(np.abs(dz) > 1e-15, dz, 1.0)[:, None]
+        tau_out = tau - h_vec / f
+        k = axis[None, :] + tau_out
+        k = k / np.linalg.norm(k, axis=1)[:, None]
+        out.append(
+            moved.evolve(
+                direction=k,
+                opl=np.asarray(moved.opl) - h2 / (2.0 * f),
+                alive=np.asarray(moved.alive) & (h2 <= a * a) & (dz > 0),
+                path=(*b.path, node.id),
+            )
+        )
+    return out
+
+
 def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
     """Coherent image of rays (R, `imaging.coherent_image`) and fields (H, `field.field_image`)."""
     plane = _plane(node)
@@ -456,6 +489,20 @@ TYPES = (
         description="Plane beam splitter (Michelson / Linnik arrangement)",
     ),
     NodeType(
+        "optics.thin_lens",
+        Category.DOMAIN,
+        (light_in("in", "RH"), light_out("out", "RH")),
+        (
+            ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
+            ParamSpec("axis", "point", [0.0, 0.0, 1.0]),
+            ParamSpec("focal_length", "number", 10.0, unit="mm"),
+            ParamSpec("aperture_radius", "number", 1e9, unit="mm"),
+        ),
+        (("out", ("in",)),),
+        port_frames=_lens_frames,
+        description="Paraxial thin lens (matrix optics, any incidence)",
+    ),
+    NodeType(
         "optics.interface",
         Category.DOMAIN,
         (
@@ -533,6 +580,7 @@ EVALUATORS: dict[str, Evaluator] = {
     "optics.collimated_source": source,
     "optics.plane_mirror": mirror,
     "optics.interface": interface,
+    "optics.thin_lens": thin_lens,
     "optics.splitter": splitter,
     "optics.beam_splitter": beam_splitter,
     "optics.aplanatic_lens": aplanatic_lens,

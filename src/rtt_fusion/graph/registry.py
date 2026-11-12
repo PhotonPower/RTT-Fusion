@@ -102,6 +102,16 @@ def builtin_registry() -> NodeTypeRegistry:
     r = NodeTypeRegistry()
     r.add(
         NodeType(
+            "group",
+            Category.DOMAIN,
+            (),
+            dynamic_sockets=True,
+            description="Group (R28): a sub-model with variants; in the socket form it keeps the "
+            "group's pose and exported parameters for the blocks inside",
+        )
+    )
+    r.add(
+        NodeType(
             "fusion.sum",
             Category.SPLITTER,
             (),

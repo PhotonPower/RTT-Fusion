@@ -12,5 +12,7 @@
 | ft-adr0004 | Fieldtracing ADR 0004 „Feldamplitude aus Raytatouilles leistungsnormierter PRT-Matrix und Gewicht“, `rtt_bridge.py`, `mesh.py`, `chain.plan_propagation` (Commit `6da9983`) | gelesen | R18: Strahlen → Feld, Ausbreitung auf H-Bändern |
 | richards-wolf | B. Richards, E. Wolf, „Electromagnetic diffraction in optical systems II“, Proc. R. Soc. A 253, 358 (1959); als Bessel-Integral in Fieldtracing `focus.richards_wolf` (Commit `6da9983`) | Formel aus Fieldtracing übernommen (dort gegen die Arbeit geprüft); Originalarbeit hier nicht gelesen | W13: Fokus der aplanatischen Linse |
 | gauss-beam | Gauß-Strahl w(z) = w₀ sqrt(1 + (z/z_R)²), z_R = π w₀²/λ, I = I₀ (w₀/w)² exp(−2r²/w²) | Standardformel | W14, W15 |
+| rtt-paraboloid | Raytatouille `tests/reference/m6/paraboloid_f50.rtt.json` (MIT, Commit `61d1e9c`), kopiert nach `tests/data/paraboloid_f50.rtt.json` | übernommen | W17: Fokus eines Paraboloids (Airy) |
+| airy | Airy-Muster [2 J₁(v)/v]², v = k NA r, Spitze P π NA²/λ² | Standardformel | W17 |
 | rtt-michelson | Raytatouille `tests/reference/m0/michelson.rtt.json` (MIT), kopiert nach `tests/data/michelson.rtt.json` | übernommen | Pilot W9 über das Raytatouille-Backend |
 | hpfem | hp-FEM `docs/python.md` (Gitter, Konventionen), `python/hpfem/grating.py` (`jones`, Commit `dce07d5`) | gelesen | hp-FEM-Adapter |

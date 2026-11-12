@@ -60,6 +60,7 @@ class Context:
     graph: Graph
     shared: dict[str, Any] = field(default_factory=dict)
     log: list[str] = field(default_factory=list)
+    plan: Plan | None = None  # the plan of the run (representation per link)
 
 
 class Executor:
@@ -97,6 +98,7 @@ class Executor:
                     f"{lk.source[0]}.{lk.source[1]} -> {lk.target[0]}.{lk.target[1]}",
                 )
         self.plan = plan(self.graph, self.registry, Requirements(available=self.available))
+        self.context.plan = self.plan
         for d in self.plan.diagnostics:
             if d.severity == "error":
                 raise ExecutionError(d.code, d.message, d.location)

@@ -6,6 +6,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R18b: Felder im Raytatouille-Backend – ein Band in einen Detektor eines importierten Systems
+  kann H tragen: Felder aus den aufgezeichneten Strahlen nach der letzten Fläche vor dem
+  Detektor (PRT und Gewicht von Raytatouille, Brechzahlen aus dem OPL, zwei Polarisationen der
+  unpolarisierten Quelle), Ausbreitung mit Fieldtracings Planer. Die Quellachsen werden
+  geometrisch mitgeführt (`RayBundle.source_frame`), damit Drehung und Spiegelung des
+  Strahlenbilds durch die Geometrie den Maslov-Index nicht verfälschen; Brechzahl des Mediums
+  (`index`, `source_index`); Gauß-Beleuchtung (`gaussian_waist`), Bildfenster `half_size`,
+  Plan im Kontext der Ausführung. Tests W17, W18.
+
 - R18: Field Tracing auf Bändern – Darstellung H (`rtt_fusion.graph.field`: `FieldBundle`,
   Strahlen → Feld nach Fieldtracing ADR 0004, Feld → Strahlen, Bild aus Feldern mit Ausbreitung
   durch Fieldtracings Planer), Polarisation der Strahlbündel (Jones der Quelle, geometrische PRT,

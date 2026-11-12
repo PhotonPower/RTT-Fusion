@@ -161,6 +161,13 @@ def builtin_registry() -> NodeTypeRegistry:
                 ParamSpec(
                     "pixels", "integer", 512, minimum=16, maximum=8192, label="pixels (long side)"
                 ),
+                ParamSpec(
+                    "half_size",
+                    "numbers",
+                    [],
+                    unit="mm",
+                    description="image window [hu, hv]; empty: the detector aperture",
+                ),
             ),
             dynamic_sockets=True,
             description="Detector / camera: amplitudes within, intensities across coherence groups",

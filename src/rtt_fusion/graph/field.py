@@ -34,7 +34,7 @@ from scipy.spatial import Delaunay, QhullError
 
 from rtt_fusion._types import ComplexArray, FloatArray
 from rtt_fusion.graph.imaging import Image
-from rtt_fusion.graph.light import BoolArray, CoherenceKey, Plane, RayBundle
+from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
 
 if TYPE_CHECKING:
     from fieldtracing.field import GriddedField, GridlessField
@@ -77,20 +77,6 @@ def port_plane(bundle: RayBundle) -> Plane:
     return Plane.make(np.asarray(bundle.position)[alive].mean(axis=0), d / np.linalg.norm(d))
 
 
-def _orientation(bundle: RayBundle, alive: BoolArray, rot: FloatArray) -> float:
-    """Sign of det of the source axes carried by the polarisation matrix, seen in the port frame
-    (−1 after an odd number of reflections). Without `source_frame` or `prt`: +1."""
-    if bundle.source_frame is None or bundle.prt is None:
-        return 1.0
-    prt = np.real(np.asarray(bundle.prt)[alive])
-    i = int(np.argmin(np.linalg.norm(np.asarray(bundle.source_xy)[alive], axis=1)))
-    frame = np.asarray(bundle.source_frame)
-    carried = prt[i] @ frame.T  # (3, 2): the source axes after the reflections
-    m = rot[:2] @ carried  # in the port axes u, v
-    det = float(np.linalg.det(m))
-    return 1.0 if det >= 0 else -1.0
-
-
 def rays_to_field(bundle: RayBundle, plane: Plane | None = None) -> FieldBundle:
     """R -> H on `plane` (default `port_plane`)."""
     alive = np.asarray(bundle.alive)
@@ -108,15 +94,21 @@ def rays_to_field(bundle: RayBundle, plane: Plane | None = None) -> FieldBundle:
         raise FieldError("rays do not all cross the port plane forward")
     t = -pos[:, 2] / d[:, 2]
     landing = pos[:, :2] + t[:, None] * d[:, :2]
-    opl = np.asarray(bundle.opl)[alive] + t  # homogeneous medium n = 1 between the blocks (R15)
+    n = float(bundle.index)
+    opl = np.asarray(bundle.opl)[alive] + n * t  # straight on in the present medium
     start = np.asarray(bundle.source_xy)[alive]
-    if _orientation(bundle, alive, rot) < 0:
-        # an odd number of reflections mirrors the ray map; mirror the start coordinates too, so
-        # that the sign of J and the Maslov index count caustics only
-        start = start * np.array([1.0, -1.0])
+    if bundle.source_frame is not None:
+        # express the start coordinates in the port axes along the carried source axes: the
+        # rotation or mirroring of the ray map by the path's geometry drops out, and the sign of
+        # J and the Maslov index count caustics only
+        m = rot[:2] @ np.asarray(bundle.source_frame, dtype=float).T  # (2, 2)
+        u_svd, _, vt_svd = np.linalg.svd(m)
+        start = start @ (u_svd @ vt_svd).T
     cloud = mesh_jacobian_cloud(start, landing)
     cos_in = np.broadcast_to(np.asarray(bundle.source_cos, dtype=float), (len(alive),))[alive]
-    ratio = bundle.irradiance * cos_in / (d[:, 2] * np.abs(cloud.determinant))
+    ratio = (
+        bundle.irradiance * bundle.source_index * cos_in / (n * d[:, 2] * np.abs(cloud.determinant))
+    )
     pol = bundle.field_direction()[alive]
     pol = pol - np.sum(pol * d_glob, axis=1, keepdims=True) * d_glob  # (I − k kᵀ)·prt·jones
     scale = (
@@ -126,7 +118,7 @@ def rays_to_field(bundle: RayBundle, plane: Plane | None = None) -> FieldBundle:
     )
     u_local = (scale[:, None] * pol) @ rot.T
     k0 = bundle.k0
-    gradient = k0 * d[:, :2]
+    gradient = k0 * n * d[:, :2]
     d_grad, _ = fit_derivatives(start, gradient, cloud.triangles)
     hessian = np.full((len(start), 2, 2), np.nan)
     ok = cloud.valid & ~cloud.caustic & np.isfinite(ratio)
@@ -142,7 +134,7 @@ def rays_to_field(bundle: RayBundle, plane: Plane | None = None) -> FieldBundle:
         hessian[ok],
         np.asarray(u_local[ok], dtype=np.complex128),
         bundle.wavelength_um,
-        1.0,
+        n,
     )
     return FieldBundle(bundle.key, plane, f, bundle.path)
 
@@ -190,6 +182,8 @@ def field_to_rays(fb: FieldBundle) -> RayBundle:
         prt=prt,
         source_cos=np.asarray(k_local[:, 2]),
         source_frame=np.stack([fb.plane.u, fb.plane.v]),
+        index=float(f.refractive_index),
+        source_index=float(f.refractive_index),
     )
 
 
@@ -206,7 +200,11 @@ def field_power(fb: FieldBundle) -> float:
         tri = Delaunay(pts).simplices
     except QhullError:
         return 0.0
-    dens = np.sum(np.abs(f.amplitude) ** 2, axis=1) * (f.local_wave_vector()[:, 2] / f.k)
+    dens = (
+        f.refractive_index
+        * np.sum(np.abs(f.amplitude) ** 2, axis=1)
+        * (f.local_wave_vector()[:, 2] / f.k)
+    )
     a, b, c = pts[tri[:, 0]], pts[tri[:, 1]], pts[tri[:, 2]]
     area = 0.5 * np.abs(
         (b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1]) - (b[:, 1] - a[:, 1]) * (c[:, 0] - a[:, 0])

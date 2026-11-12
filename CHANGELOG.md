@@ -260,6 +260,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- `graph.branch_backend` prüfte die Durchgänge eines Raytatouille-Blocks gegen die Liste des Imports
+  nach Block-ID; in einer Gruppe (`<Gruppe>/<Block>`) fand sie nichts. Jetzt zählen die Durchgänge,
+  die der Block selbst hält (S2), bei älteren Modellen die Liste ohne den Pfad der Gruppen (W60).
 - Geister durch gekrümmte Flächen (R27): durchlaufene Flächen wurden als `transmit` (ungebrochen)
   gerechnet, jetzt mit der Art des Vorwärtsdurchgangs (gebrochen); Test W52b mit Raytatouilles
   `ghost_singlet`.

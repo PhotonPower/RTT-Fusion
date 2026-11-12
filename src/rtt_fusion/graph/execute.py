@@ -34,6 +34,7 @@ from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays, rays_
 from rtt_fusion.graph.light import RayBundle
 from rtt_fusion.graph.model import Direction, Graph, Node, SocketKind
 from rtt_fusion.graph.planner import Plan, Requirements, link_key, plan
+from rtt_fusion.graph.pose import posed
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.graph.validate import errors, node_sockets, node_through, validate
 
@@ -72,6 +73,9 @@ class Context:
     progress: Callable[[float, str], None] | None = None
     #: called with the id of every block whose evaluator starts (GUI: the running block)
     on_node: Callable[[str], None] | None = None
+    #: operator store (R26): the expensive, pose-independent parts of solver blocks in their
+    #: local frame (a BEM factorisation, a built table), kept across runs; keys without the pose
+    operators: Any = None
     _span: tuple[float, float] = (0.0, 1.0)
 
     def report(self, part: float, text: str = "") -> None:
@@ -103,6 +107,7 @@ class Executor:
         available: frozenset[str] = EXECUTABLE,
         cache: ResultCache | None = None,
         environment: object = None,
+        operators: ResultCache | None = None,
     ) -> None:
         self.graph = graph
         self.registry = registry
@@ -110,6 +115,8 @@ class Executor:
         self.context = Context(graph, dict(shared or {}), evaluators=evaluators, registry=registry)
         self._running: set[str] = set()
         self.context.evaluate = self._nested
+        self.operators: ResultCache = operators if operators is not None else ResultCache()
+        self.context.operators = self.operators
         self.cache: ResultCache = cache if cache is not None else ResultCache()
         self.environment = _hash(environment) if environment is not None else _environment(shared)
         self.calls: dict[tuple[str, str], int] = {}  # evaluator calls per output (tests, profiling)
@@ -230,10 +237,16 @@ class Executor:
             self.calls[(node_id, socket)] = self.calls.get((node_id, socket), 0) + 1
             if self.context.on_node is not None:
                 self.context.on_node(node_id)
-            value = evaluator(self.context, node, socket, inputs)
+            value = evaluator(self.context, self._posed(node), socket, inputs)
         if not uncached:
             self.cache[key] = value
         return value, key
+
+    def _posed(self, node: Node) -> Node:
+        """The node with its geometric parameters in world coordinates (pose ∘ offset, R26)."""
+        t = self.registry.get(node.type_id)
+        defaults = {p.name: p.default for p in t.params} if t is not None else {}
+        return posed(node, defaults)
 
     def status(self) -> dict[str, bool]:
         """Per block: True if its outputs are in the cache (up to date), without computing

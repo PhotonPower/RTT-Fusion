@@ -36,6 +36,7 @@ from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.imaging import Image
 from rtt_fusion.graph.model import Category, Node, NodeType, ParamSpec, data_in, data_out
+from rtt_fusion.graph.pose import COMPONENTS
 from rtt_fusion.graph.registry import NodeTypeRegistry
 
 MEASURES = ("peak", "centre", "power")
@@ -121,7 +122,13 @@ def _address(ctx: Context, node: Node) -> str:
     phase shifter on a mirror: displacement along the surface normal, mm), else `parameter`."""
     driven = ctx.graph.links_from(node.id, "drive")
     if driven:
-        return f"{driven[0].target[0]}.drive"
+        target, socket = driven[0].target
+        if socket == "pose":  # an offset component of the block's pose (R26); drivers add
+            component = str(node.params.get("component", "dz"))
+            if component not in COMPONENTS:
+                raise ExecutionError("exec.param", f"component {component!r}", node.id)
+            return f"{target}.pose_by_{node.id}[{COMPONENTS.index(component)}]"
+        return f"{target}.drive"
     return str(node.params.get("parameter", ""))
 
 
@@ -223,6 +230,13 @@ _COMMON = (
     _param("parameter", "text", "", "block.param or block.param[i], e.g. mirror.point[0]"),
     _param("collect", "text", "", "output to collect: block.socket, e.g. camera.image"),
     _param("measure", "choice", "peak", "measure of each result", options=MEASURES),
+    _param(
+        "component",
+        "choice",
+        "dz",
+        "offset component when the drive goes into a block's pose input (mm, rad)",
+        options=COMPONENTS,
+    ),
 )
 
 TYPES = (

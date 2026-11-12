@@ -39,6 +39,7 @@ from rtt_fusion.graph.model import (
     Node,
     NodeType,
     ParamSpec,
+    PortFrame,
     PortSpec,
     light_in,
     light_out,
@@ -278,6 +279,15 @@ TYPE = NodeType(
     (("out", ("in",)),),
     ports=(PortSpec("front", "in", "out", "front"),),
     scatter=(("front", "front", "full", ()),),
+    port_frames=lambda n: {
+        "front": PortFrame(
+            tuple(float(x) for x in n.params.get("point", [0.0, 0.0, 0.0])),  # type: ignore[arg-type]
+            tuple(  # type: ignore[arg-type]
+                float(x) / float(np.linalg.norm(n.params.get("normal", [0.0, 0.0, 1.0])))
+                for x in n.params.get("normal", [0.0, 0.0, 1.0])
+            ),
+        )
+    },
     description="Periodic sample (FourierGrating table): diffraction orders as channels",
 )
 

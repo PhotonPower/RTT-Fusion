@@ -41,8 +41,17 @@ def node_sockets(node: Node, registry: NodeTypeRegistry) -> tuple[SocketSpec, ..
     if node.sockets:
         extra = t.extra_sockets if t is not None else ()
         names = {s.name for s in node.sockets}
-        return tuple(node.sockets) + tuple(s for s in extra if s.name not in names)
-    return t.sockets if t is not None else ()
+        own = tuple(node.sockets) + tuple(s for s in extra if s.name not in names)
+    else:
+        own = t.sockets if t is not None else ()
+    if t is not None and t.category in _POSED and not any(s.name == "pose" for s in own):
+        own = (*own, POSE_INPUT)  # every block with a pose has the offset input (R26)
+    return own
+
+
+#: the offset input of every block with a pose (R26): six values, driven by meta blocks
+POSE_INPUT = SocketSpec("pose", Direction.IN, SocketKind.DATA, frozenset({"drive"}), "", "pose")
+_POSED = (Category.SOURCE, Category.DOMAIN, Category.SPLITTER, Category.DETECTOR)
 
 
 def node_through(node: Node, registry: NodeTypeRegistry) -> dict[str, tuple[str, ...]]:
@@ -104,7 +113,11 @@ def validate(graph: Graph, registry: NodeTypeRegistry) -> list[Diagnostic]:
         known = {p.name for p in t.params}
         if known and not t.dynamic_sockets:
             for name in node.params:
-                if name not in known:
+                if (
+                    name not in known
+                    and name not in ("pose", "pose_offset")
+                    and not (name.startswith("pose_by_"))
+                ):
                     warn(
                         "graph.param_unknown",
                         f"parameter {name!r} is not one of {t.type_id}",

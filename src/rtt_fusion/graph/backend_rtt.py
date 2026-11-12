@@ -58,6 +58,7 @@ from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle, rotation_betw
 from rtt_fusion.graph.model import Node
 from rtt_fusion.graph.optics import hexapolar
 from rtt_fusion.graph.planner import link_key
+from rtt_fusion.graph.pose import angles_xyz, offset_of, rotation_xyz
 from rtt_fusion.graph.validate import node_sockets
 
 
@@ -147,10 +148,87 @@ def _normal_in_parent(ctx: Context, node: Node) -> Any:
 
 def _system_json(ctx: Context) -> dict[str, Any]:
     """The system as JSON with the block offsets applied: an element that holds a shifted
-    surface moves by the offset (in the frame of its parent assembly)."""
+    surface moves by the offset (in the frame of its parent assembly); a block with a pose
+    offset (R26) moves its tree node rigidly."""
     d = _base_json(ctx)
     offsets = _offsets(ctx)
-    return _apply_offsets(d, offsets) if offsets else d
+    if offsets:
+        d = _apply_offsets(d, offsets)
+    for location, offset in _rigid(ctx).items():
+        _apply_rigid(d, location, offset, ctx)
+    return d
+
+
+def _rigid(ctx: Context) -> dict[str, list[float]]:
+    """Pose offsets of Raytatouille blocks (six values in the block's local frame) by the
+    location of the block's node in the model tree."""
+    out: dict[str, list[float]] = {}
+    for n in ctx.graph.nodes.values():
+        if not n.type_id.startswith("rtt.") or n.muted or "@" in n.id:
+            continue
+        o = offset_of(n)
+        if np.any(o):
+            out[str(n.params.get("location", ""))] = [float(v) for v in o]
+    return out
+
+
+def _variation(ctx: Context) -> str:
+    """Key of the present geometry changes (offsets, drives, pose offsets) for the caches."""
+    return json.dumps({"offsets": _offsets(ctx), "rigid": _rigid(ctx)}, sort_keys=True)
+
+
+def _apply_rigid(d: dict[str, Any], location: str, offset: list[float], ctx: Context) -> None:
+    """Moves the tree node at `location` by the offset in its own frame, rotation about its
+    pivot (ADR section 4): with p -> position + pivot + R·(p − pivot), the composed pose keeps
+    the pivot and has position + R·d and R·R_offset."""
+    node: Any = d
+    for part in [p for p in location.split("/") if p]:
+        node = node[int(part)] if isinstance(node, list) else node.get(part)
+        if node is None:
+            raise ExecutionError("exec.pose", f"no node {location!r} in the system")
+    owner = next(
+        (n for n in ctx.graph.nodes.values() if n.params.get("location") == location), None
+    )
+    held: set[str] = set()
+
+    def collect(t: dict[str, Any]) -> None:
+        held.update(str(s.get("id")) for s in t.get("surfaces", []) if isinstance(s, dict))
+        for c in t.get("children", []):
+            if isinstance(c, dict):
+                collect(c)
+
+    collect(node)
+    if owner is not None and held != {str(s) for s in owner.params.get("surfaces", [])}:
+        raise ExecutionError(
+            "exec.pose",
+            "the block is part of a tree node; a pose offset moves whole tree nodes",
+            owner.id,
+        )
+    pose = node.setdefault("pose", {})
+    if (
+        pose.get("order", "translate_first") != "translate_first"
+        or pose.get("reference", "absolute") != "absolute"
+    ):
+        raise ExecutionError(
+            "exec.pose", f"{location}: pose offsets need absolute, " "translate-first poses"
+        )
+
+    def values(key: str) -> list[float]:
+        raw = pose.get(key, [0.0, 0.0, 0.0])
+        return [float(v["value"]) if isinstance(v, dict) else float(v) for v in raw]
+
+    def store(key: str, new: Any) -> None:
+        raw = pose.setdefault(key, [0.0, 0.0, 0.0])
+        for k in range(3):
+            if isinstance(raw[k], dict):
+                raw[k]["value"] = float(new[k])
+            else:
+                raw[k] = float(new[k])
+
+    r = rotation_xyz(np.radians(values("rotation_deg")))
+    position = np.asarray(values("position")) + r @ np.asarray(offset[:3])
+    store("position", position)
+    store("rotation_deg", np.degrees(angles_xyz(r @ rotation_xyz(offset[3:]))))
 
 
 def _compiled(ctx: Context) -> Any:
@@ -158,7 +236,7 @@ def _compiled(ctx: Context) -> Any:
     import raytatouille as rt
 
     offsets = _offsets(ctx)
-    if not offsets:
+    if not offsets and not _rigid(ctx):
         if "compiled" not in ctx.shared:
             if ctx.shared.get("system") is None:
                 raise ExecutionError(
@@ -168,7 +246,7 @@ def _compiled(ctx: Context) -> Any:
                 ctx.shared["system"], ctx.shared.get("materials", rt.MaterialLibrary())
             )
         return ctx.shared["compiled"]
-    key = json.dumps(offsets, sort_keys=True)
+    key = _variation(ctx)
     cache = ctx.shared.setdefault("compiled_by_offsets", {})
     if key not in cache:
         system = rt.System.from_json(json.dumps(_system_json(ctx)))
@@ -461,7 +539,7 @@ def _split_path(
             "exec.split", f"path {path!r}: the block {block.id} needs light before and after it"
         )
     cache = ctx.shared.setdefault("split_systems", {})
-    split_key = f"{path}|{json.dumps(_offsets(ctx), sort_keys=True)}"
+    split_key = f"{path}|{_variation(ctx)}"
     if split_key not in cache:
         d["paths"] = [
             *d.get("paths", []),
@@ -865,7 +943,7 @@ def _runs(ctx: Context) -> tuple[Any, list[Any], dict[Any, str], dict[tuple[str,
     import raytatouille as rt
 
     cache = ctx.shared.setdefault("run_systems", {})
-    key = json.dumps(_offsets(ctx), sort_keys=True)
+    key = _variation(ctx)
     if key in cache:
         return cache[key]  # type: ignore[no-any-return]
     d = _system_json(ctx)

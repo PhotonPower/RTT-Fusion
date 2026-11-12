@@ -6,6 +6,17 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R26 Posen (`graph/pose.py`): Isometrien in Raytatouilles Konvention (Translation, Rotation um
+  den Pivot, intrinsisch X → Y → Z); Pose je Knoten ohne Geometrie (Parameter `pose`), Versatz
+  `pose_offset` und je Treiber `pose_by_<id>` (sie addieren), Eingang `pose` an jedem Lichtblock,
+  Meta-Blöcke treiben eine Komponente (`component`: dx … rz). Die Ausführung übergibt Auswertern
+  die geometrischen Parameter in Weltkoordinaten (`posed`); Raytatouille-Blöcke bewegen ihren
+  Knoten im Modellbaum starr (`exec.pose` für Teilabschnitte). Port-Lagen (`PortFrame`,
+  `NodeType.port_frames` für Quelle, Spiegel, Linse, Detektor, Gitter) und Prüfung der
+  Verbindungen (`connection_diagnostics`: `graph.port_facing`, `graph.port_behind`,
+  `graph.port_medium`, `graph.port_aperture`, `graph.port_near_field`, `graph.port_tilt`).
+  Operator-Speicher `Executor.operators` / `Context.operators`: der CliffordBem-Operator des
+  Partikels ohne Lage im Schlüssel. Abnahme W45–W49.
 - R25 knotenweise Ausführung im Raytatouille-Backend: `rtt.section`, `rtt.mirror`, `rtt.splitter`
   geben Strahlen je Ast und Besuch weiter (`RayBundle.branch`), die Quelle startet je Ast, der
   Detektor bildet ab bzw. nimmt Felder auf einem H-Band; Runs aus allen Systempfaden; ausgetauschte

@@ -236,7 +236,15 @@ def particle(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> l
     centre = np.asarray(node.params.get("point", [0.0, 0.0, 0.0]), dtype=float)
     n_theta = int(node.params.get("n_theta", 40))
     n_phi = int(node.params.get("n_phi", 80))
-    cache = ctx.shared.setdefault("particle_handles", {})
+    # the BEM operator lives in the particle's frame (structure at the origin): its key leaves
+    # the position out, a moved particle keeps it (operator store, R26)
+    local = {
+        k: v
+        for k, v in node.params.items()
+        if k not in ("point", "pose", "pose_offset", "n_theta", "n_phi")
+        and not k.startswith("pose_by_")
+    }
+    store = ctx.operators if ctx.operators is not None else ctx.shared.setdefault("operators", {})
     out: list[RayBundle] = []
     for b in inputs.get("in", []):
         if not isinstance(b, RayBundle):
@@ -244,14 +252,15 @@ def particle(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> l
         alive = np.asarray(b.alive)
         axis = np.asarray(b.direction)[alive].mean(axis=0)
         axis = axis / np.linalg.norm(axis)
-        key = (node.id, b.wavelength_um, tuple(sorted(node.params.items(), key=str)).__repr__())
-        if key not in cache:
+        key = f"particle|{b.wavelength_um!r}|{sorted(local.items(), key=str)!r}"
+        if key not in store:
             structure = _structure(node, centre, b.wavelength_um)
             try:
-                cache[key] = cba.prepare(structure, (b.wavelength_um,))
+                store[key] = cba.prepare(structure, (b.wavelength_um,))
             except ValueError as e:
                 raise ExecutionError("exec.solver", f"CliffordBem: {e}", node.id) from e
-        handle = cache[key]
+            ctx.log.append(f"{node.id}: CliffordBem operator prepared")
+        handle = store[key]
         waves, rot = rays_to_spectrum(
             b, centre, axis, handle.structure.z_front_mm, handle.structure.n_background
         )

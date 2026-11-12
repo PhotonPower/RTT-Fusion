@@ -25,7 +25,8 @@ channels of a pair of ports (as in version 1) – which channels a node gives is
 Raytatouille backend traces its paths by name.
 
 Diagnostic codes (errors): graph.no_branch, graph.branch_impossible, graph.branch_duplicate,
-graph.port_unknown, graph.port_links, graph.branch_backend, graph.observer_ambiguous.
+graph.port_unknown, graph.port_links, graph.branch_backend (a step through a Raytatouille block
+that no path of the system makes), graph.observer_ambiguous.
 """
 
 from __future__ import annotations
@@ -330,21 +331,23 @@ def validate_model(model: Model, registry: NodeTypeRegistry) -> list[Diagnostic]
                         f"{s.node}.{s.port_out} is not connected to {nxt.node}.{nxt.port_in}", k
                     )
 
-    # the Raytatouille backend traces whole system paths by name until node-wise execution (R25)
-    rtt_paths = model.meta.get("raytatouille_paths")
-    if isinstance(rtt_paths, list):
+    # the Raytatouille backend passes a branch block by block through the traversals the
+    # system's paths make (R25); one it does not know (a ghost) follows with R27
+    runs = model.meta.get("raytatouille_runs")
+    if isinstance(runs, list):
+        known = {(str(r[0]), str(r[1]), str(r[2]), str(r[3])) for r in runs}
         for b in model.branches:
-            if (
-                b.steps
-                and model.nodes.get(b.steps[-1].node, Node("", "")).type_id == "rtt.detector"
-                and b.name not in rtt_paths
-            ):
-                err(
-                    "graph.branch_backend",
-                    "a branch to a Raytatouille detector must be a path of the system "
-                    f"({rtt_paths}) until node-wise execution (R25)",
-                    f"branch {b.name}",
-                )
+            for k, s in enumerate(b.steps):
+                block = model.nodes.get(s.node)
+                if block is None or not block.type_id.startswith("rtt.") or s.port_in is None:
+                    continue
+                if (s.node, s.port_in, s.port_out or "", s.channel) not in known:
+                    err(
+                        "graph.branch_backend",
+                        f"step {k + 1}: no path of the system passes {s.node} from "
+                        f"{s.port_in} to {s.port_out or 'the detector'}",
+                        f"branch {b.name}",
+                    )
     return out
 
 

@@ -84,6 +84,9 @@ class RayBundle:
     source_frame: FloatArray | None = None  # (2, 3) source axes carried along (global, now)
     index: float = 1.0  # refractive index of the medium the rays are in now
     source_index: float = 1.0  # refractive index at the source plane
+    #: the branch the light follows and the position of its last Raytatouille block in
+    #: `graph.meta["paths"][branch]` (-1: just left the source) – node-wise execution (R25)
+    branch: tuple[str, int] | None = None
 
     @property
     def size(self) -> int:

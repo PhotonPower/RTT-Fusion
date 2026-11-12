@@ -209,8 +209,23 @@ def model_from_raytatouille(system: Any) -> Model:
             "imported_from": "raytatouille",
             "system": str(d.get("name", "")),
             "raytatouille_paths": list(path_runs),
+            # the traversals the system's paths make (block, port in, port out, channel): the
+            # Raytatouille backend can pass a branch through these node-wise (R25)
+            "raytatouille_runs": sorted(
+                {
+                    (
+                        bid,
+                        "source" if j == 0 else runs[j - 1][0],
+                        runs[j + 1][0] if j + 1 < len(runs) else "",
+                        channel,
+                    )
+                    for runs in path_runs.values()
+                    for j, (bid, channel) in enumerate(runs)
+                }
+            ),
         }
     )
+    m.meta["raytatouille_runs"] = [list(r) for r in m.meta["raytatouille_runs"]]
     m.add(
         Node(
             "source",

@@ -251,3 +251,89 @@ def test_w54_variants_keep_ports_and_focal_length() -> None:
     np.testing.assert_allclose(f_pair, F1 * F2 / (F1 + F2 - D), rtol=1e-12)
     with pytest.raises(ValueError):
         set_variant(m, "obj", "unknown")
+
+
+# ---------------------------------------------------------------------------- W60
+
+
+def _grouped(m: Model, ids: set[str], gid: str) -> Model:
+    """A group of blocks as the node editor makes it: connections across become exported
+    ports "<block>.<port>", each stretch of a branch inside an inner branch the step names."""
+    inner = Model()
+    for i in ids:
+        inner.add(m.nodes.pop(i))
+    ports: dict[str, tuple[str, str]] = {}
+    outer = []
+    for c in m.connections:
+        a, b = c.a[0] in ids, c.b[0] in ids
+        if a and b:
+            inner.connections.append(c)
+            continue
+        if a or b:
+            end = c.a if a else c.b
+            name = f"{end[0]}.{end[1]}"
+            ports[name] = end
+            c = (
+                Connection((gid, name), c.b, c.transport)
+                if a
+                else Connection(c.a, (gid, name), c.transport)
+            )
+        outer.append(c)
+    m.connections = outer
+    branches = []
+    for br in m.branches:
+        steps: list[Step] = []
+        k = 0
+        while k < len(br.steps):
+            if br.steps[k].node not in ids:
+                steps.append(br.steps[k])
+                k += 1
+                continue
+            run = []
+            while k < len(br.steps) and br.steps[k].node in ids:
+                run.append(br.steps[k])
+                k += 1
+            entry = next(p for p, e in ports.items() if e == (run[0].node, run[0].port_in))
+            exit_ = next(p for p, e in ports.items() if e == (run[-1].node, run[-1].port_out))
+            inner_name = next((b.name for b in inner.branches if list(b.steps) == run), None)
+            if inner_name is None:
+                inner_name = br.name
+                inner.branches.append(Branch(inner_name, tuple(run)))
+            steps.append(Step(gid, entry, exit_, inner_name))
+        branches.append(Branch(br.name, tuple(steps)))
+    m.branches = branches
+    Group({"main": Variant(inner, ports)}, "main").add_to(m, Node(gid, "group"))
+    return m
+
+
+@pytest.mark.parametrize("kept", [True, False], ids=["blocks hold their runs", "import list"])
+def test_w60_raytatouille_blocks_in_a_group_compute(kept: bool) -> None:
+    rt = pytest.importorskip("raytatouille")
+    from rtt_fusion.graph import backend_rtt, model_from_raytatouille
+
+    d = json.loads(
+        (Path(__file__).parent / "data" / "linnik_mini.rtt.json").read_text(encoding="utf-8")
+    )
+    reg, _ = _registry()
+
+    def image(m: Model) -> Image:
+        if (
+            not kept
+        ):  # a model from before S1: no data in the blocks, the import's list and the file
+            for n in m.nodes.values():
+                for key in ("rtt", "runs", "rtt_system", "rtt_tree", "rtt_paths"):
+                    n.params.pop(key, None)
+        g = unroll(m, reg)
+        ex = Executor(
+            g,
+            reg,
+            backend_rtt.EVALUATORS,
+            {"system": rt.System.from_json(json.dumps(d)), "rings": 12, "pixels": [32, 32]},
+        )
+        result: Image = ex.evaluate("camera", "image")
+        return result
+
+    plain = image(model_from_raytatouille(d))
+    m = _grouped(model_from_raytatouille(d), {"objective", "sample"}, "arm")
+    assert not validate_model(m, reg)
+    np.testing.assert_allclose(image(m).values, plain.values, atol=1e-12 * plain.values.max())

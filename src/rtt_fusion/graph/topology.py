@@ -565,7 +565,15 @@ def validate_model(model: Model, registry: NodeTypeRegistry) -> list[Diagnostic]
                             f"branch {b.name}",
                         )
                     continue
-                if (s.node, s.port_in, s.port_out or "", s.channel) not in known:
+                # the traversals the block holds (S2; any id, also "<group>/<block>"), else the
+                # list of the import (a model imported before S1)
+                key = f"{s.port_in}>{s.port_out or ''}|{s.channel}"
+                if "runs" in block.params:
+                    held = key in block.params["runs"]
+                else:  # the import named the block without the path of its groups
+                    plain = s.node.rsplit("/", 1)[-1]
+                    held = (plain, s.port_in, s.port_out or "", s.channel) in known
+                if not held:
                     err(
                         "graph.branch_backend",
                         f"step {k + 1}: no path of the system passes {s.node} from "

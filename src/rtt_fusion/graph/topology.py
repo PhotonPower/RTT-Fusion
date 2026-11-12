@@ -550,6 +550,8 @@ def validate_model(model: Model, registry: NodeTypeRegistry) -> list[Diagnostic]
                 block = model.nodes.get(s.node)
                 if block is None or not block.type_id.startswith("rtt.") or s.port_in is None:
                     continue
+                if "rtt_new" in block.params:  # a new part: its traversals follow from its ports
+                    continue
                 if s.channel.startswith("ghost:"):
                     surfaces = [x for x in s.channel[6:].split(",") if x]
                     own = {str(x) for x in block.params.get("surfaces", [])}
@@ -731,6 +733,9 @@ def unroll(model: Model, registry: NodeTypeRegistry) -> Graph:
     """The socket graph of the model's branches (see the module docstring). Raises ModelError
     if `validate_model` finds an error."""
     model = flatten(model, registry)
+    from rtt_fusion.graph.parts import prepare_parts  # S4: new elements take their place
+
+    model = replace(model, nodes=prepare_parts(model.nodes))
     problems = [d for d in validate_model(model, registry) if d.severity == "error"]
     if problems:
         raise ModelError(problems)

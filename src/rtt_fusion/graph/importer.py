@@ -423,7 +423,9 @@ def system_from_model(model: Model) -> dict[str, Any]:
         (b.name, [(s.node, s.port_in, s.port_out, s.channel) for s in b.steps])
         for b in model.branches
     ]
-    return _system(list(model.nodes.values()), branches, strict=True)
+    from rtt_fusion.graph.parts import prepare_parts  # new parts of the library are elements too
+
+    return _system(list(prepare_parts(model.nodes).values()), branches, strict=True)
 
 
 def system_from_graph(graph: Graph) -> dict[str, Any] | None:
@@ -467,8 +469,9 @@ def _system(
             children.append(None)
         children[k] = tree[location]
     root = tree.get("/root", {"type": "assembly", "children": []})
-    if any(c is None for c in _all_children(root)):
-        raise ValueError("the model tree has gaps (a block with part of the system was removed)")
+    # a block removed in the workflow: its place stays as an empty assembly (the other locations
+    # keep their meaning)
+    _fill_gaps(root)
     names = {name for name, _ in branches}
     order = source.params.get("rtt_paths", [])
     extras = {str(p["name"]): p for p in order}
@@ -502,6 +505,15 @@ def _system(
     d["root"] = root
     d["paths"] = paths
     return d
+
+
+def _fill_gaps(node: dict[str, Any]) -> None:
+    children = node.get("children", [])
+    for k, c in enumerate(children):
+        if c is None:
+            children[k] = {"type": "assembly", "name": "(removed)", "children": []}
+        elif isinstance(c, dict):
+            _fill_gaps(c)
 
 
 def _all_children(node: dict[str, Any]) -> list[Any]:

@@ -267,7 +267,9 @@ def test_w51_lossless_reciprocal_splitter(r: complex, t: complex) -> None:
 # ---------------------------------------------------------------------------- W52 ghosts
 
 
-def _rtt_image(d: dict[str, Any], model: Any = None, **shared: Any) -> Image:
+def _rtt_image(
+    d: dict[str, Any], model: Any = None, detector: str = "image", **shared: Any
+) -> Image:
     rt = pytest.importorskip("raytatouille")
     from rtt_fusion.graph import backend_rtt
 
@@ -281,7 +283,7 @@ def _rtt_image(d: dict[str, Any], model: Any = None, **shared: Any) -> Image:
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        im: Image = ex.evaluate("image", "image")
+        im: Image = ex.evaluate(detector, "image")
     return im
 
 
@@ -345,3 +347,40 @@ def test_w52_ghost_checks() -> None:
     )
     codes = [x.code for x in validate_model(m, builtin_registry())]
     assert codes.count("graph.branch_backend") >= 2
+
+
+def test_w52_ghost_through_curved_surfaces() -> None:
+    """A ghost of a plano-convex singlet (Raytatouille M4 ghost_singlet): reflected at L.S2, then
+    at L.S1; the surfaces passed on the way refract – equal to Raytatouille's own path with these
+    events (a straight pass would not focus the ghost)."""
+    d = json.loads((DATA / "raytatouille" / "ghost_singlet.rtt.json").read_text(encoding="utf-8"))
+    m = model_from_raytatouille(d)
+    lens = next(n for n in m.nodes.values() if "L.S1" in n.params.get("surfaces", []))
+    stop = next(n for n in m.nodes.values() if "STO" in n.params.get("surfaces", []))
+    image = next(n for n in m.nodes.values() if n.type_id == "rtt.detector")
+    m.branches = []
+    m.branch(
+        "ghost",
+        ("source", None, stop.id),
+        (stop.id, "source", lens.id),
+        (lens.id, stop.id, image.id, "ghost:L.S2,L.S1"),
+        (image.id, lens.id, None),
+    )
+    assert not validate_model(m, builtin_registry())
+    node_wise = _rtt_image(d, m, detector=image.id)
+    explicit = copy.deepcopy(d)
+    explicit["paths"] = [
+        {
+            "name": "ghost",
+            "events": [
+                {"surface": "STO"},
+                {"surface": "L.S1"},
+                {"surface": "L.S2", "kind": "reflect"},
+                {"surface": "L.S1", "kind": "reflect"},
+                {"surface": "L.S2"},
+                {"surface": "IMG"},
+            ],
+        }
+    ]
+    whole = _rtt_image(explicit, detector=image.id, rtt_execution="paths")
+    assert np.abs(node_wise.values - whole.values).max() <= 1e-9 * whole.values.max()

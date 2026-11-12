@@ -100,6 +100,10 @@ def node_type_from_describe(describe: dict[str, Any], type_id: str | None = None
 def builtin_registry() -> NodeTypeRegistry:
     """The built-in block types."""
     r = NodeTypeRegistry()
+    from rtt_fusion.graph.parts import part_types  # S4: new Raytatouille elements
+
+    for t in part_types():
+        r.add(t)
     r.add(
         NodeType(
             "group",

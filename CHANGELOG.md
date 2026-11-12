@@ -6,6 +6,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R28 Gruppen und Varianten: `Group` und `Variant` im Modell (exportierte Ports und Parameter,
+  innere Äste, aktive Variante, `set_variant`), ein Schritt durch eine Gruppe nennt ihren inneren
+  Ast als Kanal; `flatten` löst Gruppen auf (verschachtelt, innere Blöcke als `gruppe/block`,
+  Prüfungen `graph.group_variant`, `graph.group_ports`, `graph.group_params`,
+  `graph.group_branch`); der Gruppenknoten bleibt in der Socket-Form, seine Pose, sein Eingang
+  `pose` und seine exportierten Parameter wirken zur Laufzeit auf die Blöcke darin (`_parent`,
+  `_bind`, `pose.bind_exported`; der Schlüssel des Ergebnisspeichers enthält die Gruppen).
+  Format Version 2 mit Varianten. `optics.thin_lens` (paraxiale dünne Linse für jede Einfallsrichtung).
+  Abnahme W53–W54.
 - R27 allgemeiner Teiler und Mehrfachumläufe: `optics.interface` (Grenzfläche zweier Medien,
   Fresnel s und p, leistungsnormierte Amplitude, Totalreflexion) und `optics.splitter`
   (verlustfreier Teiler mit vier Ports, Stokes-Beziehungen); `Plane.intersect` rechnet die OPL im

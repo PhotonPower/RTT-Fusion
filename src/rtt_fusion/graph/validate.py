@@ -116,7 +116,7 @@ def validate(graph: Graph, registry: NodeTypeRegistry) -> list[Diagnostic]:
                 if (
                     name not in known
                     and name not in ("pose", "pose_offset")
-                    and not (name.startswith("pose_by_"))
+                    and not name.startswith(("pose_by_", "_"))
                 ):
                     warn(
                         "graph.param_unknown",

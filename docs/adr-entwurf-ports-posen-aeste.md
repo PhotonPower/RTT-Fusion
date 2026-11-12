@@ -8,7 +8,9 @@
 > 5, 8). Ändert die Abschnitte 3.2, 3.3, 4 und 7 des Konzepts sowie W6; alles Übrige
 > (Darstellungen, Kohärenz, Planer Stufe 2, Adapter) bleibt.
 
-**Status:** angenommen (Maintainer, 2026-11-12; P6 von ihm festgelegt). R24 bis R27 umgesetzt (R27: W50–W52; Geister in
+**Status:** angenommen (Maintainer, 2026-11-12; P6 von ihm festgelegt). R24 bis R28 umgesetzt (R28: W53–W54; die Zuordnung der exportierten Ports
+steht je Variante, Blöcke einer Gruppe mit Geometrie aus einem Raytatouille-System bewegen sich
+noch nicht mit der Pose der Gruppe) (R27: W50–W52; Geister in
 Raytatouille-Abschnitten mit dem Kanal `ghost:<Flächen>`) (R25: knotenweise = ganze Pfade auf
 Rundung, W43; R26: Posen, W45–W49 – die Pose von Knoten ohne Geometrie steht als Parameter
 `pose`, Versätze als `pose_offset` und `pose_by_<Treiber>`; Port-Lagen geben die Typen, die sie

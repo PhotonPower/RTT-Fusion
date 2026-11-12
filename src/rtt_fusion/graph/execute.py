@@ -34,7 +34,7 @@ from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays, rays_
 from rtt_fusion.graph.light import RayBundle
 from rtt_fusion.graph.model import Direction, Graph, Node, SocketKind
 from rtt_fusion.graph.planner import Plan, Requirements, link_key, plan
-from rtt_fusion.graph.pose import posed
+from rtt_fusion.graph.pose import Isometry, bind_exported, placement, posed
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.graph.validate import errors, node_sockets, node_through, validate
 
@@ -193,6 +193,7 @@ class Executor:
                 "env": self.environment,
                 "type": node.type_id,
                 "params": node.params,
+                "groups": [g.params for g in self._ancestors(node)],
                 "socket": socket,
                 "muted": node.muted,
                 "inputs": input_keys,
@@ -242,11 +243,28 @@ class Executor:
             self.cache[key] = value
         return value, key
 
+    def _ancestors(self, node: Node) -> list[Node]:
+        """The groups a block lies in, innermost first (R28: `_parent` of the unrolled blocks)."""
+        out: list[Node] = []
+        parent = node.params.get("_parent")
+        while parent and parent in self.graph.nodes:
+            out.append(self.graph.nodes[parent])
+            parent = self.graph.nodes[parent].params.get("_parent")
+        return out
+
     def _posed(self, node: Node) -> Node:
-        """The node with its geometric parameters in world coordinates (pose ∘ offset, R26)."""
+        """The node with its geometric parameters in world coordinates (pose ∘ offset, R26), the
+        exported parameters of its groups applied and their placements composed (R28)."""
         t = self.registry.get(node.type_id)
         defaults = {p.name: p.default for p in t.params} if t is not None else {}
-        return posed(node, defaults)
+        ancestors = self._ancestors(node)
+        if not ancestors:
+            return posed(node, defaults)
+        bound = bind_exported(node, ancestors)
+        outer = Isometry.identity()
+        for g in reversed(ancestors):  # outermost first
+            outer = outer @ placement(g)
+        return posed(bound, defaults, outer)
 
     def status(self) -> dict[str, bool]:
         """Per block: True if its outputs are in the cache (up to date), without computing

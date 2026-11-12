@@ -131,10 +131,15 @@ def placement(node: Node, defaults: dict[str, Any] | None = None) -> Isometry:
     return pose @ Isometry.from_pose(o[:3], o[3:], pivot_of(node, defaults))
 
 
-def posed(node: Node, defaults: dict[str, Any] | None = None) -> Node:
+def posed(
+    node: Node, defaults: dict[str, Any] | None = None, outer: Isometry | None = None
+) -> Node:
     """The node with its geometric parameters in world coordinates (`defaults`: the type's
-    defaults of parameters the node does not set, e.g. a detector's `up`)."""
+    defaults of parameters the node does not set, e.g. a detector's `up`; `outer`: the placement
+    of the groups it lies in, R28)."""
     iso = placement(node, defaults)
+    if outer is not None:
+        iso = outer @ iso
     if iso.is_identity():
         return node
     params = dict(node.params)
@@ -153,12 +158,39 @@ def posed(node: Node, defaults: dict[str, Any] | None = None) -> Node:
     return replace(node, params=params)
 
 
+def bind_exported(node: Node, groups: list[Node]) -> Node:
+    """A block inside groups with the exported parameters set (R28): `_bind` maps an own
+    parameter ("focal_length" or "point[2]") to the name of the exported parameter of its group
+    (`_parent`); a value set on the group wins over the block's own."""
+    binding = node.params.get("_bind") or {}
+    if not binding or not groups:
+        return node
+    params = dict(node.params)
+    group = groups[0]
+    for target, exported in binding.items():
+        if exported not in group.params:
+            continue
+        value = group.params[exported]
+        name, _, index = str(target).partition("[")
+        if index:
+            current = list(params.get(name) or [])
+            k = int(index.rstrip("]"))
+            while len(current) <= k:
+                current.append(0.0)
+            current[k] = value
+            params[name] = current
+        else:
+            params[name] = value
+    return replace(node, params=params)
+
+
 __all__ = [
     "COMPONENTS",
     "DIRECTION_PARAMS",
     "POINT_PARAMS",
     "Isometry",
     "angles_xyz",
+    "bind_exported",
     "offset_of",
     "pivot_of",
     "placement",

@@ -28,8 +28,9 @@ Connection checks (R26, `connection_diagnostics`): graph.port_facing, graph.port
 graph.port_medium (errors); graph.port_aperture, graph.port_near_field, graph.port_tilt (warnings).
 
 Diagnostic codes (errors): graph.no_branch, graph.branch_impossible, graph.branch_duplicate,
-graph.port_unknown, graph.port_links, graph.branch_backend (a step through a Raytatouille block
-that no path of the system makes), graph.observer_ambiguous.
+graph.port_unknown, graph.port_links, graph.group_variant, graph.group_ports,
+graph.group_params, graph.group_branch (groups, R28), graph.branch_backend (a step through a
+Raytatouille block that no path of the system makes), graph.observer_ambiguous.
 """
 
 from __future__ import annotations
@@ -135,6 +136,8 @@ class Model:
     branches: list[Branch] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
     observe_branch: dict[tuple[str, str], str] = field(default_factory=dict)
+    #: groups by the id of their node (type "group"), R28
+    groups: dict[str, Group] = field(default_factory=dict)
 
     def add(self, node: Node) -> Node:
         if node.id in self.nodes:
@@ -160,6 +163,169 @@ class Model:
 
     def connection_at(self, end: tuple[str, str]) -> Connection | None:
         return next((c for c in self.connections if end in (c.a, c.b)), None)
+
+
+@dataclass
+class Variant:
+    """One content of a group (ADR section 7): a sub-model whose `branches` are the inner
+    branches (from an exported port in to an exported port out, named), the exported ports
+    (name -> inner node and port) and the exported parameters (name -> "node.param" or
+    "node.param[i]" inside)."""
+
+    model: Model
+    ports: dict[str, tuple[str, str]]
+    params: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class Group:
+    """A group: variants with the same exported ports and parameters, one of them active.
+    Its node (type "group") carries the pose of the group and the values of the exported
+    parameters; the blocks inside lie relative to it."""
+
+    variants: dict[str, Variant]
+    active: str
+
+    def add_to(self, model: Model, node: Node) -> Node:
+        model.add(node)
+        model.groups[node.id] = self
+        return node
+
+
+def set_variant(model: Model, group_id: str, name: str) -> None:
+    """Switches a group to another variant (replaces `replace_block` for groups)."""
+    group = model.groups[group_id]
+    if name not in group.variants:
+        raise ValueError(f"group {group_id!r} has no variant {name!r}")
+    group.active = name
+
+
+def _group_checks(model: Model) -> list[Diagnostic]:
+    out: list[Diagnostic] = []
+    for gid, g in model.groups.items():
+        if g.active not in g.variants:
+            out.append(Diagnostic("graph.group_variant", "error", f"no variant {g.active!r}", gid))
+            continue
+        names = {n: (set(v.ports), set(v.params)) for n, v in g.variants.items()}
+        ports, params = names[g.active]
+        for n, (p, q) in names.items():
+            if p != ports:
+                out.append(
+                    Diagnostic(
+                        "graph.group_ports",
+                        "error",
+                        f"variant {n!r} exports the ports {sorted(p)}, "
+                        f"{g.active!r} {sorted(ports)}",
+                        gid,
+                    )
+                )
+            if q != params:
+                out.append(
+                    Diagnostic(
+                        "graph.group_params",
+                        "error",
+                        f"variant {n!r} exports the parameters {sorted(q)}",
+                        gid,
+                    )
+                )
+    return out
+
+
+def _flatten(
+    model: Model,
+) -> tuple[Model, dict[tuple[str, str], tuple[str, str]], dict[tuple[str, str], list[Step]]]:
+    """The model with every group replaced by its active variant: inner blocks as
+    "<group>/<block>" with `_parent` and `_bind`, inner connections and links, outer
+    connections to the inner ports, outer steps through a group replaced by the inner branch
+    named in their channel. Returns also the exported ports and the inner branches."""
+    flat = Model(meta=dict(model.meta), observe_branch=dict(model.observe_branch))
+    ports: dict[tuple[str, str], tuple[str, str]] = {}
+    inner_branches: dict[tuple[str, str], list[Step]] = {}
+    problems: list[Diagnostic] = []
+    for node in model.nodes.values():
+        flat.add(replace(node, params=dict(node.params)))
+    for gid, g in model.groups.items():
+        variant = g.variants[g.active]
+        inner, inner_ports, nested = _flatten(variant.model)
+        prefix = f"{gid}/"
+
+        def name(node_id: str, prefix: str = prefix) -> str:
+            return prefix + node_id
+
+        bindings: dict[str, dict[str, str]] = {}
+        for exported, address in variant.params.items():
+            block, _, param = address.partition(".")
+            bindings.setdefault(block, {})[param] = exported
+        for iid, inode in inner.nodes.items():
+            params = dict(inode.params)
+            params["_parent"] = name(params["_parent"]) if "_parent" in params else gid
+            if iid in bindings:
+                params["_bind"] = {**params.get("_bind", {}), **bindings[iid]}
+            flat.add(replace(inode, id=name(iid), params=params))
+        for c in inner.connections:
+            flat.connections.append(replace(c, a=(name(c.a[0]), c.a[1]), b=(name(c.b[0]), c.b[1])))
+        for lk in inner.links:
+            flat.links.append(
+                replace(
+                    lk,
+                    source=(name(lk.source[0]), lk.source[1]),
+                    target=(name(lk.target[0]), lk.target[1]),
+                )
+            )
+        for port, (iid, iport) in variant.ports.items():
+            # an exported port of a nested group resolves to the port inside it
+            target_node, target_port = inner_ports.get((iid, iport), (iid, iport))
+            ports[(gid, port)] = (name(target_node), target_port)
+        for b in variant.model.branches:
+            steps: list[Step] = []
+            for s in b.steps:
+                if s.node in variant.model.groups:
+                    steps += nested.get((s.node, s.channel), [])
+                else:
+                    steps.append(s)
+            inner_branches[(gid, b.name)] = [replace(s, node=name(s.node)) for s in steps]
+    for c in model.connections:
+        flat.connections.append(replace(c, a=ports.get(c.a, c.a), b=ports.get(c.b, c.b)))
+    flat.links = [*flat.links, *model.links]
+    for b in model.branches:
+        steps = []
+        for k, s in enumerate(b.steps):
+            if s.node not in model.groups:
+                steps.append(s)
+                continue
+            through = inner_branches.get((s.node, s.channel)) or []
+            entry = ports.get((s.node, s.port_in or ""))
+            exit_ = ports.get((s.node, s.port_out or ""))
+            if (
+                not through
+                or entry != (through[0].node, through[0].port_in)
+                or exit_ != (through[-1].node, through[-1].port_out)
+            ):
+                problems.append(
+                    Diagnostic(
+                        "graph.group_branch",
+                        "error",
+                        f"step {k + 1}: group {s.node} has no inner branch {s.channel!r} from "
+                        f"{s.port_in} to {s.port_out}",
+                        f"branch {b.name}",
+                    )
+                )
+                continue
+            steps += through
+        flat.branches.append(Branch(b.name, tuple(steps)))
+    if problems:
+        raise ModelError(problems)
+    return flat, ports, inner_branches
+
+
+def flatten(model: Model, registry: NodeTypeRegistry | None = None) -> Model:
+    """The model with its groups resolved (see `_flatten`); a model without groups as it is."""
+    if not model.groups:
+        return model
+    problems = _group_checks(model)
+    if problems:
+        raise ModelError(problems)
+    return _flatten(model)[0]
 
 
 # ---------------------------------------------------------------------------- ports and scattering
@@ -258,7 +424,12 @@ def _category(model: Model, registry: NodeTypeRegistry, node_id: str) -> Categor
 
 def validate_model(model: Model, registry: NodeTypeRegistry) -> list[Diagnostic]:
     """Checks of the topology and the branches (the socket graph is checked after unrolling by
-    `validate.validate`)."""
+    `validate.validate`). A model with groups is checked resolved (`flatten`)."""
+    if model.groups:
+        try:
+            return validate_model(flatten(model, registry), registry)
+        except ModelError as e:
+            return e.diagnostics
     out: list[Diagnostic] = []
 
     def err(code: str, msg: str, loc: str) -> None:
@@ -535,6 +706,7 @@ def _copy_id(node_id: str, k: int) -> str:
 def unroll(model: Model, registry: NodeTypeRegistry) -> Graph:
     """The socket graph of the model's branches (see the module docstring). Raises ModelError
     if `validate_model` finds an error."""
+    model = flatten(model, registry)
     problems = [d for d in validate_model(model, registry) if d.severity == "error"]
     if problems:
         raise ModelError(problems)
@@ -865,15 +1037,19 @@ __all__ = [
     "SUM_TYPE",
     "Branch",
     "Connection",
+    "Group",
     "Model",
     "ModelError",
     "Step",
+    "Variant",
     "connection_diagnostics",
     "derive_ports",
+    "flatten",
     "model_from_graph",
     "node_ports",
     "node_scatter",
     "port_frames",
+    "set_variant",
     "unroll",
     "validate_model",
 ]

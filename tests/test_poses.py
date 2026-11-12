@@ -297,9 +297,11 @@ def test_w48_moved_solver_keeps_its_operator() -> None:
     assert len(list(store._items)) == prepared  # no new preparation (operator store)
     assert not any("operator prepared" in line for line in ex.context.log)
     assert ex.calls[("p", "out")] == 1  # the result itself is computed again
-    fresh, ex2 = run(2e-4, ResultCache())  # the same with a fresh operator: identical
+    fresh, ex2 = run(2e-4, ResultCache())  # the same with a fresh operator
     assert any("operator prepared" in line for line in ex2.context.log)
-    np.testing.assert_array_equal(np.asarray(moved[0].amplitude), np.asarray(fresh[0].amplitude))
+    a, b = np.asarray(moved[0].amplitude), np.asarray(fresh[0].amplitude)
+    # equal up to rounding (CliffordBem's parallel sums differ by ~1e-14 between preparations)
+    assert np.abs(a - b).max() <= 1e-12 * np.abs(b).max()
 
 
 # ---------------------------------------------------------------------------- W49 connections

@@ -1,0 +1,440 @@
+{
+  "format": "rtt-fusion-graph",
+  "version": 1,
+  "meta": {
+    "imported_from": "raytatouille",
+    "system": "Minimal Linnik arm with ideal lenses (RTT-Fusion test system): Köhler illumination, objective f = 2 mm, tube lens f = 20 mm (magnification 10), sample in the front focal plane",
+    "paths": {
+      "measurement": [
+        "illumination_lens",
+        "beam_splitter",
+        "objective",
+        "sample",
+        "objective",
+        "beam_splitter",
+        "tube_lens",
+        "camera"
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "source",
+      "type": "rtt.source",
+      "name": "Source",
+      "sockets": [
+        {
+          "name": "to_illumination_lens",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "G",
+            "H",
+            "P",
+            "R",
+            "S"
+          ],
+          "label": "illumination_lens"
+        }
+      ]
+    },
+    {
+      "id": "illumination_lens",
+      "type": "rtt.section",
+      "name": "illumination lens",
+      "params": {
+        "location": "/root/children/0",
+        "element_type": "thin_element",
+        "surfaces": [
+          "L0"
+        ],
+        "paths": [
+          "measurement"
+        ]
+      },
+      "position": [
+        220.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_source",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "source"
+        },
+        {
+          "name": "to_beam_splitter",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        }
+      ],
+      "through": {
+        "to_beam_splitter": [
+          "from_source"
+        ]
+      }
+    },
+    {
+      "id": "beam_splitter",
+      "type": "rtt.section",
+      "name": "beam splitter",
+      "params": {
+        "location": "/root/children/1",
+        "element_type": "thin_element",
+        "surfaces": [
+          "BS"
+        ],
+        "paths": [
+          "measurement"
+        ]
+      },
+      "position": [
+        440.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_illumination_lens",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "illumination_lens"
+        },
+        {
+          "name": "from_objective",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "objective"
+        },
+        {
+          "name": "to_objective",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "objective"
+        },
+        {
+          "name": "to_tube_lens",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "tube_lens"
+        }
+      ],
+      "through": {
+        "to_objective": [
+          "from_illumination_lens"
+        ],
+        "to_tube_lens": [
+          "from_objective"
+        ]
+      }
+    },
+    {
+      "id": "objective",
+      "type": "rtt.section",
+      "name": "objective",
+      "params": {
+        "location": "/root/children/2",
+        "element_type": "thin_element",
+        "surfaces": [
+          "OBJ"
+        ],
+        "paths": [
+          "measurement"
+        ]
+      },
+      "position": [
+        660.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_beam_splitter",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        },
+        {
+          "name": "from_sample",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "sample"
+        },
+        {
+          "name": "to_sample",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "sample"
+        },
+        {
+          "name": "to_beam_splitter",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        }
+      ],
+      "through": {
+        "to_sample": [
+          "from_beam_splitter"
+        ],
+        "to_beam_splitter": [
+          "from_sample"
+        ]
+      }
+    },
+    {
+      "id": "sample",
+      "type": "rtt.mirror",
+      "name": "sample",
+      "params": {
+        "location": "/root/children/3",
+        "element_type": "mirror",
+        "surfaces": [
+          "SPM"
+        ],
+        "paths": [
+          "measurement"
+        ]
+      },
+      "position": [
+        880.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_objective",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "objective"
+        },
+        {
+          "name": "to_objective",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "objective"
+        }
+      ],
+      "through": {
+        "to_objective": [
+          "from_objective"
+        ]
+      }
+    },
+    {
+      "id": "tube_lens",
+      "type": "rtt.section",
+      "name": "tube lens",
+      "params": {
+        "location": "/root/children/4",
+        "element_type": "thin_element",
+        "surfaces": [
+          "TL"
+        ],
+        "paths": [
+          "measurement"
+        ]
+      },
+      "position": [
+        1100.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_beam_splitter",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        },
+        {
+          "name": "to_camera",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "camera"
+        }
+      ],
+      "through": {
+        "to_camera": [
+          "from_beam_splitter"
+        ]
+      }
+    },
+    {
+      "id": "camera",
+      "type": "rtt.detector",
+      "name": "camera",
+      "params": {
+        "location": "/root/children/5",
+        "element_type": "detector",
+        "surfaces": [
+          "CAM"
+        ],
+        "paths": [
+          "measurement"
+        ]
+      },
+      "position": [
+        1320.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_tube_lens",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "tube_lens"
+        },
+        {
+          "name": "image",
+          "direction": "out",
+          "kind": "data",
+          "accepts": [
+            "result"
+          ],
+          "label": "image"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": [
+        "source",
+        "to_illumination_lens"
+      ],
+      "to": [
+        "illumination_lens",
+        "from_source"
+      ]
+    },
+    {
+      "from": [
+        "illumination_lens",
+        "to_beam_splitter"
+      ],
+      "to": [
+        "beam_splitter",
+        "from_illumination_lens"
+      ]
+    },
+    {
+      "from": [
+        "beam_splitter",
+        "to_objective"
+      ],
+      "to": [
+        "objective",
+        "from_beam_splitter"
+      ]
+    },
+    {
+      "from": [
+        "objective",
+        "to_sample"
+      ],
+      "to": [
+        "sample",
+        "from_objective"
+      ]
+    },
+    {
+      "from": [
+        "sample",
+        "to_objective"
+      ],
+      "to": [
+        "objective",
+        "from_sample"
+      ]
+    },
+    {
+      "from": [
+        "objective",
+        "to_beam_splitter"
+      ],
+      "to": [
+        "beam_splitter",
+        "from_objective"
+      ]
+    },
+    {
+      "from": [
+        "beam_splitter",
+        "to_tube_lens"
+      ],
+      "to": [
+        "tube_lens",
+        "from_beam_splitter"
+      ]
+    },
+    {
+      "from": [
+        "tube_lens",
+        "to_camera"
+      ],
+      "to": [
+        "camera",
+        "from_tube_lens"
+      ]
+    }
+  ]
+}

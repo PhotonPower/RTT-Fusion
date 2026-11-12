@@ -14,6 +14,7 @@ from rtt_fusion.graph.model import (
     Category,
     NodeType,
     ParamSpec,
+    PortSpec,
     SocketSpec,
     data_in,
     data_out,
@@ -99,6 +100,15 @@ def node_type_from_describe(describe: dict[str, Any], type_id: str | None = None
 def builtin_registry() -> NodeTypeRegistry:
     """The built-in block types."""
     r = NodeTypeRegistry()
+    r.add(
+        NodeType(
+            "fusion.sum",
+            Category.SPLITTER,
+            (),
+            dynamic_sockets=True,
+            description="Junction of unrolled branches: the sum of the light arriving at one state",
+        )
+    )
     r.add(
         NodeType(
             "rtt.source",
@@ -202,6 +212,7 @@ def builtin_registry() -> NodeTypeRegistry:
             (("out", ("in",)),),
             dynamic_sockets=True,
             extra_sockets=(data_in("drive", "drive", "drive"),),
+            ports=(PortSpec("front", "in", "out", "front"),),
             description="Mirror (one surface, reflecting)",
         )
     )

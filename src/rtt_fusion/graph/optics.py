@@ -28,6 +28,7 @@ from rtt_fusion.graph.model import (
     Node,
     NodeType,
     ParamSpec,
+    PortSpec,
     data_in,
     data_out,
     light_in,
@@ -270,6 +271,7 @@ TYPES = (
         (light_in("in", "RH"), light_out("out", "RH"), data_in("drive", "drive", "drive")),
         (*_PLANE_PARAMS, ParamSpec("reflectance_amplitude", "number", -1.0)),
         (("out", ("in",)),),
+        ports=(PortSpec("front", "in", "out", "front"),),
         description="Plane mirror",
     ),
     NodeType(

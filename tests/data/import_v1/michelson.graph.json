@@ -1,0 +1,333 @@
+{
+  "format": "rtt-fusion-graph",
+  "version": 1,
+  "meta": {
+    "imported_from": "raytatouille",
+    "system": "Michelson interferometer with ideal beam splitter",
+    "paths": {
+      "reference arm": [
+        "beam_splitter",
+        "reference_mirror",
+        "beam_splitter",
+        "camera"
+      ],
+      "test arm": [
+        "beam_splitter",
+        "test_mirror",
+        "beam_splitter",
+        "camera"
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "source",
+      "type": "rtt.source",
+      "name": "Source",
+      "sockets": [
+        {
+          "name": "to_beam_splitter",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "G",
+            "H",
+            "P",
+            "R",
+            "S"
+          ],
+          "label": "beam_splitter"
+        }
+      ]
+    },
+    {
+      "id": "beam_splitter",
+      "type": "rtt.splitter",
+      "name": "beam splitter",
+      "params": {
+        "location": "/root/children/0",
+        "element_type": "thin_element",
+        "surfaces": [
+          "BS"
+        ],
+        "paths": [
+          "reference arm",
+          "test arm"
+        ]
+      },
+      "position": [
+        220.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_source",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "source"
+        },
+        {
+          "name": "from_reference_mirror",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "reference_mirror"
+        },
+        {
+          "name": "from_test_mirror",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "test_mirror"
+        },
+        {
+          "name": "to_reference_mirror",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "reference_mirror"
+        },
+        {
+          "name": "to_camera",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "camera"
+        },
+        {
+          "name": "to_test_mirror",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "test_mirror"
+        }
+      ],
+      "through": {
+        "to_reference_mirror": [
+          "from_source"
+        ],
+        "to_camera": [
+          "from_reference_mirror",
+          "from_test_mirror"
+        ],
+        "to_test_mirror": [
+          "from_source"
+        ]
+      }
+    },
+    {
+      "id": "reference_mirror",
+      "type": "rtt.mirror",
+      "name": "reference mirror",
+      "params": {
+        "location": "/root/children/1",
+        "element_type": "mirror",
+        "surfaces": [
+          "M1"
+        ],
+        "paths": [
+          "reference arm"
+        ]
+      },
+      "position": [
+        440.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_beam_splitter",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        },
+        {
+          "name": "to_beam_splitter",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        }
+      ],
+      "through": {
+        "to_beam_splitter": [
+          "from_beam_splitter"
+        ]
+      }
+    },
+    {
+      "id": "test_mirror",
+      "type": "rtt.mirror",
+      "name": "test mirror",
+      "params": {
+        "location": "/root/children/2",
+        "element_type": "mirror",
+        "surfaces": [
+          "M2"
+        ],
+        "paths": [
+          "test arm"
+        ]
+      },
+      "position": [
+        880.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_beam_splitter",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        },
+        {
+          "name": "to_beam_splitter",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        }
+      ],
+      "through": {
+        "to_beam_splitter": [
+          "from_beam_splitter"
+        ]
+      }
+    },
+    {
+      "id": "camera",
+      "type": "rtt.detector",
+      "name": "camera",
+      "params": {
+        "location": "/root/children/3",
+        "element_type": "detector",
+        "surfaces": [
+          "DET"
+        ],
+        "paths": [
+          "reference arm",
+          "test arm"
+        ]
+      },
+      "position": [
+        660.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_beam_splitter",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "beam_splitter"
+        },
+        {
+          "name": "image",
+          "direction": "out",
+          "kind": "data",
+          "accepts": [
+            "result"
+          ],
+          "label": "image"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": [
+        "source",
+        "to_beam_splitter"
+      ],
+      "to": [
+        "beam_splitter",
+        "from_source"
+      ]
+    },
+    {
+      "from": [
+        "beam_splitter",
+        "to_reference_mirror"
+      ],
+      "to": [
+        "reference_mirror",
+        "from_beam_splitter"
+      ]
+    },
+    {
+      "from": [
+        "reference_mirror",
+        "to_beam_splitter"
+      ],
+      "to": [
+        "beam_splitter",
+        "from_reference_mirror"
+      ]
+    },
+    {
+      "from": [
+        "beam_splitter",
+        "to_camera"
+      ],
+      "to": [
+        "camera",
+        "from_beam_splitter"
+      ]
+    },
+    {
+      "from": [
+        "beam_splitter",
+        "to_test_mirror"
+      ],
+      "to": [
+        "test_mirror",
+        "from_beam_splitter"
+      ]
+    },
+    {
+      "from": [
+        "test_mirror",
+        "to_beam_splitter"
+      ],
+      "to": [
+        "beam_splitter",
+        "from_test_mirror"
+      ]
+    }
+  ]
+}

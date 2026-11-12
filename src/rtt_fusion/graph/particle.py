@@ -39,7 +39,15 @@ from scipy.spatial import Delaunay, QhullError
 from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
-from rtt_fusion.graph.model import Category, Node, NodeType, ParamSpec, light_in, light_out
+from rtt_fusion.graph.model import (
+    Category,
+    Node,
+    NodeType,
+    ParamSpec,
+    PortSpec,
+    light_in,
+    light_out,
+)
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.ports import PlaneWaves, Port
 
@@ -271,6 +279,8 @@ TYPE = NodeType(
         ParamSpec("n_phi", "integer", 80, minimum=8),
     ),
     (("out", ("in",)),),
+    ports=(PortSpec("front", "in", "out", "front"),),
+    scatter=(("front", "front", "full", ()),),
     description="Particle (CliffordBem BEM): backscattered light of a focused beam",
 )
 

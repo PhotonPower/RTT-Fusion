@@ -1,0 +1,201 @@
+{
+  "format": "rtt-fusion-graph",
+  "version": 1,
+  "meta": {
+    "imported_from": "raytatouille",
+    "system": "M6 acceptance: paraboloid R = -200 mm with stop, D = 2 mm (F/50), for the defocus Strehl",
+    "paths": {
+      "main": [
+        "stop",
+        "M",
+        "focus"
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "source",
+      "type": "rtt.source",
+      "name": "Source",
+      "sockets": [
+        {
+          "name": "to_stop",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "G",
+            "H",
+            "P",
+            "R",
+            "S"
+          ],
+          "label": "stop"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "type": "rtt.section",
+      "name": "stop",
+      "params": {
+        "location": "/root/children/0",
+        "element_type": "stop",
+        "surfaces": [
+          "STO"
+        ],
+        "paths": [
+          "main"
+        ]
+      },
+      "position": [
+        220.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_source",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "source"
+        },
+        {
+          "name": "to_M",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "M"
+        }
+      ],
+      "through": {
+        "to_M": [
+          "from_source"
+        ]
+      }
+    },
+    {
+      "id": "M",
+      "type": "rtt.mirror",
+      "name": "M",
+      "params": {
+        "location": "/root/children/1",
+        "element_type": "mirror",
+        "surfaces": [
+          "M"
+        ],
+        "paths": [
+          "main"
+        ]
+      },
+      "position": [
+        440.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_stop",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "stop"
+        },
+        {
+          "name": "to_focus",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "focus"
+        }
+      ],
+      "through": {
+        "to_focus": [
+          "from_stop"
+        ]
+      }
+    },
+    {
+      "id": "focus",
+      "type": "rtt.detector",
+      "name": "focus",
+      "params": {
+        "location": "/root/children/2",
+        "element_type": "detector",
+        "surfaces": [
+          "F"
+        ],
+        "paths": [
+          "main"
+        ]
+      },
+      "position": [
+        660.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_M",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "M"
+        },
+        {
+          "name": "image",
+          "direction": "out",
+          "kind": "data",
+          "accepts": [
+            "result"
+          ],
+          "label": "image"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": [
+        "source",
+        "to_stop"
+      ],
+      "to": [
+        "stop",
+        "from_source"
+      ]
+    },
+    {
+      "from": [
+        "stop",
+        "to_M"
+      ],
+      "to": [
+        "M",
+        "from_stop"
+      ]
+    },
+    {
+      "from": [
+        "M",
+        "to_focus"
+      ],
+      "to": [
+        "focus",
+        "from_M"
+      ]
+    }
+  ]
+}

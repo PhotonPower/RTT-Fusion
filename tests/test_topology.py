@@ -68,10 +68,12 @@ def _effective(g: Graph, reg: NodeTypeRegistry) -> tuple[Any, ...]:
             for o, ins in node_through(n, reg).items()
             if (n.id, o) in linked
         }
+        # the system's data the import keeps since Nachtrag 1 is not part of the old graph
+        kept = ("rtt", "runs", "rtt_system", "rtt_tree", "rtt_paths")
         nodes[n.id] = (
             n.type_id,
             n.name,
-            json.dumps(n.params, sort_keys=True),
+            json.dumps({k: v for k, v in n.params.items() if k not in kept}, sort_keys=True),
             n.muted,
             tuple(s.to_dict()["name"] for s in node_sockets(n, reg)),
             frozenset(deps),

@@ -6,6 +6,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- S1 (ADR Nachtrag 1, der Workflow ist die Wahrheit): Der Import hält das ganze System im Modell –
+  jeder Baumknoten (Element, Baugruppe) mit seiner Stelle im Block, dem alle seine Flächen gehören
+  (`rtt`), die Ereignisse jedes Durchgangs im Block (`runs`), die Systemangaben, die übrigen
+  Baumknoten und die Reihenfolge der Pfade in der Quelle (`rtt_system`, `rtt_tree`, `rtt_paths`);
+  `importer.system_from_model` erzeugt das System daraus zurück. Kanäle umfassen auch
+  Ereignisarten, die die Ports nicht unterscheiden (`importer.event_channel`, z. B.
+  `P.S1:extraordinary`). Abnahme W57 mit drei Referenzsystemen von Raytatouille. W39 vergleicht
+  ohne die neu gehaltenen Daten.
 - `Executor.needed(wanted)` und `Executor.status(wanted=…)`: Marken aktuell/veraltet nur für die
   Blöcke, die die gewünschten Ausgänge (die Darstellungen) brauchen, je Block mit den benötigten
   Ausgängen – ein Teiler ist aktuell, auch wenn sein Weg zu einer nicht gezeigten Kamera fehlt

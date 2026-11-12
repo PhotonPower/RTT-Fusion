@@ -8,7 +8,7 @@
 > 5, 8). Ändert die Abschnitte 3.2, 3.3, 4 und 7 des Konzepts sowie W6; alles Übrige
 > (Darstellungen, Kohärenz, Planer Stufe 2, Adapter) bleibt.
 
-**Status:** angenommen (Maintainer, 2026-11-12; P6 von ihm festgelegt). R24 bis R29 umgesetzt (R29: W55; verdichtet werden seitlich
+**Status:** angenommen (Maintainer, 2026-11-12; P6 von ihm festgelegt; Nachtrag 1 ersetzt in P4 „Eine Wahrheit“). R24 bis R29 umgesetzt (R29: W55; verdichtet werden seitlich
 invariante, isotrope Gruppen zu Tabellen ebener Wellen, allgemeine Operatoren folgen mit L4) (R28: W53–W54; die Zuordnung der exportierten Ports
 steht je Variante, Blöcke einer Gruppe mit Geometrie aus einem Raytatouille-System bewegen sich
 noch nicht mit der Pose der Gruppe) (R27: W50–W52; Geister in
@@ -100,7 +100,7 @@ beiden Seiten). Für reziproke Knoten wird S = Sᵀ in symmetrischer Basis zum K
   X → Y → Z in rad, Pivot; `docs/architecture.md`, „Transformationen“).
 - Port-Rahmen in der Welt = Pose aller Vorfahren ∘ Pose des Knotens ∘ lokaler Port-Rahmen. Die
   Port-Rahmen gehören zum Knotentyp bzw. zur Geometrie und bewegen sich starr mit.
-- **Eine Wahrheit:** Hat der Knoten Geometrie, ist seine Pose die des CAD-Objekts bzw. des Knotens
+- **Eine Wahrheit** (*ersetzt durch Nachtrag 1: nach dem Import ist der Workflow die Wahrheit*): Hat der Knoten Geometrie, ist seine Pose die des CAD-Objekts bzw. des Knotens
   im Raytatouille-Modellbaum; der Graph verweist darauf (stabile Kennung, z. B. `rtt.location`)
   und speichert sie nicht doppelt. Nur Knoten ohne Geometrie (ideale Linse, ebene Welle, Sonde)
   tragen die Pose selbst.
@@ -303,3 +303,49 @@ Raytatouille wird neu geschrieben: Ports mit Seiten (vorn/hinten aus der Lage de
 | P7 | Gruppen als Kompositum mit Varianten, festen Port-Rahmen und inneren Ästen | ja |
 | P8 | Verdichten einer Gruppe zum Operator ihrer inneren Äste | ja, nach L4 |
 | P9 | Reihenfolge R24–R29; knotenweise Ausführung (R25) vor Posen und Teiler; vor dem C++-Port des Graphen; R16 (Editor) folgt je Stufe | ja |
+
+## Nachtrag 1 (Maintainer, 2026-11-12): Der Workflow ist die Wahrheit
+
+**Ersetzt P4, Punkt „Eine Wahrheit“** (Geometrie bleibt im CAD-Objekt bzw. Raytatouille-System,
+der Graph verweist darauf).
+
+**Entscheidung.** Das Laden eines Systems (Raytatouille `.rtt.json`, später andere Formate) ist
+ein **Import**. Danach ist der Node-Workflow die einzige gültige Datenstruktur: Er wird bearbeitet
+und gespeichert. Zum Rechnen erzeugt das Plugin daraus – bei Bedarf, im Lauf – die Struktur, die
+sein Rechenkern braucht (für Raytatouille ein System). Deshalb
+
+1. stehen **alle Daten im Workflow** und sind beim Anklicken eines Knotens bearbeitbar; nichts
+   wird beim Rechnen aus der importierten Datei nachgeladen;
+2. kommt die Beschreibung, **welche Daten ein Knoten eines Plugins hat** (Parameter, Typen,
+   Einheiten, Gruppen), **vom Plugin** – nicht fest verdrahtet in RTT-Fusion;
+3. ist das Zurückschreiben in das Format des Rechenkerns ein **Export** („Save system“).
+
+**Folgen für Raytatouille-Knoten.**
+
+- Jeder Knoten des Systembaums (Element, Baugruppe) hat genau einen **Besitzer** im Workflow:
+  ein Element den Block mit seinen Flächen, eine Baugruppe den Block, der sie ganz umfasst; was
+  keinem Block gehört (eine auf mehrere Blöcke verteilte Baugruppe, ein Element auf keinem Pfad),
+  und die Angaben des Systems (Wellenlängen, Felder, Blende, Objekt, Parametertabelle,
+  Konfigurationen, Toleranzen, Optimierung) hält der Quellblock. Jeder Eintrag behält seine Stelle
+  im Baum.
+- Die Ereignisfolge eines Durchgangs (Flächen, reflektiert/durchgelassen, Ordnung) steht beim
+  Block; die Pfade des Systems sind die Äste.
+- Aus dem Workflow entsteht das System wieder (`system_from_model`); nach einem Import ohne
+  Änderung ist es die importierte Datei.
+- Ein neuer Raytatouille-Block aus der Bibliothek (Teiler, Spiegel, Linse) ist ein Element mit
+  eigener Lage; er wird beim Rechnen Teil des erzeugten Systems und rechnet wie jeder importierte.
+- Die Pose eines Raytatouille-Blocks ist die seines Elements bzw. seiner Baugruppe im Workflow.
+- **Exakte Geometrie und NURBS (Maintainer, 2026-11-12):** Im Knoten steht die exakte
+  Beschreibung des Rechenkerns (Raytatouille: Sphären, Asphären, Koniken mit ihren Koeffizienten),
+  mit der gerechnet wird. Die NURBS der CAD-Ansicht leitet das Plugin daraus ab
+  (`rtt_nurbs`); beide werden bereitgehalten, die Richtung ist exakt → NURBS, nie umgekehrt. Eine
+  Änderung im Knoten erzeugt die NURBS neu (S3).
+
+**Stufen.**
+
+| Stufe | Inhalt | Abnahme |
+| --- | --- | --- |
+| S1 | Der Workflow trägt alle Daten; die bearbeitbaren Felder beschreibt das Plugin | Import → `system_from_model` = importierte Datei, für alle Testsysteme und Raytatouilles `feature_tour` |
+| S2 | Rechnen aus dem erzeugten System, Ereignisse aus den Ästen | gleiche Bilder wie mit der Originaldatei (W9, W17, W18, Linnik, Geister) |
+| S3 | Das Plugin rechnet und zeichnet nur noch aus dem Workflow | Radius, Lage im Knoten ändern: Bild und 3D folgen |
+| S4 | Neue Raytatouille-Bauteile aus der Bibliothek | ein Teiler aus der Bibliothek gibt im Michelson das Bild des Teilers aus dem System |

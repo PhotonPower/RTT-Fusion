@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R20: Meta-Blöcke (`rtt_fusion.graph.meta`) – Sweep, Replikate (Mittel der Bilder) und
+  Optimierung eines Parameters um den azyklischen Graphen; Parameter als „block.param[i]“,
+  gesammelter Ausgang „block.socket“, Messgrößen Spitze/Mitte/Leistung; die Ausführung bietet
+  verschachtelte Auswertung (`Context.evaluate`) und ungecachte Evaluatoren. Tests W24, W25.
+
 - R19b: Ausgetauschte Blöcke im Raytatouille-Backend – der Pfad eines importierten Systems
   wird am fremden Block geteilt (Ereignisse den Blöcken zugeordnet, Teilpfade A und B in einer
   Kopie des Systems), der Block wirkt auf die Strahlen, Raytatouille rechnet weiter; Felder

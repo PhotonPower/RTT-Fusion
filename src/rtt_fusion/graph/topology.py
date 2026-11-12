@@ -185,6 +185,9 @@ class Group:
 
     variants: dict[str, Variant]
     active: str
+    #: condensed (R29): {"sigma_max": …, "count": …} – the group is one block applying plane-wave
+    #: tables of its inner branches (`graph.condense`); None: resolved into its blocks
+    condense: dict[str, Any] | None = None
 
     def add_to(self, model: Model, node: Node) -> Node:
         model.add(node)
@@ -244,8 +247,17 @@ def _flatten(
     problems: list[Diagnostic] = []
     for node in model.nodes.values():
         flat.add(replace(node, params=dict(node.params)))
+    condensed: set[str] = set()
     for gid, g in model.groups.items():
         variant = g.variants[g.active]
+        if g.condense is not None:
+            from rtt_fusion.graph.condense import condensed_node
+
+            flat.nodes[gid] = condensed_node(gid, flat.nodes[gid], variant, g.condense)
+            condensed.add(gid)
+            for b in variant.model.branches:
+                inner_branches[(gid, b.name)] = []
+            continue
         inner, inner_ports, nested = _flatten(variant.model)
         prefix = f"{gid}/"
 
@@ -290,6 +302,18 @@ def _flatten(
     for b in model.branches:
         steps = []
         for k, s in enumerate(b.steps):
+            if s.node in condensed:  # one block: the step stays, its channel names the table
+                if (s.node, s.channel) not in inner_branches:
+                    problems.append(
+                        Diagnostic(
+                            "graph.group_branch",
+                            "error",
+                            f"step {k + 1}: group {s.node} has no inner branch {s.channel!r}",
+                            f"branch {b.name}",
+                        )
+                    )
+                steps.append(s)
+                continue
             if s.node not in model.groups:
                 steps.append(s)
                 continue
@@ -777,12 +801,20 @@ def unroll(model: Model, registry: NodeTypeRegistry) -> Graph:
                             make = light_in if direction == "in" else light_out
                             sockets = (*sockets, make(name, accepts, p.side, port_name))
                             have.add(name)
+            params = dict(node.params)
+            if node.type_id == "fusion.condensed":  # which inner branches this copy applies
+                channels: dict[str, list[str]] = {}
+                for t in mine:
+                    key = f"{t.step.port_in}>{t.step.port_out}"
+                    if t.step.channel not in channels.setdefault(key, []):
+                        channels[key].append(t.step.channel)
+                params["_channels"] = channels
             g.add(
                 replace(
                     node,
                     id=_copy_id(nid, k),
                     sockets=sockets,
-                    params=dict(node.params),
+                    params=params,
                     position=(node.position[0], node.position[1] + 120.0 * k),
                     through=node.through
                     if not mine or same

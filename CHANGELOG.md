@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R29 Verdichten (`graph/condense.py`): `Group.condense` macht eine Gruppe zu einem Block
+  `fusion.condensed`, der je innerem Ast eine Tabelle ebener Wellen anwendet (s- und
+  p-Koeffizient, Ausfallsrichtung, optischer Weg und Versatz zwischen Ein- und Austrittsebene je
+  Einfallsrichtung σ, bilinear zwischen den Stützstellen). Die Tabellen entstehen aus Probewellen
+  durch die Blöcke der Gruppe, prüfen seitliche Invarianz und Isotropie (`exec.condense`) und
+  liegen im Operator-Speicher im Rahmen der Gruppe. Äste durch die Gruppe nennen weiter ihren
+  inneren Ast; der Block wendet genau diese an. Format Version 2 mit `condense`. Abnahme W55.
 - R28 Gruppen und Varianten: `Group` und `Variant` im Modell (exportierte Ports und Parameter,
   innere Äste, aktive Variante, `set_variant`), ein Schritt durch eine Gruppe nennt ihren inneren
   Ast als Kanal; `flatten` löst Gruppen auf (verschachtelt, innere Blöcke als `gruppe/block`,

@@ -114,7 +114,10 @@ def _group_to_dict(group: Group) -> dict[str, Any]:
         if v.params:
             body["params"] = dict(v.params)
         variants[name] = body
-    return {"variant": group.active, "variants": variants}
+    out: dict[str, Any] = {"variant": group.active, "variants": variants}
+    if group.condense is not None:
+        out["condense"] = dict(group.condense)
+    return out
 
 
 def _group_from_dict(d: dict[str, Any], registry: NodeTypeRegistry) -> Group:
@@ -125,7 +128,7 @@ def _group_from_dict(d: dict[str, Any], registry: NodeTypeRegistry) -> Group:
         variants[str(name)] = Variant(
             inner, ports, {str(k): str(v) for k, v in body.get("params", {}).items()}
         )
-    return Group(variants, str(d["variant"]))
+    return Group(variants, str(d["variant"]), d.get("condense"))
 
 
 def model_to_dict(model: Model) -> dict[str, Any]:

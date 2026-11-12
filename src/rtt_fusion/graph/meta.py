@@ -16,8 +16,9 @@ linked instead (R22): its output "drive" into the "drive" input of a mirror, sec
 (the block then moves along its surface normal by the value in mm – a piezo phase shifter, the
 optical path changes exactly as the geometry says), and the output to observe into its input
 "observe". The executor's cache makes a
-repetition recompute only what lies behind the changed block (concept section 6). Meta blocks are
-not cached themselves: their result depends on the enclosed graph, not on links.
+repetition recompute only what lies behind the changed block (concept section 6). A meta block's
+own result is cached under a key that contains the key of the observed output and the varied
+parameter, so it is computed again when anything in front of the observed output changes.
 
 Measures of a collected image (`imaging.Image`): "peak", "centre" (mean of the 3×3 central
 pixels), "power"; of a number: the number.
@@ -284,8 +285,20 @@ EVALUATORS: dict[str, Evaluator] = {
     "meta.replicates": replicates,
     "meta.optimise": optimise,
 }
+
+
+def _key_extra(ctx: Context, node: Node) -> list[Any]:
+    """A meta block's result depends on the output it observes and on what it varies: both are
+    part of its cache key (the executor computes the observed key without evaluating)."""
+    try:
+        observed: Any = _collect(ctx, node)
+    except ExecutionError:
+        observed = "observe=?"
+    return [observed, f"varies={_address(ctx, node)}"]
+
+
 for _ev in EVALUATORS.values():
-    _ev.uncached = True  # type: ignore[attr-defined]
+    _ev.key_extra = _key_extra  # type: ignore[attr-defined]
 
 
 def register(registry: NodeTypeRegistry) -> dict[str, Evaluator]:

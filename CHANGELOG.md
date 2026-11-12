@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R23: Ergebnisse über Läufe – `ResultCache` (Grenze, LRU, Warnung), Schlüssel ohne Rechnen mit
+  Umgebung, Treffer sparen alles davor, Meta-Blöcke gespeichert, `Executor.status()`. Tests W37,
+  W38.
+
 - R22: Phasenschieber am Spiegel – Meta-Blöcke mit `drive` (aus) und `observe` (ein); Eingang
   `drive` (Datentyp `drive`) an Spiegeln, Abschnitten und Teilern (`NodeType.extra_sockets` für
   importierte Blöcke) sowie am ebenen Spiegel des analytischen Backends: Verschiebung entlang der

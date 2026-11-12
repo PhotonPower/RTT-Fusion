@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R20b: `offset` an Raytatouille-Blöcken verschiebt deren Elemente (Kopie des Systems,
+  übersetzt je Verschiebung zwischengespeichert); Sweeps und Optimierung wirken damit auf
+  importierte Systeme. Test W28.
+
 - R19d: Der Gitter-Block baut seine Jones-Tabelle mit FourierGrating selbst (`fouriergrating`:
   Konfigurationsdatei, `side`: reflektiert/transmittiert), um die einfallenden Strahlen herum
   und zwischengespeichert. Tests W26, W27 (laufen mit FourierGrating, 1D lokal in Sekunden).

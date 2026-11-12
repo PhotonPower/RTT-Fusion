@@ -52,19 +52,71 @@ def _structural(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -
     return []  # the light of Raytatouille blocks is computed along whole paths at the detector
 
 
+def _offsets(ctx: Context) -> dict[str, list[float]]:
+    """Shifts of Raytatouille blocks (parameter `offset`, mm) per surface id."""
+    out: dict[str, list[float]] = {}
+    for n in ctx.graph.nodes.values():
+        if not n.type_id.startswith("rtt.") or n.muted:
+            continue
+        offset = ([float(v) for v in (n.params.get("offset") or [])] + [0.0, 0.0, 0.0])[:3]
+        if any(abs(v) > 0 for v in offset):
+            for s in n.params.get("surfaces", []):
+                out[str(s)] = offset
+    return out
+
+
+def _system_json(ctx: Context) -> dict[str, Any]:
+    """The system as JSON with the block offsets applied: an element that holds a shifted
+    surface moves by the offset (in the frame of its parent assembly)."""
+    system = ctx.shared.get("system")
+    if system is None:
+        raise ExecutionError("exec.no_system", "the executor needs shared['system'] (rt.System)")
+    d: dict[str, Any] = json.loads(system.to_json())
+    offsets = _offsets(ctx)
+    if not offsets:
+        return d
+
+    def visit(node: dict[str, Any]) -> None:
+        ids = {str(s.get("id")) for s in node.get("surfaces", []) if isinstance(s, dict)}
+        hit = next((offsets[i] for i in ids if i in offsets), None)
+        if hit is not None:
+            pose = node.setdefault("pose", {})
+            position = pose.setdefault("position", [0.0, 0.0, 0.0])
+            for k in range(3):
+                v = position[k]
+                if isinstance(v, dict):
+                    v["value"] = float(v.get("value", 0.0)) + hit[k]
+                else:
+                    position[k] = float(v) + hit[k]
+        for child in node.get("children", []):
+            if isinstance(child, dict):
+                visit(child)
+
+    visit(d["root"])
+    return d
+
+
 def _compiled(ctx: Context) -> Any:
+    """The compiled system for the present block offsets (cached per offsets)."""
     import raytatouille as rt
 
-    if "compiled" not in ctx.shared:
-        system = ctx.shared.get("system")
-        if system is None:
-            raise ExecutionError(
-                "exec.no_system", "the executor needs shared['system'] (rt.System)"
+    offsets = _offsets(ctx)
+    if not offsets:
+        if "compiled" not in ctx.shared:
+            if ctx.shared.get("system") is None:
+                raise ExecutionError(
+                    "exec.no_system", "the executor needs shared['system'] (rt.System)"
+                )
+            ctx.shared["compiled"] = rt.compile(
+                ctx.shared["system"], ctx.shared.get("materials", rt.MaterialLibrary())
             )
-        ctx.shared["compiled"] = rt.compile(
-            system, ctx.shared.get("materials", rt.MaterialLibrary())
-        )
-    return ctx.shared["compiled"]
+        return ctx.shared["compiled"]
+    key = json.dumps(offsets, sort_keys=True)
+    cache = ctx.shared.setdefault("compiled_by_offsets", {})
+    if key not in cache:
+        system = rt.System.from_json(json.dumps(_system_json(ctx)))
+        cache[key] = rt.compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
+    return cache[key]
 
 
 def _start_rays(
@@ -83,7 +135,7 @@ def _start_rays(
         )
     except rt.RaytatouilleError:
         pass  # not aimable (no stop, tilted or folded path): build start rays below
-    d = json.loads(ctx.shared["system"].to_json())
+    d = _system_json(ctx)
     layouts = rt.layout.surfaces(compiled)
     by_id = {L.id: L for L in layouts}
     events = next((p.get("events") for p in d.get("paths", []) if p.get("name") == path), "auto")
@@ -297,7 +349,7 @@ def _split_path(
     if len(set(foreign)) != 1:
         raise ExecutionError("exec.split", f"path {path!r}: one replaced block per path (R19b)")
     block = ctx.graph.nodes[foreign[0]]
-    d = json.loads(ctx.shared["system"].to_json())
+    d = _system_json(ctx)
     groups = _events_of_blocks(ctx, path, d)
     blocks = ctx.graph.meta["paths"][path]
     i = blocks.index(block.id)
@@ -309,15 +361,16 @@ def _split_path(
             "exec.split", f"path {path!r}: the block {block.id} needs light before and after it"
         )
     cache = ctx.shared.setdefault("split_systems", {})
-    if path not in cache:
+    split_key = f"{path}|{json.dumps(_offsets(ctx), sort_keys=True)}"
+    if split_key not in cache:
         d["paths"] = [
             *d.get("paths", []),
             {"name": f"{path}#A", "events": before},
             {"name": f"{path}#B", "events": after},
         ]
         system = rt.System.from_json(json.dumps(d))
-        cache[path] = rt.compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
-    compiled = cache[path]
+        cache[split_key] = rt.compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
+    compiled = cache[split_key]
     layouts = list(rt.layout.surfaces(compiled))
     by_id = {L.id: L for L in layouts}
     # the block sits where the replaced surface was (pose of its first event's surface)

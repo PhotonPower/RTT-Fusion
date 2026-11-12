@@ -2,7 +2,7 @@
 branches and groups; acceptance PA1, PA2, PA10 and the unrolling of section 8).
 
 Expected values are independent of the code under test: the version 1 graphs written by the
-importer before R24 (tests/data/import_v1, generated from main at 0e51e3b), the two-beam
+importer before R24 (tests/data/import_v1, generated from main at b0e3799), the two-beam
 interference I = 2 I_arm (1 + cos 2k₀δ) of W5, and – for the unrolling – the branches
 themselves: a light model whose light records its way returns, at the detector, exactly the
 list of ways the modeller wrote (decision P6), with multiple visits and junctions.

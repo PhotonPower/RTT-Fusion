@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Geändert
+
+- FourierGrating eingestellt auf 0.18.0 (Commit `174ef93`, statt 0.16.0 `959c93b`): baut auch mit
+  Apple clang (FourierGrating PR #2), so dass FourierGrating, Raytatouille und CliffordBem in
+  einem Prozess dieselbe C++-Laufzeit teilen; Konventionsdateien unverändert.
+
 ### Hinzugefügt
 
 - R19c: Partikel als Probe – Block `fusion.particle` (`rtt_fusion.graph.particle`): fokussierte

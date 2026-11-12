@@ -80,7 +80,8 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 
 ## F1–F5: FourierGrating-Adapter (R1)
 
-FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern. Alle Vergleiche über die
+FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern; seit 2026-11-12 eingestellt auf 0.18.0
+(Commit `174ef93`, baut auch mit Apple clang), Tests F1–F5, K1, J1–J5, W26/W27 unverändert grün. Alle Vergleiche über die
 Adapter-Schnittstelle in den Konventionen von Raytatouille.
 
 **Befund zur Basis bei senkrechtem Einfall:** FourierGrating nimmt für die Ordnungen bei κ = 0

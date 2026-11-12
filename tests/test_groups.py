@@ -25,7 +25,6 @@ from rtt_fusion.graph import (
     Node,
     Variant,
     builtin_registry,
-    flatten,
     meta,
     model_from_dict,
     model_to_dict,
@@ -396,14 +395,14 @@ def test_w61_section_to_group_keeps_the_system(name: str) -> None:
     assert targets
     reg, _ = _registry()
     m = model_from_raytatouille(d)
-    before = system_from_model(flatten(m))
+    before = system_from_model(m)
     for t in targets:
         section_to_group(m, t)
         assert m.nodes[t].type_id == "group"
         assert len(m.groups[t].variants[m.groups[t].active].model.nodes) > 1
     assert not [x for x in validate_model(m, reg) if x.severity == "error"]
     again = model_from_dict(json.loads(json.dumps(model_to_dict(m))), reg)  # through the file
-    assert system_from_model(flatten(again)) == before  # the same system, exactly
+    assert system_from_model(again) == before  # the same system, exactly (groups resolved)
 
 
 def test_w61_section_to_group_keeps_the_image() -> None:

@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R19c: Partikel als Probe – Block `fusion.particle` (`rtt_fusion.graph.particle`): fokussierte
+  Strahlen als Winkelspektrum (`rays_to_spectrum`), Streuung mit CliffordBem (Adapter R4),
+  Rückstreuung als Strahlen (`spectrum_to_rays`); kollimiertes Licht als eine ebene Welle.
+  Tests W29–W31. CliffordBem lokal mit Apple clang gebaut (eine Zeile in den Python-Bindings,
+  Vorschlag für CliffordBem).
+
 - R20b: `offset` an Raytatouille-Blöcken verschiebt deren Elemente (Kopie des Systems,
   übersetzt je Verschiebung zwischengespeichert); Sweeps und Optimierung wirken damit auf
   importierte Systeme. Test W28.

@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- `section_to_group` (ADR Nachtrag 1): ein Raytatouille-Abschnitt (mehrere Elemente einer Baugruppe
+  in einem Block) wird eine Gruppe mit einem Block je Element. Jeder Block hält die Daten seines
+  Elements und seinen Teil jedes Durchgangs; die Durchgänge des Abschnitts werden innere Äste, die
+  Baugruppe selbst kommt in den Rest des Baums an der Quelle. Das erzeugte System bleibt dasselbe.
+  Abgelehnt: ein Abschnitt aus einem Element, ein verschobener Abschnitt, ein Geist durch ihn.
+  Abnahme W61.
+
 - S4 (ADR Nachtrag 1): neue Raytatouille-Bauteile aus der Bibliothek (`graph/parts.py`:
   `rtt.part.mirror`, `rtt.part.splitter`, `rtt.part.lens`, `rtt.part.detector`). Das Element ist
   der Parameter `rtt_new` (bearbeitbar wie die Daten importierter Blöcke), die Ports sind fest, die

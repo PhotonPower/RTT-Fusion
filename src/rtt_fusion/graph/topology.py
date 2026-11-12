@@ -35,6 +35,7 @@ Raytatouille block that no path of the system makes), graph.observer_ambiguous.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -1098,3 +1099,164 @@ __all__ = [
     "unroll",
     "validate_model",
 ]
+
+
+# ---------------------------------------------------------------------------- section -> group
+
+
+def section_to_group(model: Model, node_id: str) -> Model:
+    """Turns a Raytatouille section (several elements of an assembly in one block) into a group
+    with one block per element (R28, ADR Nachtrag 1): each block holds its element's data and
+    its share of every traversal (the section's events split where the element changes); the
+    group keeps the id, the ports and the connections outside, the assembly's data (its pose)
+    and, as inner branches, the traversals – a step through it names one. Nothing about the
+    light changes: the system the workflow makes is the same. Changes `model` and returns it.
+    Raises ValueError for a block that is no section of several elements, a step with a channel
+    the section holds no traversal for (a ghost), or a shift of the section (offset, drive, pose
+    offset – move the group instead)."""
+    from rtt_fusion.graph.importer import event_channel
+
+    sec = model.nodes.get(node_id)
+    if sec is None or sec.type_id != "rtt.section" or "rtt" not in sec.params:
+        raise ValueError(f"{node_id} is no Raytatouille section with its data")
+    for key in ("offset", "drive", "pose_offset"):
+        value = sec.params.get(key)
+        if value and any(float(v) != 0.0 for v in (value if isinstance(value, list) else [value])):
+            raise ValueError(f"{node_id} is shifted ({key}); set it back first")
+    entries: dict[str, dict[str, Any]] = sec.params["rtt"]
+
+    def index_path(location: str) -> list[int]:
+        return [int(x) for x in location.split("/")[3::2]]
+
+    elements = sorted((loc for loc, e in entries.items() if e.get("surfaces")), key=index_path)
+    if len(elements) < 2:
+        raise ValueError(f"{node_id} holds one element only")
+    owner = {
+        str(s["id"]): loc
+        for loc in elements
+        for s in entries[loc].get("surfaces", [])
+        if isinstance(s, dict)
+    }
+    taken = set(model.nodes)
+    ids: dict[str, str] = {}
+    for loc in elements:
+        stem = re.sub(r"[^A-Za-z0-9_]+", "_", str(entries[loc].get("name") or "element")).strip("_")
+        candidate, k = stem or "element", 2
+        while candidate in taken or candidate in ids.values():
+            candidate, k = f"{stem}_{k}", k + 1
+        ids[loc] = candidate
+    inner = Model()
+    runs_of: dict[str, dict[str, Any]] = {loc: {} for loc in elements}
+    neighbours: dict[str, list[str]] = {loc: [] for loc in elements}
+    inner_branches: dict[str, str] = {}  # section run key -> inner branch name
+    exported: dict[str, tuple[str, str]] = {}
+    links: set[tuple[str, str]] = set()
+    for key, events in sec.params.get("runs", {}).items():
+        came, _, tail = str(key).partition(">")
+        goes, _, channel = tail.partition("|")
+        pieces: list[tuple[str, list[Any]]] = []
+        for e in events:
+            found = owner.get(str(e.get("surface")))
+            if found is None:
+                raise ValueError(f"{node_id}: surface {e.get('surface')} of no element")
+            if pieces and pieces[-1][0] == found:
+                pieces[-1][1].append(e)
+            else:
+                pieces.append((found, [e]))
+        steps: list[Step] = []
+        for i, (loc, part) in enumerate(pieces):
+            p_in = came if i == 0 else ids[pieces[i - 1][0]]
+            p_out = goes if i == len(pieces) - 1 else ids[pieces[i + 1][0]]
+            ch = " ".join(c for c in (event_channel(e) for e in part) if c)
+            runs_of[loc][f"{p_in}>{p_out}|{ch}"] = part
+            for port in (p_in, p_out):
+                if port and port not in neighbours[loc]:
+                    neighbours[loc].append(port)
+            if i + 1 < len(pieces):
+                links.add((loc, pieces[i + 1][0]))
+            steps.append(Step(ids[loc], p_in, p_out or None, ch))
+        for port, loc in ((came, pieces[0][0]), (goes, pieces[-1][0])):
+            if not port:
+                continue
+            if exported.setdefault(port, (ids[loc], port)) != (ids[loc], port):
+                raise ValueError(f"{node_id}: port {port} reaches two elements")
+        name = f"{came} → {goes or 'detector'}" + (f" [{channel}]" if channel else "")
+        inner.branches.append(Branch(name, tuple(steps)))
+        inner_branches[str(key)] = name
+    for k, loc in enumerate(elements):
+        entry = entries[loc]
+        ports = tuple(PortSpec(p, f"from_{p}", f"to_{p}", "") for p in neighbours[loc])
+        sockets = tuple(
+            s
+            for p in neighbours[loc]
+            for s in (light_in(f"from_{p}", "RH", "", p), light_out(f"to_{p}", "RH", "", p))
+        )
+        through: dict[str, list[str]] = {}
+        for run_key in runs_of[loc]:
+            p_in, _, tail = run_key.partition(">")
+            p_out = tail.partition("|")[0]
+            if p_out:
+                deps = through.setdefault(f"to_{p_out}", [])
+                if f"from_{p_in}" not in deps:
+                    deps.append(f"from_{p_in}")
+        etype = str(entry.get("type", "section"))
+        kind = (
+            "rtt.mirror"
+            if etype == "mirror" and len(entry.get("surfaces", [])) == 1
+            else "rtt.section"
+        )
+        inner.add(
+            Node(
+                ids[loc],
+                kind,
+                str(entry.get("name") or ids[loc]),
+                params={
+                    "location": loc,
+                    "element_type": etype,
+                    "surfaces": [
+                        str(s["id"]) for s in entry.get("surfaces", []) if isinstance(s, dict)
+                    ],
+                    "rtt": {loc: entry},
+                    "runs": runs_of[loc],
+                },
+                position=(220.0 * k, 0.0),
+                sockets=sockets,
+                through=tuple((o, tuple(i)) for o, i in through.items()),
+                ports=ports,
+            )
+        )
+    for x, y in sorted(links):
+        if not any({c.a, c.b} == {(ids[x], ids[y]), (ids[y], ids[x])} for c in inner.connections):
+            inner.connect((ids[x], ids[y]), (ids[y], ids[x]))
+    # the group in the section's place (id, name, position, pose); the assembly now spans several
+    # blocks, so its node goes where the import puts such nodes: the source's rest of the tree
+    rest = {loc: e for loc, e in entries.items() if loc not in elements}
+    if rest:
+        source = next((n for n in model.nodes.values() if "rtt_tree" in n.params), None)
+        if source is None:
+            raise ValueError(f"{node_id}: no source with the system's tree for its assembly")
+        source.params["rtt_tree"].update(rest)
+    model.nodes[node_id] = Node(
+        node_id,
+        "group",
+        sec.name,
+        params={"pose": sec.params["pose"]} if "pose" in sec.params else {},
+        position=sec.position,
+        muted=sec.muted,
+    )
+    model.groups[node_id] = Group({"elements": Variant(inner, exported)}, "elements")
+    branches = []
+    for b in model.branches:
+        steps = []
+        for s in b.steps:
+            if s.node == node_id:
+                key = f"{s.port_in}>{s.port_out or ''}|{s.channel}"
+                if key not in inner_branches:
+                    raise ValueError(
+                        f"branch {b.name}: the section holds no traversal {key} (a ghost?)"
+                    )
+                s = Step(node_id, s.port_in, s.port_out, inner_branches[key])
+            steps.append(s)
+        branches.append(Branch(b.name, tuple(steps)))
+    model.branches = branches
+    return model

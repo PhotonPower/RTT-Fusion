@@ -6,6 +6,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R19b: Ausgetauschte Blöcke im Raytatouille-Backend – der Pfad eines importierten Systems
+  wird am fremden Block geteilt (Ereignisse den Blöcken zugeordnet, Teilpfade A und B in einer
+  Kopie des Systems), der Block wirkt auf die Strahlen, Raytatouille rechnet weiter; Felder
+  (skalar entlang einer reellen Polarisationsrichtung, Rest in der PRT), OPL und PRT
+  verkettet, zwei Polarisationen; für Strahlen- und Feldbilder. `replace_block` (Austausch mit
+  Zuordnung der Sockets nach Richtung und Art). Evaluatoren und Registry im Kontext.
+  Testsystem `tests/data/linnik_mini.rtt.json`. Tests W22, W23.
+
 - R19a: Gitter als Probe – Block `fusion.grating` (`rtt_fusion.graph.grating`) mit den Sockets
   eines Spiegels: Beugungsordnungen als Kanäle aus einer Jones-Tabelle (R6, FourierGrating;
   `load_table` liest `raytatouille-result`-Dateien), Gittergleichung, PRT der Ordnung, Phase der

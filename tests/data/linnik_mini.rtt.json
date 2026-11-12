@@ -1,0 +1,40 @@
+{
+  "schema_version": "0.9.0",
+  "name": "Minimal Linnik arm with ideal lenses (RTT-Fusion test system): Köhler illumination, objective f = 2 mm, tube lens f = 20 mm (magnification 10), sample in the front focal plane",
+  "units": {"length": "mm", "wavelength": "um"},
+  "wavelengths": [{"um": 0.6, "reference": true}],
+  "aperture": {"type": "epd", "value": 1.0},
+  "fields": {"points": [{}]},
+  "root": {
+    "type": "assembly",
+    "name": "linnik",
+    "children": [
+      {"type": "thin_element", "name": "illumination lens", "surfaces": [
+        {"id": "L0", "aperture": {"type": "circular", "radius": 1.0},
+         "interaction": {"type": "ideal_lens", "focal_length": 10.0}}]},
+      {"type": "thin_element", "name": "beam splitter", "pose": {"position": [0.0, 0.0, 11.0], "rotation_deg": [45.0, 0.0, 0.0]}, "surfaces": [
+        {"id": "BS", "aperture": {"type": "circular", "radius": 8.0}, "interaction": {"type": "ideal_beam_splitter"}}]},
+      {"type": "thin_element", "name": "objective", "pose": {"position": [0.0, 0.0, 12.0]}, "surfaces": [
+        {"id": "OBJ", "aperture": {"type": "circular", "radius": 6.0},
+         "interaction": {"type": "ideal_lens", "focal_length": 2.0, "object_distance": 2.0}}]},
+      {"type": "mirror", "name": "sample", "pose": {"position": [0.0, 0.0, 14.0]}, "surfaces": [
+        {"id": "SPM", "aperture": {"type": "circular", "radius": 1.0}, "interaction": {"type": "ideal_mirror"}}]},
+      {"type": "thin_element", "name": "tube lens", "pose": {"position": [0.0, -21.0, 11.0], "rotation_deg": [-90.0, 0.0, 0.0]}, "surfaces": [
+        {"id": "TL", "aperture": {"type": "circular", "radius": 8.0},
+         "interaction": {"type": "ideal_lens", "focal_length": 20.0, "object_distance": 20.0}}]},
+      {"type": "detector", "name": "camera", "pose": {"position": [0.0, -41.0, 11.0], "rotation_deg": [-90.0, 0.0, 0.0]}, "surfaces": [
+        {"id": "CAM", "aperture": {"type": "rectangular", "half_width_x": 1.2, "half_width_y": 1.2}}]}
+    ]
+  },
+  "paths": [
+    {"name": "measurement", "events": [
+      {"surface": "L0", "kind": "transmit"},
+      {"surface": "BS", "kind": "transmit"},
+      {"surface": "OBJ", "kind": "transmit"},
+      {"surface": "SPM", "kind": "reflect"},
+      {"surface": "OBJ", "kind": "transmit"},
+      {"surface": "BS", "kind": "reflect"},
+      {"surface": "TL", "kind": "transmit"},
+      {"surface": "CAM", "kind": "transmit"}]}
+  ]
+}

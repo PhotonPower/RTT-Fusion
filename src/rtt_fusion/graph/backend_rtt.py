@@ -45,6 +45,7 @@ from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle, rotation_betw
 from rtt_fusion.graph.model import Node
 from rtt_fusion.graph.optics import hexapolar
 from rtt_fusion.graph.planner import link_key
+from rtt_fusion.graph.validate import node_sockets
 
 
 def _structural(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
@@ -155,6 +156,20 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
         if muted & set(ctx.graph.meta["paths"][path]):
             ctx.log.append(f"{node.id}: path {path} left out (muted block on it)")
             continue
+        foreign = [
+            b
+            for b in ctx.graph.meta["paths"][path]
+            if b in ctx.graph.nodes and not ctx.graph.nodes[b].type_id.startswith("rtt.")
+        ]
+        if foreign:
+            for field in range(compiled.field_count):
+                for wl in range(len(compiled.wavelengths_um)):
+                    out = _split_path(ctx, node, path, foreign, field, wl, fields_wanted)
+                    if fields_wanted:
+                        fields += out
+                    else:
+                        bundles += out
+            continue
         for field in range(compiled.field_count):
             for wl in range(len(compiled.wavelengths_um)):
                 rays = _start_rays(ctx, compiled, path, rings, field, wl)
@@ -220,6 +235,282 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
         except FieldError as e:
             raise ExecutionError("exec.field", str(e), node.id) from e
     return coherent_image(bundles, plane, float(hu), float(hv), nx, ny)
+
+
+# ---------------------------------------------------------------------- split paths (R19b)
+
+
+def _events_of_blocks(ctx: Context, path: str, system_json: dict[str, Any]) -> list[list[Any]]:
+    """The events of `path` grouped by the blocks of `graph.meta["paths"][path]`: a Raytatouille
+    block takes the consecutive events on its surfaces, any other block (a replaced sample) the
+    events up to the next block's surfaces."""
+    events = next(
+        (p.get("events") for p in system_json.get("paths", []) if p.get("name") == path), None
+    )
+    if not isinstance(events, list):
+        raise ExecutionError(
+            "exec.split", f"path {path!r} needs explicit events to be split at a block"
+        )
+    blocks = ctx.graph.meta["paths"][path]
+
+    def surfaces(block_id: str) -> set[str]:
+        n = ctx.graph.nodes.get(block_id)
+        if n is None or not n.type_id.startswith("rtt."):
+            return set()
+        return {str(s) for s in n.params.get("surfaces", [])}
+
+    groups: list[list[Any]] = []
+    k = 0
+    for i, b in enumerate(blocks):
+        own = surfaces(b)
+        group: list[Any] = []
+        if own:
+            while k < len(events) and str(events[k]["surface"]) in own:
+                group.append(events[k])
+                k += 1
+        else:
+            nxt = surfaces(blocks[i + 1]) if i + 1 < len(blocks) else set()
+            while k < len(events) and (not nxt or str(events[k]["surface"]) not in nxt):
+                group.append(events[k])
+                k += 1
+        groups.append(group)
+    if k != len(events):
+        raise ExecutionError("exec.split", f"the events of path {path!r} do not follow its blocks")
+    return groups
+
+
+def _split_path(
+    ctx: Context,
+    detector_node: Node,
+    path: str,
+    foreign: list[str],
+    field: int,
+    wl: int,
+    fields_wanted: bool,
+) -> list[Any]:
+    """A path with a non-Raytatouille block (e.g. a grating as the sample): Raytatouille traces up
+    to it, the block's evaluator acts on the rays, Raytatouille traces each of its outputs on.
+    Two orthogonal input polarisations (unpolarised source). Returns ray bundles at the detector
+    (R) or fields after the last surface before it (H)."""
+    import raytatouille as rt
+
+    if len(set(foreign)) != 1:
+        raise ExecutionError("exec.split", f"path {path!r}: one replaced block per path (R19b)")
+    block = ctx.graph.nodes[foreign[0]]
+    d = json.loads(ctx.shared["system"].to_json())
+    groups = _events_of_blocks(ctx, path, d)
+    blocks = ctx.graph.meta["paths"][path]
+    i = blocks.index(block.id)
+    before = [e for g in groups[:i] for e in g]
+    own = groups[i]
+    after = [e for g in groups[i + 1 :] for e in g]
+    if not before or not after or not own:
+        raise ExecutionError(
+            "exec.split", f"path {path!r}: the block {block.id} needs light before and after it"
+        )
+    cache = ctx.shared.setdefault("split_systems", {})
+    if path not in cache:
+        d["paths"] = [
+            *d.get("paths", []),
+            {"name": f"{path}#A", "events": before},
+            {"name": f"{path}#B", "events": after},
+        ]
+        system = rt.System.from_json(json.dumps(d))
+        cache[path] = rt.compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
+    compiled = cache[path]
+    layouts = list(rt.layout.surfaces(compiled))
+    by_id = {L.id: L for L in layouts}
+    # the block sits where the replaced surface was (pose of its first event's surface)
+    L = by_id.get(str(own[0]["surface"]))
+    params = dict(block.params)
+    if L is not None and not params.get("keep_pose"):
+        rot = np.asarray(L.rotation)
+        params["point"] = [float(v) for v in np.asarray(L.translation)]
+        params["normal"] = [float(v) for v in rot[:, 2]]
+    placed = Node(block.id, block.type_id, block.name, params)
+    evaluator = ctx.evaluators.get(block.type_id)
+    if evaluator is None:
+        raise ExecutionError("exec.no_evaluator", f"no evaluator for {block.type_id}", block.id)
+    rings = int(ctx.shared.get("rings", 30))
+    waist = float(ctx.shared.get("gaussian_waist", 0.0) or 0.0)
+    # --- part A: up to the block
+    rays = _start_rays(ctx, compiled, path, rings, field, wl)
+    pupil = np.stack([np.asarray(rays.pupil_x), np.asarray(rays.pupil_y)], -1).copy()
+    apod = np.exp(-np.sum(pupil * pupil, axis=1) / waist**2) if waist > 0 else np.ones(len(pupil))
+    _, rec_a = rt.trace.trace(
+        compiled,
+        rays,
+        path=f"{path}#A",
+        record_path=True,
+        max_recorded_rays=max(rays.size, 1),
+        polarization=True,
+    )
+    rows = np.flatnonzero(np.asarray(rec_a.count) == rec_a.slots)
+    if rows.size < 3:
+        return []
+    idx = np.asarray(rec_a.ray_indices)
+    last = rec_a.slots - 1
+    direction_a = np.asarray(rec_a.direction)
+    prt_a = np.asarray(rec_a.prt)[rows, last]
+    k_a = direction_a[rows, last]
+    p_t = prt_a - np.einsum("ni,nj,njk->nik", k_a, k_a, prt_a)
+    norm = 0.5 * np.sum(np.abs(p_t) ** 2, axis=(1, 2))
+    weight = np.asarray(rec_a.weight)[rows, last]
+    s_a = np.where(norm > 0, weight / np.where(norm > 0, norm, 1.0), 0.0)
+    k0 = direction_a[rows, 0].mean(axis=0)
+    k0 = k0 / np.linalg.norm(k0)
+    seed = np.eye(3)[int(np.argmin(np.abs(k0)))]
+    x = seed - k0 * float(k0 @ seed)
+    x = x / np.linalg.norm(x)
+    y = np.cross(k0, x)
+    frame = _carried_frame(np.stack([x, y]), direction_a, rows, pupil, idx, last, rec_a, layouts)
+    base = RayBundle(
+        key=CoherenceKey("source", field, wl, 0),
+        wavelength_um=float(compiled.wavelengths_um[wl]),
+        position=np.asarray(rec_a.position)[rows, last],
+        direction=k_a,
+        opl=np.asarray(rec_a.opl)[rows, last],
+        # the field is amplitude·prt·jones; the splitter's factors are in prt (power-normalised
+        # P), the polarisation-independent ones (s) in the amplitude; the block that follows
+        # splits the field again into scalar and prt
+        amplitude=(np.sqrt(np.clip(s_a / 2.0, 0.0, None)) * apod[idx[rows]]).astype(complex),
+        source_xy=pupil[idx[rows]],
+        alive=np.ones(len(rows), dtype=bool),
+        path=(path,),
+        prt=prt_a.astype(complex),
+        source_frame=frame,
+        index=_segment_index(rec_a, rows, last - 1, last) if last >= 1 else 1.0,
+        source_index=_segment_index(rec_a, rows, 0, 1),
+    )
+    sockets = node_sockets(placed, ctx.registry) if ctx.registry is not None else ()
+    in_name = next((s.name for s in sockets if s.direction.value == "in"), "in")
+    out_name = next((s.name for s in sockets if s.direction.value == "out"), "out")
+    out: list[Any] = []
+    for p, jones in enumerate((x, y)):
+        incident = base.evolve(
+            key=CoherenceKey("source", field, wl, p), jones=jones.astype(complex)
+        )
+        for b in evaluator(ctx, placed, out_name, {in_name: [incident]}):
+            out += _trace_on(ctx, compiled, layouts, path, b, wl, field, fields_wanted)
+    return out
+
+
+def _trace_on(
+    ctx: Context,
+    compiled: Any,
+    layouts: list[Any],
+    path: str,
+    b: RayBundle,
+    wl: int,
+    field: int,
+    fields_wanted: bool,
+) -> list[Any]:
+    """Part B: trace a bundle that a block sent on, and combine OPL, field and polarisation."""
+    import raytatouille as rt
+
+    alive = np.flatnonzero(np.asarray(b.alive) & (np.abs(np.asarray(b.amplitude)) > 0))
+    if alive.size < 3:
+        return []
+    rays = rt.trace.RayBatch(int(alive.size))
+    pos = np.asarray(b.position)[alive]
+    dirs = np.asarray(b.direction)[alive]
+    for name, values in (
+        ("pos_x", pos[:, 0]),
+        ("pos_y", pos[:, 1]),
+        ("pos_z", pos[:, 2]),
+        ("dir_x", dirs[:, 0]),
+        ("dir_y", dirs[:, 1]),
+        ("dir_z", dirs[:, 2]),
+    ):
+        np.asarray(getattr(rays, name))[:] = values
+    np.asarray(rays.field)[:] = field
+    np.asarray(rays.wl)[:] = wl
+    _, rec = rt.trace.trace(
+        compiled,
+        rays,
+        path=f"{path}#B",
+        record_path=True,
+        max_recorded_rays=max(rays.size, 1),
+        polarization=True,
+    )
+    rows = np.flatnonzero(np.asarray(rec.count) == rec.slots)
+    if rows.size < 3:
+        return []
+    idx = np.asarray(rec.ray_indices)
+    src = alive[idx[rows]]  # index into the incoming bundle
+    slot = rec.slots - 2 if fields_wanted else rec.slots - 1
+    slot = max(slot, 0)
+    direction = np.asarray(rec.direction)
+    p_b = np.asarray(rec.prt)[rows, slot]
+    k_b = direction[rows, slot]
+    p_t = p_b - np.einsum("ni,nj,njk->nik", k_b, k_b, p_b)
+    norm = 0.5 * np.sum(np.abs(p_t) ** 2, axis=(1, 2))
+    weight = np.asarray(rec.weight)[rows, slot]
+    s_b = (
+        np.where(norm > 0, weight / np.where(norm > 0, norm, 1.0), 0.0)
+        if slot > 0
+        else np.ones(len(rows))
+    )
+    prt_in = (
+        np.asarray(b.prt)[src]
+        if b.prt is not None
+        else np.tile(np.eye(3, dtype=complex), (len(rows), 1, 1))
+    )
+    frame = (
+        _carried_frame(
+            np.asarray(b.source_frame),
+            direction,
+            rows,
+            np.asarray(b.source_xy)[alive],
+            idx,
+            slot,
+            rec,
+            layouts,
+        )
+        if b.source_frame is not None
+        else None
+    )
+    # the full field a·P_B·prt·jones·sqrt(s_B), split into a scalar along a real polarisation
+    # direction (the ray image R uses only that) and the rest in prt (fields H use both)
+    prt_total = np.einsum("nij,njk->nik", p_b, prt_in)
+    jones = (
+        np.asarray(b.jones, dtype=complex)
+        if b.jones is not None
+        else np.array([1.0, 0.0, 0.0], dtype=complex)
+    )
+    scale = np.asarray(b.amplitude)[src] * np.sqrt(np.clip(s_b, 0.0, None))
+    f = scale[:, None] * np.einsum("nij,j->ni", prt_total, jones)
+    c = _scalar_along(f)
+    safe = np.where(np.abs(c) > 1e-300, c, 1.0)
+    bundle = b.evolve(
+        position=np.asarray(rec.position)[rows, slot],
+        direction=k_b,
+        opl=np.asarray(b.opl)[src] + np.asarray(rec.opl)[rows, slot],
+        amplitude=c,
+        source_xy=np.asarray(b.source_xy)[src],
+        alive=np.abs(c) > 0,
+        prt=(prt_total * (scale / safe)[:, None, None]).astype(complex),
+        source_frame=frame,
+        index=_segment_index(rec, rows, slot, slot + 1) if fields_wanted else b.index,
+        source_cos=(np.asarray(b.source_cos)[src] if np.ndim(b.source_cos) > 0 else b.source_cos),
+    )
+    if not fields_wanted:
+        return [bundle]
+    try:
+        return [rays_to_field(bundle)]
+    except FieldError as e:
+        raise ExecutionError("exec.field", f"path {path}: {e}") from e
+
+
+def _scalar_along(f: Any) -> Any:
+    """Complex amplitude of field vectors f (N, 3) along a real unit direction (exact for linear
+    polarisation): the phase of the largest component is taken out, the real part normalised."""
+    big = np.argmax(np.abs(f), axis=1)
+    alpha = np.angle(f[np.arange(len(f)), big])
+    e = np.real(f * np.exp(-1j * alpha)[:, None])
+    norm = np.linalg.norm(e, axis=1)
+    e = e / np.where(norm > 0, norm, 1.0)[:, None]
+    return np.sum(f * e, axis=1)
 
 
 def _input_representation(ctx: Context, node: Node) -> str:

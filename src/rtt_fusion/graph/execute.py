@@ -61,6 +61,8 @@ class Context:
     shared: dict[str, Any] = field(default_factory=dict)
     log: list[str] = field(default_factory=list)
     plan: Plan | None = None  # the plan of the run (representation per link)
+    evaluators: dict[str, Any] = field(default_factory=dict)  # for backends that call other blocks
+    registry: Any = None
 
 
 class Executor:
@@ -75,7 +77,7 @@ class Executor:
         self.graph = graph
         self.registry = registry
         self.evaluators = evaluators
-        self.context = Context(graph, dict(shared or {}))
+        self.context = Context(graph, dict(shared or {}), evaluators=evaluators, registry=registry)
         self.cache: dict[str, Any] = {}
         self.calls: dict[tuple[str, str], int] = {}  # evaluator calls per output (tests, profiling)
         self.plan: Plan | None = None

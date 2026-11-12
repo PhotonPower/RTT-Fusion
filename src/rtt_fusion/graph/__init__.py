@@ -17,7 +17,7 @@ from rtt_fusion.graph.model import (
 )
 from rtt_fusion.graph.planner import Plan, Requirements, plan
 from rtt_fusion.graph.registry import NodeTypeRegistry, builtin_registry, node_type_from_describe
-from rtt_fusion.graph.validate import Diagnostic, errors, find_cycle, validate
+from rtt_fusion.graph.validate import Diagnostic, errors, find_cycle, replace_block, validate
 
 __all__ = [
     "Category",
@@ -43,6 +43,7 @@ __all__ = [
     "loads",
     "node_type_from_describe",
     "plan",
+    "replace_block",
     "save",
     "validate",
 ]

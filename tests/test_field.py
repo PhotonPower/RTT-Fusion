@@ -17,15 +17,14 @@ import warnings
 import numpy as np
 import pytest
 
-pytest.importorskip("fieldtracing")
-
-from fieldtracing.focus import richards_wolf  # noqa: E402
-
 from rtt_fusion.graph import Graph, Node, builtin_registry, optics
 from rtt_fusion.graph.execute import WITH_FIELDS, ExecutionError, Executor
 from rtt_fusion.graph.field import field_to_rays, rays_to_field
 from rtt_fusion.graph.imaging import Image, coherent_image
 from rtt_fusion.graph.light import Plane
+
+# fieldtracing is optional (extra "modules"); without it these tests are skipped
+richards_wolf = pytest.importorskip("fieldtracing.focus").richards_wolf
 
 WAVELENGTH_UM = 0.6328
 K = 2 * np.pi / (WAVELENGTH_UM * 1e-3)

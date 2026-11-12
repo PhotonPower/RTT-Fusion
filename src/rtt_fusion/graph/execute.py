@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import OrderedDict
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -100,6 +101,8 @@ class Executor:
         evaluators: dict[str, Evaluator],
         shared: dict[str, Any] | None = None,
         available: frozenset[str] = EXECUTABLE,
+        cache: ResultCache | None = None,
+        environment: object = None,
     ) -> None:
         self.graph = graph
         self.registry = registry
@@ -107,7 +110,8 @@ class Executor:
         self.context = Context(graph, dict(shared or {}), evaluators=evaluators, registry=registry)
         self._running: set[str] = set()
         self.context.evaluate = self._nested
-        self.cache: dict[str, Any] = {}
+        self.cache: ResultCache = cache if cache is not None else ResultCache()
+        self.environment = _hash(environment) if environment is not None else _environment(shared)
         self.calls: dict[tuple[str, str], int] = {}  # evaluator calls per output (tests, profiling)
         self.plan: Plan | None = None
         self.available = frozenset(available)
@@ -150,6 +154,45 @@ class Executor:
         return out
 
     # ------------------------------------------------------------------ internals
+    def _key(self, node_id: str, socket: str, stack: tuple[str, ...] = ()) -> str:
+        """Content hash of an output without computing it: the environment, the block (type,
+        parameters, socket, muted), the keys of everything it depends on (through its inputs and,
+        for meta blocks, the output they observe) and the planned representation per link."""
+        here = f"{node_id}.{socket}"
+        if here in stack:
+            raise ExecutionError("exec.cycle", " -> ".join((*stack, here)), here)
+        node = self.graph.node(node_id)
+        deps = node_through(node, self.registry).get(socket, ())
+        input_keys: list[str] = []
+        for in_name in deps:
+            links = self.graph.links_to(node_id, in_name)
+            if not links:
+                input_keys.append(f"{in_name}=∅")
+                continue
+            lk = links[0]
+            k = self._key(lk.source[0], lk.source[1], (*stack, here))
+            rep = self.plan.representations.get(link_key(lk), "") if self.plan else ""
+            input_keys.append(f"{in_name}={k}|{rep or lk.transport}")
+        extra_keys: list[str] = []
+        key_extra = getattr(self.evaluators.get(node.type_id), "key_extra", None)
+        if key_extra is not None:
+            for item in key_extra(self.context, node):
+                if isinstance(item, tuple):  # another output the block depends on
+                    extra_keys.append(self._key(item[0], item[1], (*stack, here)))
+                else:  # a plain part of the key (e.g. the parameter a meta block varies)
+                    extra_keys.append(str(item))
+        return _hash(
+            {
+                "env": self.environment,
+                "type": node.type_id,
+                "params": node.params,
+                "socket": socket,
+                "muted": node.muted,
+                "inputs": input_keys,
+                "extra": extra_keys,
+            }
+        )
+
     def _value(self, node_id: str, socket: str, stack: tuple[str, ...]) -> tuple[Any, str]:
         here = f"{node_id}.{socket}"
         if here in stack:
@@ -158,42 +201,28 @@ class Executor:
         spec = next((s for s in node_sockets(node, self.registry) if s.name == socket), None)
         if spec is None or spec.direction is not Direction.OUT:
             raise ExecutionError("exec.socket_unknown", f"no output {socket!r}", node_id)
+        key = self._key(node_id, socket, stack)
+        evaluator = self.evaluators.get(node.type_id)
+        uncached = bool(getattr(evaluator, "uncached", False))
+        if not uncached and key in self.cache:
+            return self.cache[key], key  # nothing in front of it is computed either
         deps = node_through(node, self.registry).get(socket, ())
         inputs: dict[str, Any] = {}
-        input_keys: list[str] = []
         for in_name in deps:
             links = self.graph.links_to(node_id, in_name)
             if not links:
                 inputs[in_name] = []
-                input_keys.append(f"{in_name}=∅")
                 continue
             lk = links[0]
-            value, key = self._value(lk.source[0], lk.source[1], (*stack, here))
+            value, _ = self._value(lk.source[0], lk.source[1], (*stack, here))
             rep = self.plan.representations.get(link_key(lk), "R") if self.plan else "R"
-            value = self._convert(value, rep, node, lk)
-            inputs[in_name] = value
-            rep = self.plan.representations.get(link_key(lk), "") if self.plan else ""
-            input_keys.append(f"{in_name}={key}|{rep or lk.transport}")
-        key = _hash(
-            {
-                "type": node.type_id,
-                "params": node.params,
-                "socket": socket,
-                "muted": node.muted,
-                "inputs": input_keys,
-            }
-        )
-        evaluator = self.evaluators.get(node.type_id)
-        uncached = bool(getattr(evaluator, "uncached", False))
-        if key in self.cache and not uncached:
-            return self.cache[key], key
+            inputs[in_name] = self._convert(value, rep, node, lk)
         if node.muted:
             if spec.kind is SocketKind.LIGHT:
                 value = [b for v in inputs.values() for b in (v or [])]
             else:
                 value = None
         else:
-            evaluator = self.evaluators.get(node.type_id)
             if evaluator is None:
                 raise ExecutionError(
                     "exec.no_evaluator", f"no evaluator for {node.type_id}", node_id
@@ -205,6 +234,30 @@ class Executor:
         if not uncached:
             self.cache[key] = value
         return value, key
+
+    def status(self) -> dict[str, bool]:
+        """Per block: True if its outputs are in the cache (up to date), without computing
+        anything (GUI: a green tick / a red cross)."""
+        self.check()
+        out: dict[str, bool] = {}
+        for node in self.graph.nodes.values():
+            # outputs with a value (a "drive" carries none), and of those the linked ones (an
+            # unused channel of a splitter is never computed); a block without linked outputs
+            # (a display, a detector) counts all its outputs
+            valued = [
+                s.name
+                for s in node_sockets(node, self.registry)
+                if s.direction is Direction.OUT and "drive" not in s.accepts
+            ]
+            linked = [name for name in valued if self.graph.links_from(node.id, name)]
+            outputs = linked or valued
+            try:
+                out[node.id] = bool(outputs) and all(
+                    self._key(node.id, name) in self.cache for name in outputs
+                )
+            except ExecutionError:
+                out[node.id] = False
+        return out
 
     def _nested(self, node_id: str, socket: str) -> Any:
         """Evaluation for meta blocks (parameters may have changed; the cache keys contain them, the
@@ -235,6 +288,86 @@ class Executor:
         except FieldError as e:
             raise ExecutionError("exec.field", str(e), where) from e
         return out
+
+
+def _environment(shared: dict[str, Any] | None) -> str:
+    """Fingerprint of the settings in `shared` that results depend on: plain values (numbers,
+    text, lists) and the system's JSON; objects without a plain form (a compiled system, a
+    material library) are left out – pass `environment` explicitly to cover them."""
+    plain: dict[str, Any] = {}
+    for k, v in sorted((shared or {}).items()):
+        if isinstance(v, int | float | str | bool) or v is None:
+            plain[k] = v
+        elif isinstance(v, list | tuple) and all(isinstance(x, int | float | str) for x in v):
+            plain[k] = list(v)
+        elif k == "system" and hasattr(v, "to_json"):
+            plain[k] = hashlib.sha256(v.to_json().encode("utf-8")).hexdigest()
+    return _hash(plain)
+
+
+def _nbytes(obj: Any, seen: set[int] | None = None, depth: int = 0) -> int:
+    """Estimated memory of a result: numpy arrays inside dataclasses, lists, tuples and dicts."""
+    seen = set() if seen is None else seen
+    if id(obj) in seen or depth > 8:
+        return 0
+    seen.add(id(obj))
+    nbytes = getattr(obj, "nbytes", None)
+    if isinstance(nbytes, int) and hasattr(obj, "dtype"):
+        return nbytes
+    if isinstance(obj, dict):
+        return sum(_nbytes(v, seen, depth + 1) for v in obj.values())
+    if isinstance(obj, list | tuple | set | frozenset):
+        return sum(_nbytes(v, seen, depth + 1) for v in obj)
+    fields = getattr(obj, "__dict__", None)
+    if fields is None and hasattr(obj, "__dataclass_fields__"):
+        fields = {f: getattr(obj, f, None) for f in obj.__dataclass_fields__}
+    if isinstance(fields, dict):
+        return 64 + sum(_nbytes(v, seen, depth + 1) for v in fields.values())
+    return 16
+
+
+class ResultCache:
+    """Results by content key, kept across runs (Blender-like: only what changed is computed
+    again), at most `limit_bytes` (estimated); the least recently used results go first, with a
+    line in `warnings`."""
+
+    def __init__(self, limit_bytes: int = 1 << 30) -> None:
+        self.limit_bytes = int(limit_bytes)
+        self._items: OrderedDict[str, tuple[Any, int]] = OrderedDict()
+        self.size_bytes = 0
+        self.warnings: list[str] = []
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._items
+
+    def __getitem__(self, key: str) -> Any:
+        value, _ = self._items[key]
+        self._items.move_to_end(key)
+        return value
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key in self._items:
+            self.size_bytes -= self._items.pop(key)[1]
+        size = _nbytes(value)
+        self._items[key] = (value, size)
+        self.size_bytes += size
+        evicted = 0
+        while self.size_bytes > self.limit_bytes and len(self._items) > 1:
+            _, (_, s) = self._items.popitem(last=False)
+            self.size_bytes -= s
+            evicted += 1
+        if evicted:
+            self.warnings.append(
+                f"result cache over {self.limit_bytes / 2**30:.2g} GB: {evicted} older result(s) "
+                "dropped (they are computed again when needed)"
+            )
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def clear(self) -> None:
+        self._items.clear()
+        self.size_bytes = 0
 
 
 def _hash(obj: object) -> str:

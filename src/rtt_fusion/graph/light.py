@@ -60,8 +60,12 @@ class RayBundle:
         jones: (3,) complex field direction of the source (global; None: x̂ projected).
         prt: (N, 3, 3) geometric polarisation matrix (global; None: identity).
         source_cos: cos γ of the rays on the source plane (1 for a plane wave ⟂ the plane).
-        source_frame: (2, 3) global axes of the `source_xy` coordinates; with `prt` it gives the
-            orientation of the ray map that comes from reflections (not from caustics).
+        source_frame: (2, 3) the axes of the `source_xy` coordinates carried along the rays
+            geometrically (mirror: reflected, refraction: smallest rotation k_in -> k_out), global,
+            at the present position. It removes the rotation and mirroring of the ray map that
+            come from the geometry of the path, so that the Maslov index counts caustics only.
+        index, source_index: refractive indices of the present medium and at the source plane
+            (absolute; the OPL is vacuum-equivalent).
     """
 
     key: CoherenceKey
@@ -77,7 +81,9 @@ class RayBundle:
     jones: ComplexArray | None = None
     prt: ComplexArray | None = None
     source_cos: FloatArray | float = 1.0  # cos γ between the rays and the source plane
-    source_frame: FloatArray | None = None  # (2, 3) axes u, v of `source_xy` (global)
+    source_frame: FloatArray | None = None  # (2, 3) source axes carried along (global, now)
+    index: float = 1.0  # refractive index of the medium the rays are in now
+    source_index: float = 1.0  # refractive index at the source plane
 
     @property
     def size(self) -> int:

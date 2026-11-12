@@ -126,6 +126,9 @@ def _reflect(b: RayBundle, plane: Plane, factor: complex, name: str) -> RayBundl
         amplitude=np.asarray(moved.amplitude) * factor,
         path=(*b.path, name),
         prt=prt_new,
+        source_frame=(
+            None if moved.source_frame is None else np.asarray(moved.source_frame) @ householder.T
+        ),
     )
 
 

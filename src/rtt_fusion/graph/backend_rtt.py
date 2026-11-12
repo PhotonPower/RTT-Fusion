@@ -41,7 +41,7 @@ import numpy as np
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.field import FieldBundle, FieldError, field_image, rays_to_field
 from rtt_fusion.graph.imaging import coherent_image
-from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
+from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle, rotation_between
 from rtt_fusion.graph.model import Node
 from rtt_fusion.graph.optics import hexapolar
 from rtt_fusion.graph.planner import link_key
@@ -266,20 +266,8 @@ def _carried_frame(
             n = n / np.linalg.norm(n)
             f = f - 2.0 * np.outer(f @ n, n)  # reflection
         else:
-            f = f @ _rotation(a, b).T
+            f = f @ rotation_between(a, b).T
     return f
-
-
-def _rotation(a: Any, b: Any) -> Any:
-    """Smallest rotation taking the unit vector a to b (Rodrigues)."""
-    v = np.cross(a, b)
-    c = float(a @ b)
-    s = float(np.linalg.norm(v))
-    if s < 1e-15:
-        return np.eye(3) if c > 0 else -np.eye(3)
-    k = v / s
-    kx = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
-    return np.eye(3) + s * kx + (1 - c) * (kx @ kx)
 
 
 def _fields(

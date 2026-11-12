@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R19a: Gitter als Probe – Block `fusion.grating` (`rtt_fusion.graph.grating`) mit den Sockets
+  eines Spiegels: Beugungsordnungen als Kanäle aus einer Jones-Tabelle (R6, FourierGrating;
+  `load_table` liest `raytatouille-result`-Dateien), Gittergleichung, PRT der Ordnung, Phase der
+  Phasenschicht m·2πx/Λ, Ordnungen in derselben Kohärenzgruppe; `light.rotation_between`.
+  Tests W19–W21.
+
 - R18b: Felder im Raytatouille-Backend – ein Band in einen Detektor eines importierten Systems
   kann H tragen: Felder aus den aufgezeichneten Strahlen nach der letzten Fläche vor dem
   Detektor (PRT und Gewicht von Raytatouille, Brechzahlen aus dem OPL, zwei Polarisationen der

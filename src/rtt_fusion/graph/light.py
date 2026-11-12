@@ -147,6 +147,18 @@ class Plane:
         return moved, np.stack([rel @ self.u, rel @ self.v], axis=-1)
 
 
+def rotation_between(a: FloatArray, b: FloatArray) -> FloatArray:
+    """Smallest rotation taking the unit vector a to b (Rodrigues); −I for opposite vectors."""
+    v = np.cross(a, b)
+    c = float(a @ b)
+    s = float(np.linalg.norm(v))
+    if s < 1e-15:
+        return np.eye(3) if c > 0 else -np.eye(3)
+    k = v / s
+    kx = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
+    return np.asarray(np.eye(3) + s * kx + (1 - c) * (kx @ kx))
+
+
 def concat(bundles: list[RayBundle]) -> list[RayBundle]:
     """Bundles on a link: kept separate per coherence group (a link may carry several)."""
     return list(bundles)

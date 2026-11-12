@@ -17,6 +17,7 @@ import warnings
 import numpy as np
 import pytest
 
+from rtt_fusion._types import FloatArray
 from rtt_fusion.graph import Graph, Node, builtin_registry, optics
 from rtt_fusion.graph.execute import WITH_FIELDS, ExecutionError, Executor
 from rtt_fusion.graph.field import field_to_rays, rays_to_field
@@ -30,9 +31,10 @@ WAVELENGTH_UM = 0.6328
 K = 2 * np.pi / (WAVELENGTH_UM * 1e-3)
 
 
-def pixel_grid(half: float, n: int) -> tuple[np.ndarray, np.ndarray]:
+def pixel_grid(half: float, n: int) -> tuple[FloatArray, FloatArray]:
     u = (np.arange(n) + 0.5) / n * 2 * half - half
-    return np.meshgrid(u, u)
+    uu, vv = np.meshgrid(u, u)
+    return np.asarray(uu, dtype=np.float64), np.asarray(vv, dtype=np.float64)
 
 
 # ------------------------------------------------------------------------------ W13 focus

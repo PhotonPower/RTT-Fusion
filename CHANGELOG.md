@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- ADR-Entwurf „Bidirektionale Ports, Posen, Äste und Gruppen“ (`docs/adr-entwurf-ports-posen-aeste.md`)
+  mit der Festlegung P6 des Maintainers (Äste nur vom Modellierer, keine Schleifen im Framework)
+  und den Stufen R24–R29; W6 im Konzept als ersetzt markiert.
+
 - R23: Ergebnisse über Läufe – `ResultCache` (Grenze, LRU, Warnung), Schlüssel ohne Rechnen mit
   Umgebung, Treffer sparen alles davor, Meta-Blöcke gespeichert, `Executor.status()`. Tests W37,
   W38.

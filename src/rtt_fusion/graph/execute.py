@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -65,6 +66,30 @@ class Context:
     registry: Any = None
     #: value of another block's output (meta blocks, R20); set by the executor
     evaluate: Callable[[str, str], Any] | None = None
+    #: progress of the run, part in [0, 1] of the whole and a text (GUI: status bar); may raise
+    #: to cancel (the plugin's cancel check)
+    progress: Callable[[float, str], None] | None = None
+    #: called with the id of every block whose evaluator starts (GUI: the running block)
+    on_node: Callable[[str], None] | None = None
+    _span: tuple[float, float] = (0.0, 1.0)
+
+    def report(self, part: float, text: str = "") -> None:
+        """Progress `part` (0 … 1) of the current step, mapped into the whole run."""
+        if self.progress is None:
+            return
+        a, b = self._span
+        self.progress(a + (b - a) * min(max(float(part), 0.0), 1.0), text)
+
+    @contextmanager
+    def span(self, part0: float, part1: float) -> Iterator[None]:
+        """Nested progress: within the block, `report(0 … 1)` covers part0 … part1 of the
+        current step (e.g. one value of a sweep)."""
+        a, b = self._span
+        self._span = (a + (b - a) * part0, a + (b - a) * part1)
+        try:
+            yield
+        finally:
+            self._span = (a, b)
 
 
 class Executor:
@@ -174,6 +199,8 @@ class Executor:
                     "exec.no_evaluator", f"no evaluator for {node.type_id}", node_id
                 )
             self.calls[(node_id, socket)] = self.calls.get((node_id, socket), 0) + 1
+            if self.context.on_node is not None:
+                self.context.on_node(node_id)
             value = evaluator(self.context, node, socket, inputs)
         if not uncached:
             self.cache[key] = value

@@ -204,6 +204,19 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
     waist = float(ctx.shared.get("gaussian_waist", 0.0) or 0.0)
     bundles: list[RayBundle] = []
     fields: list[FieldBundle] = []
+    steps = max(len(paths) * compiled.field_count * len(compiled.wavelengths_um), 1)
+    trace_part = 0.3 if fields_wanted else 1.0  # with fields the propagation takes the rest
+    step = 0
+
+    def tick(path: str, field: int, wl: int) -> None:
+        nonlocal step
+        ctx.report(
+            trace_part * step / steps,
+            f"{node.name or node.id}: {path}, field {field + 1}/{compiled.field_count}, "
+            f"λ {wl + 1}/{len(compiled.wavelengths_um)}",
+        )
+        step += 1
+
     for path in paths:
         if muted & set(ctx.graph.meta["paths"][path]):
             ctx.log.append(f"{node.id}: path {path} left out (muted block on it)")
@@ -216,6 +229,7 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
         if foreign:
             for field in range(compiled.field_count):
                 for wl in range(len(compiled.wavelengths_um)):
+                    tick(path, field, wl)
                     out = _split_path(ctx, node, path, foreign, field, wl, fields_wanted)
                     if fields_wanted:
                         fields += out
@@ -224,6 +238,7 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
             continue
         for field in range(compiled.field_count):
             for wl in range(len(compiled.wavelengths_um)):
+                tick(path, field, wl)
                 rays = _start_rays(ctx, compiled, path, rings, field, wl)
                 pupil = np.stack([np.asarray(rays.pupil_x), np.asarray(rays.pupil_y)], -1).copy()
                 apod = (
@@ -283,7 +298,18 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
     nx, ny = (int(v) for v in ctx.shared.get("pixels", [256, 256]))
     if fields_wanted:
         try:
-            return field_image(fields, plane, float(hu), float(hv), nx, ny, ctx.log)
+            return field_image(
+                fields,
+                plane,
+                float(hu),
+                float(hv),
+                nx,
+                ny,
+                ctx.log,
+                lambda part, text: ctx.report(
+                    trace_part + (1 - trace_part) * part, f"{node.name or node.id}: {text}"
+                ),
+            )
         except FieldError as e:
             raise ExecutionError("exec.field", str(e), node.id) from e
     return coherent_image(bundles, plane, float(hu), float(hv), nx, ny)

@@ -230,3 +230,17 @@ def test_w59_traversals_of_the_parts() -> None:
         {"surface": "b.BS", "kind": "transmit"}
     ]
     assert part_events("splitter", ["b.BS"], "front_a", "back_b") is None
+
+
+def test_w59_a_new_part_is_in_the_exported_system() -> None:
+    from rtt_fusion.graph.importer import system_from_model
+    from rtt_fusion.graph.parts import PARTS
+
+    m = model_from_raytatouille(_michelson())
+    m.add(Node("extra", "rtt.part.lens", params={"rtt_new": PARTS["lens"][1]}))
+    exported = system_from_model(m)
+    assert exported["root"]["children"][-1]["name"] == "Lens"
+    assert [s["id"] for s in exported["root"]["children"][-1]["surfaces"]] == [
+        "extra.S1",
+        "extra.S2",
+    ]

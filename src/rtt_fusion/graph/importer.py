@@ -423,7 +423,9 @@ def system_from_model(model: Model) -> dict[str, Any]:
         (b.name, [(s.node, s.port_in, s.port_out, s.channel) for s in b.steps])
         for b in model.branches
     ]
-    return _system(list(model.nodes.values()), branches, strict=True)
+    from rtt_fusion.graph.parts import prepare_parts  # new parts of the library are elements too
+
+    return _system(list(prepare_parts(model.nodes).values()), branches, strict=True)
 
 
 def system_from_graph(graph: Graph) -> dict[str, Any] | None:

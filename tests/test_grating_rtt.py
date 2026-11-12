@@ -57,7 +57,7 @@ def write_table(path: Path, amplitudes: dict[int, float], period_um: float) -> s
             for b, x in enumerate(sx):
                 for c, y in enumerate(sy):
                     smx = x + m * wl / period_um
-                    cz = np.sqrt(max(1.0 - smx**2 - y**2, 0.0))
+                    cz = float(np.sqrt(max(1.0 - float(smx) ** 2 - float(y) ** 2, 0.0)))
                     jones[o, a, b, c] = amplitudes[m] * np.diag([cz / np.hypot(cz, smx), 1.0])
     data = {
         "parameters": {

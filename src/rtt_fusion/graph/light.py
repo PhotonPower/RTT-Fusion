@@ -11,6 +11,13 @@ geometric part).
 
 Amplitudes are normalised to the source: `irradiance` is the irradiance at the source plane in
 W/mm² (uniform over the bundle), so |E|² of the detector field is W/mm².
+
+Polarisation (R18): `jones` is the field direction of the source (global, transverse to the start
+direction) and `prt` the accumulated geometric polarisation matrix of each ray (global, 3×3;
+None = identity): mirrors multiply it with I − 2nnᵀ, an aplanatic lens with its meridional
+rotation. The field of a ray is a·prt·jones, a the scalar `amplitude` (beam splitter r/t, mirror
+reflectance). The scalar image of R15 (`imaging.coherent_image`) does not use them; the field
+representation H does (`graph.field`).
 """
 
 from __future__ import annotations
@@ -50,6 +57,11 @@ class RayBundle:
         alive: (N,) bool, False for rays lost on the way (outside an aperture, missed).
         irradiance: source irradiance in W/mm².
         path: names of the blocks passed (for diagnostics).
+        jones: (3,) complex field direction of the source (global; None: x̂ projected).
+        prt: (N, 3, 3) geometric polarisation matrix (global; None: identity).
+        source_cos: cos γ of the rays on the source plane (1 for a plane wave ⟂ the plane).
+        source_frame: (2, 3) global axes of the `source_xy` coordinates; with `prt` it gives the
+            orientation of the ray map that comes from reflections (not from caustics).
     """
 
     key: CoherenceKey
@@ -62,6 +74,10 @@ class RayBundle:
     alive: BoolArray
     irradiance: float = 1.0
     path: tuple[str, ...] = field(default=())
+    jones: ComplexArray | None = None
+    prt: ComplexArray | None = None
+    source_cos: FloatArray | float = 1.0  # cos γ between the rays and the source plane
+    source_frame: FloatArray | None = None  # (2, 3) axes u, v of `source_xy` (global)
 
     @property
     def size(self) -> int:
@@ -71,6 +87,17 @@ class RayBundle:
     def k0(self) -> float:
         """Vacuum wavenumber, 1/mm."""
         return float(2.0 * np.pi / (self.wavelength_um * 1e-3))
+
+    def field_direction(self) -> ComplexArray:
+        """(N, 3) prt·jones: the polarisation of each ray (unit for unit jones)."""
+        j = (
+            np.asarray(self.jones, dtype=np.complex128)
+            if self.jones is not None
+            else np.array([1.0, 0.0, 0.0], dtype=np.complex128)
+        )
+        if self.prt is None:
+            return np.asarray(np.tile(j, (self.size, 1)))
+        return np.asarray(np.einsum("nij,j->ni", np.asarray(self.prt), j))
 
     def evolve(self, **changes: object) -> RayBundle:
         return replace(self, **changes)  # type: ignore[arg-type]

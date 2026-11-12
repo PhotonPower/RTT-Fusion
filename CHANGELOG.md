@@ -6,6 +6,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R18: Field Tracing auf Bändern – Darstellung H (`rtt_fusion.graph.field`: `FieldBundle`,
+  Strahlen → Feld nach Fieldtracing ADR 0004, Feld → Strahlen, Bild aus Feldern mit Ausbreitung
+  durch Fieldtracings Planer), Polarisation der Strahlbündel (Jones der Quelle, geometrische PRT,
+  Ausgleich der Spiegel-Orientierung im Maslov-Index), `optics.aplanatic_lens`, Gauß-Quelle
+  (`gaussian_waist`), Ausführung mit wählbaren Darstellungen (`Executor(available=…)`,
+  `WITH_FIELDS`), Umwandlung an den Ports. fieldtracing bleibt optional (Import erst bei H).
+  Tests W13–W16. Der Fall in W8 mit festem Transport H (abgelehnt) nutzt jetzt G, weil die
+  Blöcke des analytischen Backends H annehmen.
+
 - R17: Planer, Stufen 1–2 (`rtt_fusion.graph.planner`) – Fusionspfade auf Socket-Ebene,
   Darstellung je Licht-Band und Umwandlungen in Blöcken nach Tabelle 6.3 (auch Ketten; nach
   Phasenverlust keine kohärente Darstellung mehr), feste Transporte, verfügbare Darstellungen,

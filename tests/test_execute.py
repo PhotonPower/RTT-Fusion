@@ -196,7 +196,7 @@ def test_muted_mirror_passes_light_through() -> None:
 
 def test_execution_errors() -> None:
     ex = michelson()
-    ex.graph.set_transport(ex.graph.links[0], "H")  # the optics sockets take R only
+    ex.graph.set_transport(ex.graph.links[0], "G")  # the optics sockets take R and H (R18)
     with pytest.raises(ExecutionError, match="graph.transport_unsupported"):
         image(ex)
     # sockets that take H, but R15 runs R only

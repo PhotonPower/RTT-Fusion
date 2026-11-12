@@ -63,6 +63,8 @@ class Context:
     plan: Plan | None = None  # the plan of the run (representation per link)
     evaluators: dict[str, Any] = field(default_factory=dict)  # for backends that call other blocks
     registry: Any = None
+    #: value of another block's output (meta blocks, R20); set by the executor
+    evaluate: Callable[[str, str], Any] | None = None
 
 
 class Executor:
@@ -78,6 +80,8 @@ class Executor:
         self.registry = registry
         self.evaluators = evaluators
         self.context = Context(graph, dict(shared or {}), evaluators=evaluators, registry=registry)
+        self._running: set[str] = set()
+        self.context.evaluate = self._nested
         self.cache: dict[str, Any] = {}
         self.calls: dict[tuple[str, str], int] = {}  # evaluator calls per output (tests, profiling)
         self.plan: Plan | None = None
@@ -154,7 +158,9 @@ class Executor:
                 "inputs": input_keys,
             }
         )
-        if key in self.cache:
+        evaluator = self.evaluators.get(node.type_id)
+        uncached = bool(getattr(evaluator, "uncached", False))
+        if key in self.cache and not uncached:
             return self.cache[key], key
         if node.muted:
             if spec.kind is SocketKind.LIGHT:
@@ -169,8 +175,21 @@ class Executor:
                 )
             self.calls[(node_id, socket)] = self.calls.get((node_id, socket), 0) + 1
             value = evaluator(self.context, node, socket, inputs)
-        self.cache[key] = value
+        if not uncached:
+            self.cache[key] = value
         return value, key
+
+    def _nested(self, node_id: str, socket: str) -> Any:
+        """Evaluation for meta blocks (parameters may have changed; the cache keys contain them, the
+        plan does not depend on them). A meta block may not collect its own output."""
+        here = f"{node_id}.{socket}"
+        if here in self._running:
+            raise ExecutionError("exec.cycle", f"a meta block collects {here} inside itself", here)
+        self._running.add(here)
+        try:
+            return self._value(node_id, socket, ())[0]
+        finally:
+            self._running.discard(here)
 
     def _convert(self, value: Any, rep: str, consumer: Node, lk: Any) -> Any:
         """Light on a link in its planned representation, as the consumer can take it."""

@@ -455,7 +455,7 @@ in dieses Repository übernehmen, weil RTT-Fusion ihn heute am häufigsten zitie
 | W3 | Ort der GUI | Raytatouille Fusion (CAD), Fenster „Node-Workflow“; Zugriff über die Python-Anbindung im Plugin-Prozess |
 | W4 | Socket-Typen | Licht: die abgeschlossene Menge des Fusion-ADR (+ P mit M9); Daten: benannte Typen, je neuer Typ mit dem ersten Modul, das ihn braucht |
 | W5 | Kohärenz | Kennungen von der Quelle, Regeln in Vereinigern (Abschnitt 5) |
-| W6 | Schleifen | nur über Meta-Blöcke; Kern azyklisch |
+| W6 | Schleifen | nur über Meta-Blöcke; Kern azyklisch – **ersetzt** durch den ADR-Entwurf [Ports, Posen, Äste](adr-entwurf-ports-posen-aeste.md), P6: Äste nur vom Modellierer, endlich, keine Schleifen und keine Reihen im Framework |
 | W7 | Format | `rtt-fusion-graph` (JSON, versioniert), im Dokument der GUI (`.rttf`) eingebettet oder verwiesen; Parameter sind Daten |
 | W8 | Namen der Daten-Sockets | Kürzel nur für R, H, G, S, T, P, N, Q; sonst Namen (löst „B“) |
 | W9 | Erster Pilot | Linnik-Interferometer (Abschnitt 4) mit ebenem Spiegel und Kippung/Versatz der Referenz; Sollwert: Zwei-Strahl-Interferenz mit analytischem Wegunterschied (Streifenabstand, Kontrast), Energie |

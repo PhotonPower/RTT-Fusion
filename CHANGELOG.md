@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R25 knotenweise Ausführung im Raytatouille-Backend: `rtt.section`, `rtt.mirror`, `rtt.splitter`
+  geben Strahlen je Ast und Besuch weiter (`RayBundle.branch`), die Quelle startet je Ast, der
+  Detektor bildet ab bzw. nimmt Felder auf einem H-Band; Runs aus allen Systempfaden; ausgetauschte
+  Blöcke (R19b) dazwischen, an der Stelle der ersetzten Fläche; Modus `shared["rtt_execution"]`
+  ("nodes", "paths", "auto": knotenweise, sobald ein Ast kein Systempfad ist). Der Import merkt
+  sich die Durchgänge der Systempfade (`meta["raytatouille_runs"]`), `graph.branch_backend` prüft
+  Äste dagegen statt gegen die Pfadnamen. Abnahme W43–W44: knotenweise = ganze Pfade (≤ 3e−10).
 - R24 Ports, Äste im Modell, Format 2 (`graph/topology.py`): Licht-Ports mit zwei Kanälen
   (`PortSpec`, `NodeType.ports`, abgeleitet aus Socket-Namen), Streutabelle (`NodeType.scatter`,
   sonst aus `through`), ungerichtete Verbindungen (`Connection`, Transport je Richtung), Äste nur

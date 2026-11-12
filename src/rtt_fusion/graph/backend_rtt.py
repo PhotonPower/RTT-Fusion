@@ -24,6 +24,19 @@ come from the recorded OPL (ΔOPL/length of the first and the last segment), the
 map from the reflections (direction against the surface axis before and after each event).
 Executors of this backend may run R and H (`execute.WITH_FIELDS`); fieldtracing is needed for H.
 
+Node-wise (R25, ADR ports, poses, branches): every Raytatouille block passes the light of each
+branch along its own events (a *run*: the events of the block in a path of the system), the
+source starts two input polarisations per field point and wavelength and per branch (aimed along
+a system path that starts in the same block), the detector images what arrives. Bundles carry
+their branch and position in it (`RayBundle.branch`), so a block passed twice takes the right run
+and a block that replaced a Raytatouille block (R19b) acts in between, placed where the replaced
+surface was. Rays lost on the way stay in the bundle, marked dead (the image triangulates over the
+start grid); a ray that starts on or behind a run's first surface is lost, as along a whole path.
+On an H link the bundle gets the medium behind its last surface. Chosen with
+shared["rtt_execution"] = "nodes", or automatically when a branch of the model is no path of the
+system; "paths" (and "auto" otherwise) keeps whole paths. Node-wise equals whole paths to rounding
+(W43).
+
 `shared` of the executor: "system" (raytatouille.System), optional "materials"
 (MaterialLibrary), "rings" (pupil rings, default 30), "pixels" ([nx, ny], default [256, 256]),
 "gaussian_waist" (Gaussian illumination exp(−ρ²/w²) with w relative to the pupil radius, e.g. a
@@ -46,10 +59,6 @@ from rtt_fusion.graph.model import Node
 from rtt_fusion.graph.optics import hexapolar
 from rtt_fusion.graph.planner import link_key
 from rtt_fusion.graph.validate import node_sockets
-
-
-def _structural(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
-    return []  # the light of Raytatouille blocks is computed along whole paths at the detector
 
 
 def _offsets(ctx: Context) -> dict[str, list[float]]:
@@ -239,6 +248,8 @@ def _start_rays(
 def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
     import raytatouille as rt
 
+    if _nodewise(ctx):
+        return _detector_nodes(ctx, node, inputs)
     compiled = _compiled(ctx)
     paths = [
         name
@@ -327,6 +338,21 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
                         path=(path,),
                     )
                 )
+    return _image(ctx, node, compiled, bundles, fields, fields_wanted, trace_part)
+
+
+def _image(
+    ctx: Context,
+    node: Node,
+    compiled: Any,
+    bundles: list[RayBundle],
+    fields: list[FieldBundle],
+    fields_wanted: bool,
+    trace_part: float,
+) -> Any:
+    """The image on the detector surface: rays coherently (R) or fields propagated (H)."""
+    import raytatouille as rt
+
     surface = next((s for s in node.params.get("surfaces", [])), None)
     L = next((x for x in rt.layout.surfaces(compiled) if x.id == surface), None)
     if L is None:
@@ -533,6 +559,27 @@ def _trace_on(
     fields_wanted: bool,
 ) -> list[Any]:
     """Part B: trace a bundle that a block sent on, and combine OPL, field and polarisation."""
+    return _trace_run(compiled, layouts, f"{path}#B", b, wl, field, fields_wanted)
+
+
+def _trace_run(
+    compiled: Any,
+    layouts: list[Any],
+    run: str,
+    b: RayBundle,
+    wl: int,
+    field: int,
+    fields_wanted: bool,
+    first: bool = False,
+    keep_all: bool = False,
+) -> list[Any]:
+    """Traces a bundle along the events of the path `run` of `compiled`, starting where the rays
+    are, and combines OPL, field and polarisation (the field a·prt·jones goes on as a scalar
+    along a real direction plus the rest in prt). `fields_wanted`: stop before the last event
+    (the detector) and return fields. `first`: the bundle comes from the source – the medium
+    there is taken from the first segment. `keep_all` (rays): the bundle keeps every ray of `b`,
+    the ones lost on the way marked dead – the image triangulates over the source grid and must
+    not bridge the gaps (as along a whole path)."""
     import raytatouille as rt
 
     alive = np.flatnonzero(np.asarray(b.alive) & (np.abs(np.asarray(b.amplitude)) > 0))
@@ -555,12 +602,20 @@ def _trace_on(
     _, rec = rt.trace.trace(
         compiled,
         rays,
-        path=f"{path}#B",
+        path=run,
         record_path=True,
         max_recorded_rays=max(rays.size, 1),
         polarization=True,
     )
-    rows = np.flatnonzero(np.asarray(rec.count) == rec.slots)
+    reached = np.asarray(rec.count) == rec.slots
+    if keep_all and rec.slots > 1:
+        # a ray that starts on or behind the run's first surface "hits" it at distance zero;
+        # along a whole path Raytatouille drops it – so does the run (node-wise = whole path)
+        step = np.linalg.norm(
+            np.asarray(rec.position)[:, 1] - np.asarray(rec.position)[:, 0], axis=1
+        )
+        reached &= ~(step < 1e-9)
+    rows = np.flatnonzero(reached)
     if rows.size < 3:
         return []
     idx = np.asarray(rec.ray_indices)
@@ -619,14 +674,45 @@ def _trace_on(
         prt=(prt_total * (scale / safe)[:, None, None]).astype(complex),
         source_frame=frame,
         index=_segment_index(rec, rows, slot, slot + 1) if fields_wanted else b.index,
+        source_index=_segment_index(rec, rows, 0, 1) if first else b.source_index,
         source_cos=(np.asarray(b.source_cos)[src] if np.ndim(b.source_cos) > 0 else b.source_cos),
     )
     if not fields_wanted:
+        if keep_all:
+            bundle = _full(b, bundle, src)
         return [bundle]
     try:
         return [rays_to_field(bundle)]
     except FieldError as e:
-        raise ExecutionError("exec.field", f"path {path}: {e}") from e
+        raise ExecutionError("exec.field", f"{run}: {e}") from e
+
+
+def _full(b: RayBundle, part: RayBundle, src: Any) -> RayBundle:
+    """`part` (the rays `src` of `b` that came through) on all rays of `b`, the others dead."""
+    n = b.size
+
+    def spread(values: Any, fill: Any) -> Any:
+        full = np.array(fill, copy=True)
+        full[src] = values
+        return full
+
+    prt_fill = (
+        np.asarray(b.prt) if b.prt is not None else np.tile(np.eye(3, dtype=complex), (n, 1, 1))
+    )
+    return part.evolve(
+        position=spread(part.position, b.position),
+        direction=spread(part.direction, b.direction),
+        opl=spread(part.opl, b.opl),
+        amplitude=spread(part.amplitude, np.zeros(n, dtype=complex)),
+        source_xy=np.asarray(b.source_xy),
+        alive=spread(part.alive, np.zeros(n, dtype=bool)),
+        prt=spread(part.prt, prt_fill.astype(complex)),
+        source_cos=(
+            spread(part.source_cos, b.source_cos)
+            if np.ndim(part.source_cos) > 0
+            else part.source_cos
+        ),
+    )
 
 
 def _scalar_along(f: Any) -> Any:
@@ -747,10 +833,361 @@ def _fields(
     return out
 
 
+# ---------------------------------------------------------------------- node-wise (R25)
+
+
+def _nodewise(ctx: Context) -> bool:
+    """Node-wise execution: asked for (shared["rtt_execution"] = "nodes"), or needed because a
+    branch of the model is no path of the system; "paths" keeps whole paths (R15)."""
+    mode = str(ctx.shared.get("rtt_execution", "auto"))
+    if mode in ("nodes", "paths"):
+        return mode == "nodes"
+    system = ctx.shared.get("system")
+    names = ctx.shared.get("system_path_names")
+    if names is None or names[0] != id(system):
+        names = (id(system), {str(p.get("name")) for p in _base_json(ctx).get("paths", [])})
+        ctx.shared["system_path_names"] = names
+    return any(b not in names[1] for b in ctx.graph.meta.get("paths", {}))
+
+
+def _base_id(node_id: str) -> str:
+    return node_id.split("@")[0]
+
+
+def _channel(events: list[Any]) -> str:
+    return " ".join(f"{e['surface']}:m{e['order']}" for e in events if "order" in e)
+
+
+def _runs(ctx: Context) -> tuple[Any, list[Any], dict[Any, str], dict[tuple[str, int], str]]:
+    """The system compiled with one extra path per run (the events of one block in one system
+    path), cached per offsets. Returns compiled, layouts, the runs by (block, in socket, out
+    socket, channel) and by (system path, position in it)."""
+    import raytatouille as rt
+
+    cache = ctx.shared.setdefault("run_systems", {})
+    key = json.dumps(_offsets(ctx), sort_keys=True)
+    if key in cache:
+        return cache[key]  # type: ignore[no-any-return]
+    d = _system_json(ctx)
+    by_key: dict[Any, str] = {}
+    by_place: dict[tuple[str, int], str] = {}
+    extra = []
+    meta_paths = ctx.graph.meta.get("paths", {})
+    # the blocks owning each surface (paths the model has no branch for are grouped by them)
+    owner = {
+        str(sid): n.id
+        for n in ctx.graph.nodes.values()
+        if n.type_id.startswith("rtt.") and "@" not in n.id
+        for sid in n.params.get("surfaces", [])
+    }
+    for p in d.get("paths", []):
+        name = str(p.get("name"))
+        if name not in meta_paths:
+            if not isinstance(p.get("events"), list):
+                continue
+            runs_of_path: list[tuple[str, list[Any]]] = []
+            for e in p["events"]:
+                block = owner.get(str(e["surface"]), "")
+                if runs_of_path and runs_of_path[-1][0] == block:
+                    runs_of_path[-1][1].append(e)
+                else:
+                    runs_of_path.append((block, [e]))
+            for i, (block, events) in enumerate(runs_of_path):
+                if not block:
+                    continue
+                run = f"{name}#{i}"
+                extra.append({"name": run, "events": events})
+                came = "source" if i == 0 else _base_id(runs_of_path[i - 1][0])
+                goes = (
+                    f"to_{_base_id(runs_of_path[i + 1][0])}" if i + 1 < len(runs_of_path) else None
+                )
+                by_key.setdefault((block, f"from_{came}", goes, _channel(events)), run)
+            continue
+        blocks = meta_paths[name]
+        if not isinstance(p.get("events"), list):  # "auto": every surface in tree order,
+            p["events"] = [  # mirrors reflect (a sequential path has no splitter)
+                {"surface": str(sid)}
+                | (
+                    {"kind": "reflect"}
+                    if ctx.graph.nodes[b].params.get("element_type") == "mirror"
+                    else {}
+                )
+                for b in blocks
+                for sid in ctx.graph.nodes[b].params.get("surfaces", [])
+            ]
+        groups = _events_of_blocks(ctx, name, d)
+        for i, (block, events) in enumerate(zip(blocks, groups, strict=True)):
+            if not events or not ctx.graph.nodes[block].type_id.startswith("rtt."):
+                continue
+            run = f"{name}#{i}"
+            extra.append({"name": run, "events": events})
+            came = "source" if i == 0 else _base_id(blocks[i - 1])
+            goes = f"to_{_base_id(blocks[i + 1])}" if i + 1 < len(blocks) else None
+            by_key.setdefault((_base_id(block), f"from_{came}", goes, _channel(events)), run)
+            by_place[(name, i)] = run
+    d["paths"] = [*d.get("paths", []), *extra]
+    compiled = rt.compile(
+        rt.System.from_json(json.dumps(d)), ctx.shared.get("materials", rt.MaterialLibrary())
+    )
+    cache[key] = (compiled, list(rt.layout.surfaces(compiled)), by_key, by_place)
+    return cache[key]  # type: ignore[no-any-return]
+
+
+def _branch_steps(ctx: Context, name: str) -> list[Any]:
+    """The steps of a branch after its source ([node, port in, port out, channel?])."""
+    for b in ctx.graph.meta.get("branches", []):
+        if b.get("name") == name:
+            return [s for s in b["steps"] if s[1] is not None]
+    return []
+
+
+def _run_of(ctx: Context, node: Node, b: RayBundle, out_socket: str | None) -> tuple[str, int]:
+    """The run a bundle takes at this block: the next visit of the block in its branch."""
+    assert b.branch is not None
+    name, last = b.branch
+    blocks = ctx.graph.meta["paths"][name]
+    i = next((k for k in range(last + 1, len(blocks)) if blocks[k] == node.id), -1)
+    if i < 0:
+        raise ExecutionError("exec.branch", f"branch {name!r} does not pass {node.id}", node.id)
+    goes = f"to_{_base_id(blocks[i + 1])}" if i + 1 < len(blocks) else None
+    if goes != out_socket:
+        return "", i  # light of this branch leaves through another socket
+    return _run_at(ctx, name, i), i
+
+
+def _run_at(ctx: Context, name: str, i: int) -> str:
+    """The run of the i-th block of a branch (`graph.meta["paths"][name][i]`)."""
+    blocks = ctx.graph.meta["paths"][name]
+    _, _, by_key, by_place = _runs(ctx)
+    if (name, i) in by_place:
+        return by_place[(name, i)]
+    came = "source" if i == 0 else _base_id(blocks[i - 1])
+    goes = f"to_{_base_id(blocks[i + 1])}" if i + 1 < len(blocks) else None
+    steps = _branch_steps(ctx, name)
+    channel = str(steps[i][3]) if i < len(steps) and len(steps[i]) > 3 else ""
+    run = by_key.get((_base_id(blocks[i]), f"from_{came}", goes, channel))
+    if run is None:
+        raise ExecutionError(
+            "exec.branch",
+            f"branch {name!r}: no path of the system passes {blocks[i]} from {came} to "
+            f"{goes or 'the detector'} (ghosts follow with R27)",
+            blocks[i],
+        )
+    return run
+
+
+def _medium_after(ctx: Context, b: RayBundle, name: str, i: int) -> float:
+    """Refractive index behind the last surface of the i-th block of a branch: of the first
+    segment of the next block's run (fields H on the link need it, as along a whole path)."""
+    import raytatouille as rt
+
+    blocks = ctx.graph.meta["paths"][name]
+    if i + 1 >= len(blocks) or not ctx.graph.nodes[blocks[i + 1]].type_id.startswith("rtt."):
+        return b.index
+    compiled, _, _, _ = _runs(ctx)
+    alive = np.flatnonzero(np.asarray(b.alive))
+    if alive.size < 3:
+        return b.index
+    rays = rt.trace.RayBatch(int(alive.size))
+    for k, axis in enumerate("xyz"):
+        np.asarray(getattr(rays, f"pos_{axis}"))[:] = np.asarray(b.position)[alive, k]
+        np.asarray(getattr(rays, f"dir_{axis}"))[:] = np.asarray(b.direction)[alive, k]
+    np.asarray(rays.field)[:] = b.key.field_index
+    np.asarray(rays.wl)[:] = b.key.wavelength_index
+    _, rec = rt.trace.trace(
+        compiled,
+        rays,
+        path=_run_at(ctx, name, i + 1),
+        record_path=True,
+        max_recorded_rays=max(rays.size, 1),
+    )
+    rows = np.flatnonzero(np.asarray(rec.count) >= 2)
+    return _segment_index(rec, rows, 0, 1) if rows.size else b.index
+
+
+def _place_foreign(ctx: Context) -> None:
+    """A block that replaced a Raytatouille block (a grating as the sample) sits where the
+    replaced surface was – as in R19b – unless its parameter `keep_pose` is set."""
+    import raytatouille as rt
+
+    d = _system_json(ctx)
+    compiled = _compiled(ctx)
+    by_id = {L.id: L for L in rt.layout.surfaces(compiled)}
+    for name, blocks in ctx.graph.meta.get("paths", {}).items():
+        foreign = [
+            k
+            for k, b in enumerate(blocks)
+            if b in ctx.graph.nodes and not ctx.graph.nodes[b].type_id.startswith("rtt.")
+        ]
+        if not foreign or not any(p.get("name") == name for p in d.get("paths", [])):
+            continue
+        groups = _events_of_blocks(ctx, name, d)
+        for k in foreign:
+            n = ctx.graph.nodes[blocks[k]]
+            L = by_id.get(str(groups[k][0]["surface"])) if groups[k] else None
+            if L is None or n.params.get("keep_pose"):
+                continue
+            rot = np.asarray(L.rotation)
+            n.params["point"] = [float(v) for v in np.asarray(L.translation)]
+            n.params["normal"] = [float(v) for v in rot[:, 2]]
+
+
+def _aim_path(ctx: Context, first_block: str) -> str | None:
+    """A path of the system that starts in `first_block` (rays are aimed along it)."""
+    surfaces = {str(s) for s in ctx.graph.nodes[first_block].params.get("surfaces", [])}
+    paths = _system_json(ctx).get("paths", [])
+    for p in paths:
+        events = p.get("events")
+        if isinstance(events, list) and events and str(events[0]["surface"]) in surfaces:
+            return str(p.get("name"))
+    return str(paths[0].get("name")) if len(paths) == 1 else None
+
+
+def _source_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
+    """Start bundles of every branch leaving through `socket`: two input polarisations
+    (unpolarised source) per field point and wavelength, aimed along a system path. Places the
+    replaced blocks first (they are evaluated after the source)."""
+    if not _nodewise(ctx):
+        return []
+    _place_foreign(ctx)
+    compiled = _compiled(ctx)
+    system_paths = [str(p.get("name")) for p in _system_json(ctx).get("paths", [])]
+    muted = {n.id for n in ctx.graph.nodes.values() if n.muted}
+    rings = int(ctx.shared.get("rings", 30))
+    waist = float(ctx.shared.get("gaussian_waist", 0.0) or 0.0)
+    out: list[RayBundle] = []
+    for name, blocks in ctx.graph.meta.get("paths", {}).items():
+        if not blocks or socket != f"to_{_base_id(blocks[0])}":
+            continue
+        if muted & set(blocks):
+            ctx.log.append(f"{node.id}: branch {name} left out (muted block on it)")
+            continue
+        aim = name if name in system_paths else _aim_path(ctx, blocks[0])
+        if aim is None:
+            raise ExecutionError(
+                "exec.aiming", f"branch {name!r}: no system path starts like it", node.id
+            )
+        for field in range(compiled.field_count):
+            for wl in range(len(compiled.wavelengths_um)):
+                rays = _start_rays(ctx, compiled, aim, rings, field, wl)
+                pupil = np.stack([np.asarray(rays.pupil_x), np.asarray(rays.pupil_y)], -1).copy()
+                apod = (
+                    np.exp(-np.sum(pupil * pupil, axis=1) / waist**2)
+                    if waist > 0
+                    else np.ones(len(pupil))
+                )
+                position = np.stack(
+                    [np.asarray(rays.pos_x), np.asarray(rays.pos_y), np.asarray(rays.pos_z)], -1
+                ).copy()
+                direction = np.stack(
+                    [np.asarray(rays.dir_x), np.asarray(rays.dir_y), np.asarray(rays.dir_z)], -1
+                ).copy()
+                k0 = direction.mean(axis=0)
+                k0 = k0 / np.linalg.norm(k0)
+                seed = np.eye(3)[int(np.argmin(np.abs(k0)))]
+                x = seed - k0 * float(k0 @ seed)
+                x = x / np.linalg.norm(x)
+                y = np.cross(k0, x)
+                n = len(pupil)
+                base = RayBundle(
+                    key=CoherenceKey("source", field, wl, 0),
+                    wavelength_um=float(compiled.wavelengths_um[wl]),
+                    position=position,
+                    direction=direction,
+                    opl=np.zeros(n),
+                    amplitude=(np.sqrt(0.5) * apod).astype(complex),
+                    source_xy=pupil,
+                    alive=np.ones(n, dtype=bool),
+                    path=(name,),
+                    prt=np.tile(np.eye(3, dtype=complex), (n, 1, 1)),
+                    source_frame=np.stack([x, y]),
+                    branch=(name, -1),
+                )
+                for p, jones in enumerate((x, y)):
+                    out.append(
+                        base.evolve(
+                            key=CoherenceKey("source", field, wl, p), jones=jones.astype(complex)
+                        )
+                    )
+    return out
+
+
+def _block_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
+    """A Raytatouille block passes each arriving bundle along its run in the bundle's branch."""
+    if not _nodewise(ctx):
+        return []
+    compiled, layouts, _, _ = _runs(ctx)
+    out: list[Any] = []
+    for bundles in inputs.values():
+        for b in bundles or []:
+            if not isinstance(b, RayBundle) or b.branch is None:
+                raise ExecutionError(
+                    "exec.branch", "node-wise execution needs rays that know their branch", node.id
+                )
+            run, i = _run_of(ctx, node, b, socket)
+            if not run:
+                continue
+            fields_next = ctx.plan is not None and any(
+                ctx.plan.representations.get(link_key(lk)) == "H"
+                for lk in ctx.graph.links_from(node.id, socket)
+            )
+            for traced in _trace_run(
+                compiled,
+                layouts,
+                run,
+                b,
+                b.key.wavelength_index,
+                b.key.field_index,
+                False,
+                first=b.branch[1] < 0,
+                keep_all=True,
+            ):
+                traced = traced.evolve(branch=(b.branch[0], i), path=(*b.path, node.id))
+                if fields_next:
+                    traced = traced.evolve(index=_medium_after(ctx, traced, b.branch[0], i))
+                out.append(traced)
+    return out
+
+
+def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
+    """Node-wise detector: traces the arriving bundles onto its surface (R) or turns them into
+    fields after the last surface and propagates them (H)."""
+    compiled, layouts, _, _ = _runs(ctx)
+    fields_wanted = _input_representation(ctx, node) == "H"
+    bundles: list[RayBundle] = []
+    fields: list[FieldBundle] = []
+    for arriving in inputs.values():
+        for b in arriving or []:
+            if isinstance(b, FieldBundle):  # turned into a field on the link (plan: H)
+                fields.append(b)
+                continue
+            if not isinstance(b, RayBundle) or b.branch is None:
+                continue
+            run, _ = _run_of(ctx, node, b, None)
+            traced = _trace_run(
+                compiled,
+                layouts,
+                run,
+                b,
+                b.key.wavelength_index,
+                b.key.field_index,
+                fields_wanted,
+                first=b.branch[1] < 0,
+                keep_all=True,
+            )
+            if fields_wanted:
+                fields += traced
+            else:
+                bundles += traced
+    return _image(ctx, node, compiled, bundles, fields, fields_wanted, 0.3)
+
+
 EVALUATORS: dict[str, Evaluator] = {
-    "rtt.source": _structural,
-    "rtt.section": _structural,
-    "rtt.splitter": _structural,
-    "rtt.mirror": _structural,
+    "rtt.source": _source_nodes,
+    "rtt.section": _block_nodes,
+    "rtt.splitter": _block_nodes,
+    "rtt.mirror": _block_nodes,
     "rtt.detector": detector,
 }
+# node-wise, light on an H link into the detector arrives as fields (R25)
+detector.representations = frozenset("RH")  # type: ignore[attr-defined]

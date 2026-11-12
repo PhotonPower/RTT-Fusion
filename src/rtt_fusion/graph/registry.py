@@ -112,6 +112,15 @@ def builtin_registry() -> NodeTypeRegistry:
     )
     r.add(
         NodeType(
+            "fusion.condensed",
+            Category.DOMAIN,
+            (),
+            dynamic_sockets=True,
+            description="Condensed group (R29): plane-wave tables of its inner branches",
+        )
+    )
+    r.add(
+        NodeType(
             "fusion.sum",
             Category.SPLITTER,
             (),

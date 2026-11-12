@@ -8,7 +8,8 @@
 > 5, 8). Ändert die Abschnitte 3.2, 3.3, 4 und 7 des Konzepts sowie W6; alles Übrige
 > (Darstellungen, Kohärenz, Planer Stufe 2, Adapter) bleibt.
 
-**Status:** angenommen (Maintainer, 2026-11-12; P6 von ihm festgelegt). R24 bis R28 umgesetzt (R28: W53–W54; die Zuordnung der exportierten Ports
+**Status:** angenommen (Maintainer, 2026-11-12; P6 von ihm festgelegt). R24 bis R29 umgesetzt (R29: W55; verdichtet werden seitlich
+invariante, isotrope Gruppen zu Tabellen ebener Wellen, allgemeine Operatoren folgen mit L4) (R28: W53–W54; die Zuordnung der exportierten Ports
 steht je Variante, Blöcke einer Gruppe mit Geometrie aus einem Raytatouille-System bewegen sich
 noch nicht mit der Pose der Gruppe) (R27: W50–W52; Geister in
 Raytatouille-Abschnitten mit dem Kanal `ghost:<Flächen>`) (R25: knotenweise = ganze Pfade auf

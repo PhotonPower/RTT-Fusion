@@ -6,6 +6,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- S2 (ADR Nachtrag 1): Das Raytatouille-Backend rechnet mit dem System, das der Workflow ergibt
+  (`importer.system_from_graph`: Baum aus den Daten der Blöcke, Pfade aus den Ästen; kompiliert je
+  Zustand). Ohne gehaltene Daten (alte Graphen) weiter mit `shared["system"]`. Knotenweise Durchgänge
+  kommen aus den Daten der Blöcke (`runs`), nicht mehr aus Systempfaden; ein eigener Ast aus
+  bekannten Durchgängen wird ein Pfad. Ein ersetzter Block behält die Raytatouille-Daten des
+  Elements (`replace_block`), das Gitter wirkt an dessen Stelle (R19b). Der Import hält auch die
+  Durchgänge von „auto“-Pfaden (ausdrückliche Pfade haben Vorrang, Spiegel reflektieren). Ein Ast
+  mit einem Schritt ohne Ereignisse (Geist) gibt einen Zielpfad „<Ast> (aim)“. Abnahme W58.
 - S1 (ADR Nachtrag 1, der Workflow ist die Wahrheit): Der Import hält das ganze System im Modell –
   jeder Baumknoten (Element, Baugruppe) mit seiner Stelle im Block, dem alle seine Flächen gehören
   (`rtt`), die Ereignisse jedes Durchgangs im Block (`runs`), die Systemangaben, die übrigen

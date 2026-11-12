@@ -106,11 +106,49 @@ def _apply_offsets(d: dict[str, Any], offsets: dict[str, list[float]]) -> dict[s
 
 
 def _base_json(ctx: Context) -> dict[str, Any]:
+    """The system to compute with: generated from the data of the graph's blocks (S2, ADR
+    Nachtrag 1: the workflow is the truth), or – for a graph without them – shared["system"]."""
+    generated = _generated(ctx)
+    if generated is not None:
+        return json.loads(generated)  # type: ignore[no-any-return]
     system = ctx.shared.get("system")
     if system is None:
         raise ExecutionError("exec.no_system", "the executor needs shared['system'] (rt.System)")
     d: dict[str, Any] = json.loads(system.to_json())
     return d
+
+
+def _generated(ctx: Context) -> str | None:
+    """The generated system as JSON text, made once per graph state (the blocks' data and the
+    branches) and kept in shared."""
+    from rtt_fusion.graph.importer import system_from_graph
+
+    fingerprint = json.dumps(
+        [
+            [
+                n.id,
+                n.params.get("rtt"),
+                n.params.get("runs"),
+                n.params.get("rtt_system"),
+                n.params.get("rtt_tree"),
+                n.params.get("rtt_paths"),
+            ]
+            for n in ctx.graph.nodes.values()
+            if n.type_id.startswith("rtt.") or "rtt" in n.params
+        ]
+        + [ctx.graph.meta.get("branches")],
+        sort_keys=True,
+    )
+    cached = ctx.shared.get("generated_system")
+    if cached is not None and cached[0] == fingerprint:
+        return cached[1]  # type: ignore[no-any-return]
+    try:
+        d = system_from_graph(ctx.graph)
+    except ValueError as e:
+        raise ExecutionError("exec.system", str(e)) from e
+    text = None if d is None else json.dumps(d)
+    ctx.shared["generated_system"] = (fingerprint, text)
+    return text
 
 
 def _normal_in_parent(ctx: Context, node: Node) -> Any:
@@ -236,6 +274,14 @@ def _compiled(ctx: Context) -> Any:
     import raytatouille as rt
 
     offsets = _offsets(ctx)
+    generated = _generated(ctx)
+    if generated is not None:  # S2: compiled from the system the workflow makes, per state
+        key = f"{hash(generated)}|{_variation(ctx)}"
+        cache = ctx.shared.setdefault("compiled_generated", {})
+        if key not in cache:
+            system = rt.System.from_json(json.dumps(_system_json(ctx)))
+            cache[key] = rt.compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
+        return cache[key]
     if not offsets and not _rigid(ctx):
         if "compiled" not in ctx.shared:
             if ctx.shared.get("system") is None:
@@ -922,8 +968,9 @@ def _nodewise(ctx: Context) -> bool:
         return mode == "nodes"
     system = ctx.shared.get("system")
     names = ctx.shared.get("system_path_names")
-    if names is None or names[0] != id(system):
-        names = (id(system), {str(p.get("name")) for p in _base_json(ctx).get("paths", [])})
+    stamp = (id(system), _generated(ctx))
+    if names is None or names[0] != stamp:
+        names = (stamp, {str(p.get("name")) for p in _base_json(ctx).get("paths", [])})
         ctx.shared["system_path_names"] = names
     return any(b not in names[1] for b in ctx.graph.meta.get("paths", {}))
 
@@ -1006,6 +1053,20 @@ def _runs(ctx: Context) -> tuple[Any, list[Any], dict[Any, str], dict[tuple[str,
             goes = f"to_{_base_id(blocks[i + 1])}" if i + 1 < len(blocks) else None
             by_key.setdefault((_base_id(block), f"from_{came}", goes, _channel(events)), run)
             by_place[(name, i)] = run
+    # the traversals the blocks hold themselves (S2: the workflow is the truth): a branch
+    # through a block passes by its data, whatever path of the system there is
+    for n in ctx.graph.nodes.values():
+        if not n.type_id.startswith("rtt.") or "@" in n.id:
+            continue
+        for key, events in (n.params.get("runs") or {}).items():
+            came, _, rest = str(key).partition(">")
+            goes, _, channel = rest.partition("|")
+            k = (n.id, f"from_{came}", f"to_{goes}" if goes else None, channel)
+            if k in by_key or not events:
+                continue
+            run = f"{n.id} {key}"
+            extra.append({"name": run, "events": events})
+            by_key[k] = run
     # ghosts (R27): a step "ghost:s1,s2,…" reflects at the named surfaces of a section
     events_of: dict[str, Any] = {str(e["name"]): e["events"] for e in extra}
     for b in ctx.graph.meta.get("branches", []):

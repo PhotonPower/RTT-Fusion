@@ -90,6 +90,11 @@ def replace_block(graph: Graph, registry: NodeTypeRegistry, node_id: str, new: N
         mapping[spec.name] = same[0]
     if len(set(mapping.values())) != len(mapping):
         raise GraphError(f"two sockets of {old.id} would share one socket of {new.type_id}")
+    # the replaced block's Raytatouille data stay with the new block (ADR Nachtrag 1): the element
+    # remains in the generated system, its place is where the new block acts (R19b)
+    for key in ("rtt", "runs"):
+        if key in old.params and key not in new.params:
+            new.params[key] = old.params[key]
     return graph.replace_node(node_id, new, mapping)
 
 

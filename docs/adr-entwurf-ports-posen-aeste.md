@@ -8,8 +8,10 @@
 > 5, 8). Ändert die Abschnitte 3.2, 3.3, 4 und 7 des Konzepts sowie W6; alles Übrige
 > (Darstellungen, Kohärenz, Planer Stufe 2, Adapter) bleibt.
 
-**Status:** angenommen (Maintainer, 2026-11-12; P6 von ihm festgelegt). R24 und R25 umgesetzt (R25: knotenweise = ganze Pfade auf
-Rundung, W43); dabei
+**Status:** angenommen (Maintainer, 2026-11-12; P6 von ihm festgelegt). R24 bis R26 umgesetzt (R25: knotenweise = ganze Pfade auf
+Rundung, W43; R26: Posen, W45–W49 – die Pose von Knoten ohne Geometrie steht als Parameter
+`pose`, Versätze als `pose_offset` und `pose_by_<Treiber>`; Port-Lagen geben die Typen, die sie
+kennen, importierte Blöcke folgen mit der 3D-Anbindung); dabei
 festgelegt: Ports importierter Blöcke heißen in R24 nach dem Nachbarblock (Rahmen folgen mit den
 Posen, R26); ein Socket trägt alle Kanäle eines Port-Paars, Kanäle trennen keine Kopien; wo Licht
 aus mehreren Kopien an einem Zustand ankommt, addiert ein Sammelblock `fusion.sum` es.

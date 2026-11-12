@@ -24,6 +24,9 @@ Channels (diffraction orders, …) are carried with the steps; in this stage one
 channels of a pair of ports (as in version 1) – which channels a node gives is its parameter, the
 Raytatouille backend traces its paths by name.
 
+Connection checks (R26, `connection_diagnostics`): graph.port_facing, graph.port_behind,
+graph.port_medium (errors); graph.port_aperture, graph.port_near_field, graph.port_tilt (warnings).
+
 Diagnostic codes (errors): graph.no_branch, graph.branch_impossible, graph.branch_duplicate,
 graph.port_unknown, graph.port_links, graph.branch_backend (a step through a Raytatouille block
 that no path of the system makes), graph.observer_ambiguous.
@@ -35,6 +38,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+import numpy as np
+
 from rtt_fusion.graph.model import (
     TRANSPORTS,
     Category,
@@ -42,12 +47,14 @@ from rtt_fusion.graph.model import (
     Graph,
     Link,
     Node,
+    PortFrame,
     PortSpec,
     SocketKind,
     SocketSpec,
     light_in,
     light_out,
 )
+from rtt_fusion.graph.pose import posed
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.graph.validate import Diagnostic, node_sockets, node_through
 
@@ -331,6 +338,8 @@ def validate_model(model: Model, registry: NodeTypeRegistry) -> list[Diagnostic]
                         f"{s.node}.{s.port_out} is not connected to {nxt.node}.{nxt.port_in}", k
                     )
 
+    out += connection_diagnostics(model, registry)
+
     # the Raytatouille backend passes a branch block by block through the traversals the
     # system's paths make (R25); one it does not know (a ghost) follows with R27
     runs = model.meta.get("raytatouille_runs")
@@ -348,6 +357,95 @@ def validate_model(model: Model, registry: NodeTypeRegistry) -> list[Diagnostic]
                         f"{s.port_in} to {s.port_out or 'the detector'}",
                         f"branch {b.name}",
                     )
+    return out
+
+
+def port_frames(model: Model, registry: NodeTypeRegistry) -> dict[tuple[str, str], PortFrame]:
+    """Frames of the ports in world coordinates, where the node types give them (R26)."""
+    out: dict[tuple[str, str], PortFrame] = {}
+    for nid, node in model.nodes.items():
+        t = registry.get(node.type_id)
+        if t is None or t.port_frames is None:
+            continue
+        world = posed(node, {p.name: p.default for p in t.params})
+        for port, frame in t.port_frames(world).items():
+            out[(nid, port)] = frame
+    return out
+
+
+#: tolerances of the connection checks: angle (rad), distance (mm), near field (wavelengths)
+TILT_TOL, DISTANCE_TOL, NEAR_FIELD_WAVELENGTHS = 1e-6, 1e-9, 10.0
+
+
+def connection_diagnostics(model: Model, registry: NodeTypeRegistry) -> list[Diagnostic]:
+    """Checks of the relative position of the two ports of each connection (ADR section 5):
+    graph.port_facing, graph.port_behind, graph.port_medium (errors); graph.port_aperture,
+    graph.port_near_field, graph.port_tilt (warnings, the last for fields H: between tilted
+    planes they are resampled geometrically, R18)."""
+    frames = port_frames(model, registry)
+    wavelengths = [
+        float(w)
+        for n in model.nodes.values()
+        for w in (n.params.get("wavelengths_um") or [])
+        if isinstance(w, int | float)
+    ]
+    lam_mm = max(wavelengths, default=0.0) * 1e-3
+    out: list[Diagnostic] = []
+    for c in model.connections:
+        fa, fb = frames.get(c.a), frames.get(c.b)
+        if fa is None or fb is None:
+            continue
+        loc = f"{c.a[0]}.{c.a[1]} — {c.b[0]}.{c.b[1]}"
+        oa, ob = np.asarray(fa.origin), np.asarray(fb.origin)
+        na, nb = np.asarray(fa.normal), np.asarray(fb.normal)
+        facing = float(-(na @ nb))
+        if facing <= 0.0:
+            out.append(Diagnostic("graph.port_facing", "error", "the ports do not face", loc))
+            continue
+        gap = ob - oa
+        if float(gap @ na) < -DISTANCE_TOL or float(-gap @ nb) < -DISTANCE_TOL:
+            out.append(
+                Diagnostic("graph.port_behind", "error", "a port lies behind the other", loc)
+            )
+            continue
+        if fa.index is not None and fb.index is not None and abs(fa.index - fb.index) > 1e-12:
+            out.append(
+                Diagnostic(
+                    "graph.port_medium",
+                    "error",
+                    f"different media outside the ports ({fa.index} / {fb.index})",
+                    loc,
+                )
+            )
+        if fa.radius is not None and fb.radius is not None:
+            lateral = gap - (gap @ na) * na
+            if float(np.linalg.norm(lateral)) > fa.radius + fb.radius:
+                out.append(
+                    Diagnostic(
+                        "graph.port_aperture", "warning", "the apertures do not overlap", loc
+                    )
+                )
+        distance = float(gap @ na)
+        if lam_mm > 0 and DISTANCE_TOL < distance < NEAR_FIELD_WAVELENGTHS * lam_mm:
+            out.append(
+                Diagnostic(
+                    "graph.port_near_field",
+                    "warning",
+                    f"{distance * 1e3:.3g} µm apart: evanescent fields are not carried",
+                    loc,
+                )
+            )
+        tilt = float(np.arccos(np.clip(facing, -1.0, 1.0)))
+        h = "H" in (c.transport, c.transport_back or c.transport)
+        if h and tilt > TILT_TOL:
+            out.append(
+                Diagnostic(
+                    "graph.port_tilt",
+                    "warning",
+                    f"fields between planes tilted by {tilt:.3g} rad are resampled geometrically",
+                    loc,
+                )
+            )
     return out
 
 
@@ -737,10 +835,12 @@ __all__ = [
     "Model",
     "ModelError",
     "Step",
+    "connection_diagnostics",
     "derive_ports",
     "model_from_graph",
     "node_ports",
     "node_scatter",
+    "port_frames",
     "unroll",
     "validate_model",
 ]

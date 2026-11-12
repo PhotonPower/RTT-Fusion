@@ -28,6 +28,7 @@ from rtt_fusion.graph.model import (
     Node,
     NodeType,
     ParamSpec,
+    PortFrame,
     PortSpec,
     data_in,
     data_out,
@@ -63,7 +64,9 @@ def source(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> lis
     w > 0 the amplitude is exp(−ρ²/w²) (a Gaussian beam at its waist, cut at `radius`);
     `irradiance` is then the irradiance on the axis."""
     centre = _vec(node, "center", (0.0, 0.0, 0.0))
-    frame = Plane.make(centre, _vec(node, "direction", (0.0, 0.0, 1.0)))
+    frame = Plane.make(
+        centre, _vec(node, "direction", (0.0, 0.0, 1.0)), _vec(node, "up", (0.0, 1.0, 0.0))
+    )
     radius = float(node.params.get("radius", 1.0))
     px, py = hexapolar(int(node.params.get("rings", 20)))
     xy = np.stack([px * radius, py * radius], axis=-1)
@@ -233,6 +236,50 @@ detector.representations = frozenset("RH")  # type: ignore[attr-defined]
 
 # ------------------------------------------------------------------------------ registration
 
+
+def _unit(v: Any) -> tuple[float, float, float]:
+    a = np.asarray(v, dtype=float)
+    a = a / np.linalg.norm(a)
+    return (float(a[0]), float(a[1]), float(a[2]))
+
+
+def _point(v: Any) -> tuple[float, float, float]:
+    a = np.asarray(v, dtype=float)
+    return (float(a[0]), float(a[1]), float(a[2]))
+
+
+def _source_frames(node: Node) -> dict[str, PortFrame]:
+    return {
+        "out": PortFrame(
+            _point(_vec(node, "center", (0.0, 0.0, 0.0))),
+            _unit(_vec(node, "direction", (0.0, 0.0, 1.0))),
+            float(node.params.get("radius", 1.0)),
+        )
+    }
+
+
+def _mirror_frames(node: Node) -> dict[str, PortFrame]:
+    plane = _plane(node)
+    return {"front": PortFrame(_point(plane.origin), _unit(plane.normal))}
+
+
+def _detector_frames(node: Node) -> dict[str, PortFrame]:
+    plane = _plane(node)
+    hu, hv = (float(x) for x in node.params.get("half_size", [1.0, 1.0]))
+    return {"in": PortFrame(_point(plane.origin), _unit(plane.normal), float(np.hypot(hu, hv)))}
+
+
+def _lens_frames(node: Node) -> dict[str, PortFrame]:
+    point = _point(_vec(node, "point", (0.0, 0.0, 0.0)))
+    axis = np.asarray(_unit(_vec(node, "axis", (0.0, 0.0, 1.0))))
+    f = float(node.params.get("focal_length", 10.0))
+    radius = float(node.params.get("aperture_radius", 0.5 * f))
+    return {
+        "in": PortFrame(point, _unit(-axis), radius),
+        "out": PortFrame(point, _unit(axis), radius),
+    }
+
+
 _PLANE_PARAMS = (
     ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
     ParamSpec("normal", "point", [0.0, 0.0, -1.0]),
@@ -254,6 +301,7 @@ TYPES = (
             ParamSpec("field_angles_deg", "numbers", [[0.0, 0.0]], unit="deg"),
             ParamSpec("irradiance", "number", 1.0, unit="W/mm²"),
             ParamSpec("polarisation", "point", [1.0, 0.0, 0.0], description="field direction"),
+            ParamSpec("up", "point", [0.0, 1.0, 0.0], description="direction of the local v axis"),
             ParamSpec(
                 "gaussian_waist",
                 "number",
@@ -263,6 +311,7 @@ TYPES = (
                 description="0: uniform; > 0: Gaussian amplitude exp(−ρ²/w²)",
             ),
         ),
+        port_frames=_source_frames,
         description="Collimated beam (plane wave per field angle and wavelength)",
     ),
     NodeType(
@@ -272,6 +321,7 @@ TYPES = (
         (*_PLANE_PARAMS, ParamSpec("reflectance_amplitude", "number", -1.0)),
         (("out", ("in",)),),
         ports=(PortSpec("front", "in", "out", "front"),),
+        port_frames=_mirror_frames,
         description="Plane mirror",
     ),
     NodeType(
@@ -300,6 +350,7 @@ TYPES = (
             ParamSpec("aperture_radius", "number", 5.0, unit="mm"),
         ),
         (("out", ("in",)),),
+        port_frames=_lens_frames,
         description="Ideal aplanatic lens (sine condition, Richards-Wolf illumination)",
     ),
     NodeType(
@@ -312,6 +363,7 @@ TYPES = (
             ParamSpec("pixels", "numbers", [128, 128]),
         ),
         (("image", ("in",)),),
+        port_frames=_detector_frames,
         description="Plane detector: coherent image (amplitudes per coherence group)",
     ),
 )

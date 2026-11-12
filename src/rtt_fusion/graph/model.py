@@ -11,6 +11,7 @@ The graph is plain data: parameters are values, never code (Raytatouille decisio
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any
@@ -172,6 +173,18 @@ class PortSpec:
         )
 
 
+@dataclass(frozen=True)
+class PortFrame:
+    """Where a port is (ADR section 2, R26): origin, outward unit normal (light leaves the node
+    along it), optionally the in-plane axis u, the aperture radius and the refractive index
+    outside – in world coordinates."""
+
+    origin: tuple[float, float, float]
+    normal: tuple[float, float, float]
+    radius: float | None = None
+    index: float | None = None
+
+
 #: Entries of a scattering table (ADR section 3): what a node can deliver from one port to another.
 SCATTER_KINDS = ("none", "oneway", "full", "ghost")
 
@@ -273,6 +286,9 @@ class NodeType:
     #: scattering table (port in, port out, kind, channels); empty: every pair of `through` is
     #: "oneway", every other pair "none" (`topology.node_scatter`)
     scatter: tuple[tuple[str, str, str, tuple[str, ...]], ...] = ()
+    #: frames of the ports from the node with world parameters (`pose.posed`), for the checks of
+    #: the connections (R26); None: the type gives no frames (a thin splitter, imported blocks)
+    port_frames: Callable[[Node], dict[str, PortFrame]] | None = None
 
     def socket(self, name: str) -> SocketSpec | None:
         return next((s for s in self.sockets if s.name == name), None)

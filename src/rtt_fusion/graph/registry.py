@@ -137,6 +137,10 @@ def builtin_registry() -> NodeTypeRegistry:
                 ParamSpec("system", "file", "", label="Raytatouille system"),
                 ParamSpec("fields", "text", "", description="field indices; empty: all"),
                 ParamSpec("wavelengths", "text", "", description="wavelength indices; empty: all"),
+                # the imported system (ADR, Nachtrag 1): settings, tree nodes no block owns, paths
+                ParamSpec("rtt_system", "data", {}, description="settings of the system"),
+                ParamSpec("rtt_tree", "data", {}, description="tree nodes no block owns"),
+                ParamSpec("rtt_paths", "data", [], description="order and keys of the paths"),
             ),
             description="Field points, wavelengths, polarisation of a system (coherence groups)",
         )

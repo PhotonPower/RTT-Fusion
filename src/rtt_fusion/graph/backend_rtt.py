@@ -933,7 +933,10 @@ def _base_id(node_id: str) -> str:
 
 
 def _channel(events: list[Any]) -> str:
-    return " ".join(f"{e['surface']}:m{e['order']}" for e in events if "order" in e)
+    """The channel of a run: the channels of its events (`importer.event_channel`)."""
+    from rtt_fusion.graph.importer import event_channel
+
+    return " ".join(c for c in (event_channel(e) for e in events) if c)
 
 
 def _runs(ctx: Context) -> tuple[Any, list[Any], dict[Any, str], dict[tuple[str, int], str]]:

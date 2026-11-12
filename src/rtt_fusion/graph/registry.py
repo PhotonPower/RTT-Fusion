@@ -116,7 +116,18 @@ def builtin_registry() -> NodeTypeRegistry:
             "rtt.section",
             Category.DOMAIN,
             TWO_SIDED,
-            (ParamSpec("location", "text", "", description="node of the Raytatouille model tree"),),
+            (
+                ParamSpec(
+                    "location", "text", "", description="node of the Raytatouille model tree"
+                ),
+                ParamSpec(
+                    "offset",
+                    "point",
+                    [0.0, 0.0, 0.0],
+                    unit="mm",
+                    description="shift of the elements of the block (Raytatouille backend)",
+                ),
+            ),
             TWO_SIDED_THROUGH,
             dynamic_sockets=True,
             description="Sequential surfaces of a Raytatouille system (e.g. an objective)",
@@ -134,7 +145,16 @@ def builtin_registry() -> NodeTypeRegistry:
                 light_in("t_in", "RHGS"),
                 light_out("merged", "RHGS", label="combined"),
             ),
-            (ParamSpec("surface", "text", ""),),
+            (
+                ParamSpec("surface", "text", ""),
+                ParamSpec(
+                    "offset",
+                    "point",
+                    [0.0, 0.0, 0.0],
+                    unit="mm",
+                    description="shift of the elements of the block (Raytatouille backend)",
+                ),
+            ),
             (("r", ("in",)), ("t", ("in",)), ("merged", ("r_in", "t_in"))),
             dynamic_sockets=True,
             description="Beam splitter: splits into channels, combines coherently per group",
@@ -145,7 +165,16 @@ def builtin_registry() -> NodeTypeRegistry:
             "rtt.mirror",
             Category.DOMAIN,
             (light_in("in", "RHGS"), light_out("out", "RHGS")),
-            (ParamSpec("surface", "text", ""),),
+            (
+                ParamSpec("surface", "text", ""),
+                ParamSpec(
+                    "offset",
+                    "point",
+                    [0.0, 0.0, 0.0],
+                    unit="mm",
+                    description="shift of the elements of the block (Raytatouille backend)",
+                ),
+            ),
             (("out", ("in",)),),
             dynamic_sockets=True,
             description="Mirror (one surface, reflecting)",

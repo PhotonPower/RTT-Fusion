@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from rtt_fusion._types import FloatArray
 from rtt_fusion.graph import Node, meta
 from rtt_fusion.graph.execute import ExecutionError, Executor
 from rtt_fusion.graph.meta import MetaResult
@@ -85,3 +86,52 @@ def test_meta_errors() -> None:
     ex = with_meta("meta.sweep", values=[X0], collect="m.results")
     with pytest.raises(ExecutionError, match="exec.cycle"):
         ex.evaluate("m", "results")
+
+
+def test_w28_sweep_moves_a_raytatouille_mirror() -> None:
+    """The `offset` of a Raytatouille block moves its element (R20b): a sweep of the test mirror
+    of Raytatouille's Michelson along its normal gives two-beam interference with period λ/2 in
+    the displacement and full contrast (equal arms)."""
+    rt = pytest.importorskip("raytatouille")
+    import json
+
+    from scipy.optimize import curve_fit
+
+    from rtt_fusion.graph import backend_rtt, builtin_registry, graph_from_raytatouille
+
+    d = json.loads((Path(__file__).parent / "data" / "michelson.rtt.json").read_text("utf-8"))
+    d["aperture"] = {"type": "epd", "value": 1.0}
+    g = graph_from_raytatouille(d)
+    reg = builtin_registry()
+    ev = dict(backend_rtt.EVALUATORS)
+    ev.update(meta.register(reg))
+    lam = 0.6328e-3
+    deltas = [k * lam / 2 / 8 for k in range(9)]
+    g.add(
+        Node(
+            "m",
+            "meta.sweep",
+            params={
+                "parameter": "test_mirror.offset[1]",  # the mirror's normal is y
+                "collect": "camera.image",
+                "measure": "centre",
+                "values": deltas,
+            },
+        )
+    )
+    g.nodes["camera"].params["half_size"] = [0.2, 0.2]
+    ex = Executor(
+        g, reg, ev, {"system": rt.System.from_json(json.dumps(d)), "rings": 8, "pixels": [16, 16]}
+    )
+    out: MetaResult = ex.evaluate("m", "results")
+    x = np.asarray(out.values)
+    y = np.asarray(out.measures)
+
+    def model(x: FloatArray, a: float, b: float, period: float, phase: float) -> FloatArray:
+        return np.asarray(a + b * np.cos(2 * np.pi * x / period + phase), dtype=np.float64)
+
+    p = curve_fit(model, x, y, p0=[y.mean(), (y.max() - y.min()) / 2, lam / 2, 0.0])[0]
+    assert abs(p[2]) == pytest.approx(lam / 2, rel=1e-3)
+    assert abs(p[1]) / p[0] == pytest.approx(1.0, abs=1e-2)  # contrast
+    assert np.abs(model(x, *p) - y).max() < 1e-3 * y.max()
+    assert g.nodes["test_mirror"].params.get("offset") in (None, [0.0, 0.0, 0.0])  # restored

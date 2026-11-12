@@ -53,28 +53,27 @@ def _structural(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -
 
 
 def _offsets(ctx: Context) -> dict[str, list[float]]:
-    """Shifts of Raytatouille blocks (parameter `offset`, mm) per surface id."""
+    """Shifts of Raytatouille blocks per surface id (mm, frame of the parent assembly): the
+    parameter `offset`, plus `drive` (set by a phase shifter linked to the block) along the
+    block's surface normal (its local +z)."""
     out: dict[str, list[float]] = {}
     for n in ctx.graph.nodes.values():
         if not n.type_id.startswith("rtt.") or n.muted:
             continue
-        offset = ([float(v) for v in (n.params.get("offset") or [])] + [0.0, 0.0, 0.0])[:3]
-        if any(abs(v) > 0 for v in offset):
+        offset = np.asarray(
+            ([float(v) for v in (n.params.get("offset") or [])] + [0.0, 0.0, 0.0])[:3]
+        )
+        drive = float(n.params.get("drive", 0.0) or 0.0)
+        if drive != 0.0:
+            offset = offset + drive * _normal_in_parent(ctx, n)
+        if np.any(np.abs(offset) > 0):
             for s in n.params.get("surfaces", []):
-                out[str(s)] = offset
+                out[str(s)] = [float(v) for v in offset]
     return out
 
 
-def _system_json(ctx: Context) -> dict[str, Any]:
-    """The system as JSON with the block offsets applied: an element that holds a shifted
-    surface moves by the offset (in the frame of its parent assembly)."""
-    system = ctx.shared.get("system")
-    if system is None:
-        raise ExecutionError("exec.no_system", "the executor needs shared['system'] (rt.System)")
-    d: dict[str, Any] = json.loads(system.to_json())
-    offsets = _offsets(ctx)
-    if not offsets:
-        return d
+def _apply_offsets(d: dict[str, Any], offsets: dict[str, list[float]]) -> dict[str, Any]:
+    """Moves every element holding a listed surface by its offset (frame of its parent)."""
 
     def visit(node: dict[str, Any]) -> None:
         ids = {str(s.get("id")) for s in node.get("surfaces", []) if isinstance(s, dict)}
@@ -94,6 +93,55 @@ def _system_json(ctx: Context) -> dict[str, Any]:
 
     visit(d["root"])
     return d
+
+
+def _base_json(ctx: Context) -> dict[str, Any]:
+    system = ctx.shared.get("system")
+    if system is None:
+        raise ExecutionError("exec.no_system", "the executor needs shared['system'] (rt.System)")
+    d: dict[str, Any] = json.loads(system.to_json())
+    return d
+
+
+def _normal_in_parent(ctx: Context, node: Node) -> Any:
+    """The surface normal of a block in the frame of its element's parent assembly: the global
+    normal from the layout, the parent frame from three probe translations (cached)."""
+    import raytatouille as rt
+
+    cache = ctx.shared.setdefault("drive_normals", {})
+    surfaces = [str(s) for s in node.params.get("surfaces", [])]
+    if not surfaces:
+        raise ExecutionError("exec.param", "drive: the block has no surface", node.id)
+    key = surfaces[0]
+    if key not in cache:
+        materials = ctx.shared.get("materials", rt.MaterialLibrary())
+
+        def surface_pose(d: dict[str, Any]) -> tuple[Any, Any]:
+            compiled = rt.compile(rt.System.from_json(json.dumps(d)), materials)
+            layout = next((x for x in rt.layout.surfaces(compiled) if x.id == key), None)
+            if layout is None:
+                raise ExecutionError("exec.param", f"drive: no surface {key!r}", node.id)
+            return np.asarray(layout.translation, dtype=float), np.asarray(layout.rotation)
+
+        t0, rot = surface_pose(_base_json(ctx))
+        normal = rot[:, 2]
+        columns = []
+        for k in range(3):
+            probe = [0.0, 0.0, 0.0]
+            probe[k] = 1.0
+            tk, _ = surface_pose(_apply_offsets(_base_json(ctx), {s: probe for s in surfaces}))
+            columns.append(tk - t0)
+        parent = np.column_stack(columns)  # parent unit vectors in global coordinates
+        cache[key] = np.linalg.solve(parent, normal)
+    return cache[key]
+
+
+def _system_json(ctx: Context) -> dict[str, Any]:
+    """The system as JSON with the block offsets applied: an element that holds a shifted
+    surface moves by the offset (in the frame of its parent assembly)."""
+    d = _base_json(ctx)
+    offsets = _offsets(ctx)
+    return _apply_offsets(d, offsets) if offsets else d
 
 
 def _compiled(ctx: Context) -> Any:

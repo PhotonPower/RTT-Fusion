@@ -30,6 +30,7 @@ DATA_TYPES = frozenset(
         "response_map",
         "scattering_stats",
         "result",
+        "drive",
     }
 )
 #: Transports of a light link: "auto" or one fixed representation.
@@ -198,6 +199,7 @@ class NodeType:
             back_in -> front_out; the graph is acyclic on this level (concept section 4).
             Empty for a type means "every output depends on every input".
         dynamic_sockets: nodes of this type carry their own sockets (imported sections).
+        extra_sockets: sockets added to the own sockets of such nodes (see the field).
         description: one line for the node library.
     """
 
@@ -208,6 +210,9 @@ class NodeType:
     through: tuple[tuple[str, tuple[str, ...]], ...] = ()
     dynamic_sockets: bool = False
     description: str = ""
+    #: sockets every node of the type has in addition to its own (e.g. the "drive" input of an
+    #: imported mirror, whose light sockets come from the import)
+    extra_sockets: tuple[SocketSpec, ...] = ()
 
     def socket(self, name: str) -> SocketSpec | None:
         return next((s for s in self.sockets if s.name == name), None)

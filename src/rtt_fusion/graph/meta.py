@@ -11,7 +11,11 @@ The core graph stays acyclic; a meta block repeats the part of the graph in fron
   result (bounded scalar search; adjoint gradients of solvers come later).
 
 The parameter is addressed as "block.param" or "block.param[i]" (an entry of a list parameter,
-e.g. "mirror.point[0]"); the collected output as "block.socket". The executor's cache makes a
+e.g. "mirror.point[0]"); the collected output as "block.socket". In the graph a meta block can be
+linked instead (R22): its output "drive" into the "drive" input of a mirror, section or splitter
+(the block then moves along its surface normal by the value in mm – a piezo phase shifter, the
+optical path changes exactly as the geometry says), and the output to observe into its input
+"observe". The executor's cache makes a
 repetition recompute only what lies behind the changed block (concept section 6). Meta blocks are
 not cached themselves: their result depends on the enclosed graph, not on links.
 
@@ -30,7 +34,7 @@ import numpy as np
 from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.imaging import Image
-from rtt_fusion.graph.model import Category, Node, NodeType, ParamSpec, data_out
+from rtt_fusion.graph.model import Category, Node, NodeType, ParamSpec, data_in, data_out
 from rtt_fusion.graph.registry import NodeTypeRegistry
 
 MEASURES = ("peak", "centre", "power")
@@ -99,6 +103,9 @@ class _Parameter:
 
 
 def _collect(ctx: Context, node: Node) -> tuple[str, str]:
+    observed = ctx.graph.links_to(node.id, "observe")
+    if observed:  # the output linked into "observe" (shown in the graph)
+        return observed[0].source
     target = str(node.params.get("collect", ""))
     if "." not in target:
         raise ExecutionError("exec.param", "collect: give the output as block.socket", node.id)
@@ -108,13 +115,23 @@ def _collect(ctx: Context, node: Node) -> tuple[str, str]:
     return block, socket
 
 
+def _address(ctx: Context, node: Node) -> str:
+    """The parameter the block varies: the "drive" of the block linked to its drive output (a
+    phase shifter on a mirror: displacement along the surface normal, mm), else `parameter`."""
+    driven = ctx.graph.links_from(node.id, "drive")
+    if driven:
+        return f"{driven[0].target[0]}.drive"
+    return str(node.params.get("parameter", ""))
+
+
 def _run(ctx: Context, node: Node, values: list[float]) -> MetaResult:
     if ctx.evaluate is None:
         raise ExecutionError("exec.meta", "meta blocks need the executor", node.id)
     block, socket = _collect(ctx, node)
-    parameter = _Parameter(ctx, str(node.params.get("parameter", "")), node.id)
+    address = _address(ctx, node)
+    parameter = _Parameter(ctx, address, node.id)
     measure = str(node.params.get("measure", "peak"))
-    out = MetaResult(str(node.params.get("parameter", "")), measure=measure)
+    out = MetaResult(address, measure=measure)
     try:
         for i, v in enumerate(values):
             parameter.set(float(v))
@@ -211,7 +228,11 @@ TYPES = (
     NodeType(
         "meta.sweep",
         Category.META,
-        (data_out("results", "result", "results"),),
+        (
+            data_out("results", "result", "results"),
+            data_out("drive", "drive", "drive"),
+            data_in("observe", "result", "observe"),
+        ),
         (
             *_COMMON,
             _param("values", "numbers", [], "values (empty: start, stop, count)"),
@@ -219,23 +240,33 @@ TYPES = (
             _param("stop", "number", 1.0),
             _param("count", "integer", 11, minimum=1),
         ),
+        through=(("results", ()),),
         description="Sweep: a parameter over values, the output collected per value",
     ),
     NodeType(
         "meta.replicates",
         Category.META,
-        (data_out("results", "result", "results"),),
+        (
+            data_out("results", "result", "results"),
+            data_out("drive", "drive", "drive"),
+            data_in("observe", "result", "observe"),
+        ),
         (
             *_COMMON,
             _param("values", "numbers", [], "replicate values (empty: 0 … count − 1)"),
             _param("count", "integer", 8, minimum=1),
         ),
+        through=(("results", ()),),
         description="Replicates: repeated with replicate values, images averaged",
     ),
     NodeType(
         "meta.optimise",
         Category.META,
-        (data_out("results", "result", "results"),),
+        (
+            data_out("results", "result", "results"),
+            data_out("drive", "drive", "drive"),
+            data_in("observe", "result", "observe"),
+        ),
         (
             *_COMMON,
             _param("bounds", "numbers", [0.0, 1.0], "lower and upper bound"),
@@ -243,6 +274,7 @@ TYPES = (
             _param("scan", "integer", 9, minimum=3, description="coarse scan before the search"),
             _param("tolerance", "number", 0.0, description="0: 1e−6 of the bounds"),
         ),
+        through=(("results", ()),),
         description="Optimisation of one parameter for the extremum of a measure",
     ),
 )

@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- `Executor.needed(wanted)` und `Executor.status(wanted=…)`: Marken aktuell/veraltet nur für die
+  Blöcke, die die gewünschten Ausgänge (die Darstellungen) brauchen, je Block mit den benötigten
+  Ausgängen – ein Teiler ist aktuell, auch wenn sein Weg zu einer nicht gezeigten Kamera fehlt
+  (W56).
 - R29 Verdichten (`graph/condense.py`): `Group.condense` macht eine Gruppe zu einem Block
   `fusion.condensed`, der je innerem Ast eine Tabelle ebener Wellen anwendet (s- und
   p-Koeffizient, Ausfallsrichtung, optischer Weg und Versatz zwischen Ein- und Austrittsebene je

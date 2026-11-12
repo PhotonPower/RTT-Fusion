@@ -17,7 +17,7 @@ dependencies = ["numpy>=1.24", "scipy>=1.10"]
 [project.optional-dependencies]
 modules = [
     "bwpm @ git+https://github.com/PhotonPower/BWPM.git@ef2de941d226d364db000a977963b0eba24aea44",
-    "fouriergrating @ git+https://github.com/PhotonPower/FourierGrating.git@959c93b8d69301492ac927287cddc33c0e6c55b2",
+    "fouriergrating @ git+https://github.com/PhotonPower/FourierGrating.git@174ef93d4e3b41ece7bb2f9a70055909e247ee25",
     "fieldtracing @ git+https://github.com/PhotonPower/Fieldtracing.git@6da9983387b8872d3241851d04d2012df5baaf48",
     "raytatouille @ git+https://github.com/PhotonPower/Raytatouille.git@708b6dda655a4bd0f20fb9f34b51c61d51761590",
     "cliffordbem @ git+https://github.com/PhotonPower/CliffordBem.git@41e64e627b82f96766c7cfe4f7d663864a5e5cfe",

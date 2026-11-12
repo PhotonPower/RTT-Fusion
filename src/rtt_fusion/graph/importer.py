@@ -176,6 +176,7 @@ def model_from_raytatouille(system: Any) -> Model:
     links: list[tuple[tuple[str, str], tuple[str, str]]] = []
     path_runs: dict[str, list[tuple[str, str]]] = {}
     path_events: dict[str, list[list[Any]]] = {}  # the events of each run (Nachtrag 1)
+    auto_events: dict[str, list[list[Any]]] = {}  # of "auto" paths
     order: list[str] = []  # first appearance of blocks, for the layout
 
     for p_index, path in enumerate(d.get("paths", [])):
@@ -203,8 +204,15 @@ def model_from_raytatouille(system: Any) -> Model:
                 runs.append((b, [k], [str(ev.get("kind", ""))]))
                 run_events.append([ev])
                 run_orders.append([channel] if channel else [])
-        if isinstance(path.get("events"), list):  # "auto" paths are rebuilt as "auto"
+        if isinstance(path.get("events"), list):
             path_events[pname] = run_events
+        else:  # "auto": the events as Raytatouille takes them (mirrors reflect), kept for other
+            # branches over the same blocks (the path itself is written back as "auto")
+            mirrors = {sid for b in blocks if b.element_type == "mirror" for sid in b.surfaces}
+            auto_events[pname] = [
+                [{**e, "kind": "reflect"} if e["surface"] in mirrors else e for e in run]
+                for run in run_events
+            ]
         path_runs[pname] = [(r[0].id, " ".join(o)) for r, o in zip(runs, run_orders, strict=True)]
         prev = "source"
         for j, (b, idx, kinds) in enumerate(runs):
@@ -316,7 +324,7 @@ def model_from_raytatouille(system: Any) -> Model:
         )
     # one connection per pair of neighbours: the ports are named after the neighbour
     # (sockets from_X / to_X); their frames follow with the poses (R26)
-    _keep_system_data(m, d, blocks, path_runs, path_events)
+    _keep_system_data(m, d, blocks, path_runs, path_events, auto_events)
     for src, dst in links:
         a, b_end = (src[0], src[1][3:]), (dst[0], dst[1][5:])
         if not any({c.a, c.b} == {a, b_end} for c in m.connections):
@@ -338,6 +346,7 @@ def _keep_system_data(
     blocks: list[_Block],
     path_runs: dict[str, list[tuple[str, str]]],
     path_events: dict[str, list[list[Any]]],
+    auto_events: dict[str, list[list[Any]]],
 ) -> None:
     """All data of the system in the model (ADR, Nachtrag 1): each node of the model tree in the
     block that owns it (all its surfaces are the block's) as `rtt` {location: node}, the events
@@ -368,17 +377,21 @@ def _keep_system_data(
             owned[owner][location] = entry
     for bid, data in owned.items():
         m.nodes[bid].params["rtt"] = data
-    for pname, runs in path_runs.items():
-        if pname not in path_events:
-            continue
-        for j, ((bid, channel), events) in enumerate(zip(runs, path_events[pname], strict=True)):
-            came = "source" if j == 0 else runs[j - 1][0]
-            goes = runs[j + 1][0] if j + 1 < len(runs) else ""
-            key = f"{came}>{goes}|{channel}"
-            stored = m.nodes[bid].params.setdefault("runs", {})
-            if stored.get(key, events) != events:
-                raise ValueError(f"block {bid}: two different traversals {key}")
-            stored[key] = json.loads(json.dumps(events))
+    # explicit paths first; the events of "auto" paths only where no explicit path passes
+    for auto, by_path in ((False, path_events), (True, auto_events)):
+        for pname, path_runs_events in by_path.items():
+            runs = path_runs[pname]
+            for j, ((bid, channel), events) in enumerate(zip(runs, path_runs_events, strict=True)):
+                came = "source" if j == 0 else runs[j - 1][0]
+                goes = runs[j + 1][0] if j + 1 < len(runs) else ""
+                key = f"{came}>{goes}|{channel}"
+                stored = m.nodes[bid].params.setdefault("runs", {})
+                if auto:
+                    stored.setdefault(key, json.loads(json.dumps(events)))
+                    continue
+                if stored.get(key, events) != events:
+                    raise ValueError(f"block {bid}: two different traversals {key}")
+                stored[key] = json.loads(json.dumps(events))
     source = m.nodes["source"].params
     source["rtt_system"] = json.loads(
         json.dumps({k: v for k, v in d.items() if k not in ("root", "paths")})
@@ -406,53 +419,86 @@ def system_from_model(model: Model) -> dict[str, Any]:
     from the source and the blocks (each node at its location), the paths from the branches
     (the events of each step from its block's `runs`). After an import without edits it is the
     imported system."""
-    source = next((n for n in model.nodes.values() if n.type_id == "rtt.source"), None)
+    branches = [
+        (b.name, [(s.node, s.port_in, s.port_out, s.channel) for s in b.steps])
+        for b in model.branches
+    ]
+    return _system(list(model.nodes.values()), branches, strict=True)
+
+
+def system_from_graph(graph: Graph) -> dict[str, Any] | None:
+    """The Raytatouille system of an unrolled graph (S2): as `system_from_model`, from the data
+    its blocks carry (copies `id@k` share them) and the branches in `graph.meta["branches"]`;
+    a branch whose steps have no recorded events (a ghost, a step through a block of another
+    kind) is no path – the backend passes it block by block. None without data (an old graph)."""
+    nodes = [n for n in graph.nodes.values() if "@" not in n.id]
+    if not any(n.type_id == "rtt.source" and "rtt_system" in n.params for n in nodes):
+        return None
+    branches = [
+        (str(b["name"]), [(s[0], s[1], s[2], s[3] if len(s) > 3 else "") for s in b["steps"]])
+        for b in graph.meta.get("branches", [])
+    ]
+    return _system(nodes, branches, strict=False)
+
+
+def _system(
+    nodes: list[Node], branches: list[tuple[str, list[tuple[Any, Any, Any, Any]]]], strict: bool
+) -> dict[str, Any]:
+    by_id = {n.id: n for n in nodes}
+    source = next((n for n in nodes if n.type_id == "rtt.source"), None)
     if source is None or "rtt_system" not in source.params:
         raise ValueError("the model carries no Raytatouille system (import it again)")
     d: dict[str, Any] = json.loads(json.dumps(source.params["rtt_system"]))
     entries: dict[str, dict[str, Any]] = dict(source.params.get("rtt_tree", {}))
-    for node in model.nodes.values():
-        entries.update(node.params.get("rtt", {}) if node.type_id.startswith("rtt.") else {})
+    for node in nodes:  # a block that replaced a Raytatouille block keeps its data (rtt)
+        entries.update(node.params.get("rtt", {}))
 
     def index_path(location: str) -> list[int]:
         return [int(x) for x in location.split("/")[3::2]]  # /root/children/i/children/j
 
-    nodes = {loc: json.loads(json.dumps(e)) for loc, e in entries.items()}
-    for location in sorted(nodes, key=index_path):
+    tree = {loc: json.loads(json.dumps(e)) for loc, e in entries.items()}
+    for location in sorted(tree, key=index_path):
         if location == "/root":
             continue
         parent, _, index = location.rpartition("/children/")
-        children = nodes[parent].setdefault("children", [])
+        children = tree[parent].setdefault("children", [])
         k = int(index)
         while len(children) <= k:
             children.append(None)
-        children[k] = nodes[location]
-    root = nodes.get("/root", {"type": "assembly", "children": []})
+        children[k] = tree[location]
+    root = tree.get("/root", {"type": "assembly", "children": []})
     if any(c is None for c in _all_children(root)):
         raise ValueError("the model tree has gaps (a block with part of the system was removed)")
-    branches = {b.name: b for b in model.branches}
-    paths: list[dict[str, Any]] = []
+    names = {name for name, _ in branches}
     order = source.params.get("rtt_paths", [])
-    names = [str(p["name"]) for p in order] + [
-        b for b in branches if b not in {str(p["name"]) for p in order}
-    ]
     extras = {str(p["name"]): p for p in order}
-    for name in names:
-        if name not in branches:
-            continue  # the modeller removed the branch
+    ordered = [str(p["name"]) for p in order if str(p["name"]) in names]
+    ordered += [name for name, _ in branches if name not in extras]
+    steps_of = dict(branches)
+    paths: list[dict[str, Any]] = []
+    for name in ordered:
         extra = {k: v for k, v in extras.get(name, {"name": name}).items() if k != "auto"}
         if extras.get(name, {}).get("auto"):
             paths.append({**extra, "events": "auto"})
             continue
         events: list[Any] = []
-        steps = [s for s in branches[name].steps if s.port_in is not None]
-        for s in steps:
-            runs = model.nodes[s.node].params.get("runs", {}) if s.node in model.nodes else {}
-            key = f"{s.port_in}>{s.port_out or ''}|{s.channel}"
+        for node_id, port_in, port_out, channel in steps_of[name]:
+            if port_in is None:
+                continue  # the source
+            runs = by_id[node_id].params.get("runs", {}) if node_id in by_id else {}
+            key = f"{port_in}>{port_out or ''}|{channel}"
             if key not in runs:
-                raise ValueError(f"branch {name!r}: no events for {s.node} {key}")
+                if strict:
+                    raise ValueError(f"branch {name!r}: no events for {node_id} {key}")
+                # a ghost or a block of another kind: no path of this name; the beginning of
+                # the branch aims its rays (the backend passes the branch block by block)
+                if events:
+                    paths.append({"name": f"{name} (aim)", "events": events})
+                events = []
+                break
             events += runs[key]
-        paths.append({**extra, "events": events})
+        if events:
+            paths.append({**extra, "events": events})
     d["root"] = root
     d["paths"] = paths
     return d

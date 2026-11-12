@@ -9,5 +9,8 @@
 | bohren-huffman | C. F. Bohren, D. R. Huffman, Absorption and Scattering of Light by Small Particles, Wiley (1983), Kap. 4 | Standardformeln (a_n, b_n, S1, S2, Q_ext), unabhängig nachgerechnet gegen CliffordBem | Mie-Referenz `tests/mie_reference.py` |
 | cbem | CliffordBem `docs/python.md`, `docs/results_beams.md` (Commit `41e64e6`) | gelesen | Adapter, Richards-Wolf-Strahl |
 | sbem | SpeckleBem `docs/06_conventions.md`, `docs/10_python_api.md` (Commit `4f04efe`) | gelesen | SpeckleBem-Adapter |
+| ft-adr0004 | Fieldtracing ADR 0004 „Feldamplitude aus Raytatouilles leistungsnormierter PRT-Matrix und Gewicht“, `rtt_bridge.py`, `mesh.py`, `chain.plan_propagation` (Commit `6da9983`) | gelesen | R18: Strahlen → Feld, Ausbreitung auf H-Bändern |
+| richards-wolf | B. Richards, E. Wolf, „Electromagnetic diffraction in optical systems II“, Proc. R. Soc. A 253, 358 (1959); als Bessel-Integral in Fieldtracing `focus.richards_wolf` (Commit `6da9983`) | Formel aus Fieldtracing übernommen (dort gegen die Arbeit geprüft); Originalarbeit hier nicht gelesen | W13: Fokus der aplanatischen Linse |
+| gauss-beam | Gauß-Strahl w(z) = w₀ sqrt(1 + (z/z_R)²), z_R = π w₀²/λ, I = I₀ (w₀/w)² exp(−2r²/w²) | Standardformel | W14, W15 |
 | rtt-michelson | Raytatouille `tests/reference/m0/michelson.rtt.json` (MIT), kopiert nach `tests/data/michelson.rtt.json` | übernommen | Pilot W9 über das Raytatouille-Backend |
 | hpfem | hp-FEM `docs/python.md` (Gitter, Konventionen), `python/hpfem/grating.py` (`jones`, Commit `dce07d5`) | gelesen | hp-FEM-Adapter |

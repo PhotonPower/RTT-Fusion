@@ -7,10 +7,17 @@ changing a parameter recomputes only what lies downstream (Blender-like). A mute
 its light through unchanged (light outputs) or yields nothing (data outputs).
 
 Before running, the planner (stage R17, `rtt_fusion.graph.planner`) fixes the representation of
-every light link from the representations the executor can run (`EXECUTABLE`, so far R: ray
-bundles, `rtt_fusion.graph.light`). "auto" therefore still means R, with the same results as in
-R15; other fixed transports raise `exec.transport_unsupported` until their stage. The plan is kept
-in `Executor.plan`.
+every light link from the representations the executor can run (`available`, default R: ray
+bundles, `rtt_fusion.graph.light`; R18 adds H: fields, `rtt_fusion.graph.field`, for backends
+whose evaluators produce ray bundles). "auto" picks R where both are possible, with the results of
+R15; fixed transports outside `available` raise `exec.transport_unsupported`. The plan is kept in
+`Executor.plan`.
+
+Evaluators work in their native representation (attribute `representations` of the evaluator,
+default R). The executor converts at the ports: a link planned H turns the rays of its source into
+fields on a port plane (R -> H); if the evaluator at its end works with rays only, the fields
+become rays again there (H -> R, after nothing but the conversion; propagation of fields between
+blocks belongs to the evaluators that take fields, such as detectors).
 """
 
 from __future__ import annotations
@@ -21,6 +28,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays, rays_to_field
+from rtt_fusion.graph.light import RayBundle
 from rtt_fusion.graph.model import Direction, Graph, Node, SocketKind
 from rtt_fusion.graph.planner import Plan, Requirements, link_key, plan
 from rtt_fusion.graph.registry import NodeTypeRegistry
@@ -30,8 +39,9 @@ from rtt_fusion.graph.validate import errors, node_sockets, node_through, valida
 #: Light inputs and outputs are lists of RayBundle; data values are free objects.
 Evaluator = Callable[["Context", Node, str, dict[str, Any]], Any]
 
-#: Representations the evaluators can run (R18 adds H).
+#: Representations run by default (backends whose evaluators produce rays may add H, R18).
 EXECUTABLE = frozenset({"R"})
+WITH_FIELDS = frozenset({"R", "H"})
 SUPPORTED_TRANSPORTS = frozenset({"auto"}) | EXECUTABLE
 
 
@@ -59,6 +69,7 @@ class Executor:
         registry: NodeTypeRegistry,
         evaluators: dict[str, Evaluator],
         shared: dict[str, Any] | None = None,
+        available: frozenset[str] = EXECUTABLE,
     ) -> None:
         self.graph = graph
         self.registry = registry
@@ -67,6 +78,7 @@ class Executor:
         self.cache: dict[str, Any] = {}
         self.calls: dict[tuple[str, str], int] = {}  # evaluator calls per output (tests, profiling)
         self.plan: Plan | None = None
+        self.available = frozenset(available)
 
     # ------------------------------------------------------------------ public
     def check(self) -> None:
@@ -77,13 +89,14 @@ class Executor:
             d = found[0]
             raise ExecutionError(d.code, d.message, d.location)
         for lk in self.graph.links:
-            if lk.transport not in SUPPORTED_TRANSPORTS:
+            if lk.transport != "auto" and lk.transport not in self.available:
                 raise ExecutionError(
                     "exec.transport_unsupported",
-                    f"transport {lk.transport} comes with a later stage (R15 runs R)",
+                    f"transport {lk.transport} comes with a later stage (this backend runs "
+                    f"{''.join(sorted(self.available))})",
                     f"{lk.source[0]}.{lk.source[1]} -> {lk.target[0]}.{lk.target[1]}",
                 )
-        self.plan = plan(self.graph, self.registry, Requirements(available=EXECUTABLE))
+        self.plan = plan(self.graph, self.registry, Requirements(available=self.available))
         for d in self.plan.diagnostics:
             if d.severity == "error":
                 raise ExecutionError(d.code, d.message, d.location)
@@ -123,6 +136,8 @@ class Executor:
                 continue
             lk = links[0]
             value, key = self._value(lk.source[0], lk.source[1], (*stack, here))
+            rep = self.plan.representations.get(link_key(lk), "R") if self.plan else "R"
+            value = self._convert(value, rep, node, lk)
             inputs[in_name] = value
             rep = self.plan.representations.get(link_key(lk), "") if self.plan else ""
             input_keys.append(f"{in_name}={key}|{rep or lk.transport}")
@@ -152,6 +167,24 @@ class Executor:
             value = evaluator(self.context, node, socket, inputs)
         self.cache[key] = value
         return value, key
+
+    def _convert(self, value: Any, rep: str, consumer: Node, lk: Any) -> Any:
+        """Light on a link in its planned representation, as the consumer can take it."""
+        if not isinstance(value, list):
+            return value
+        native = getattr(self.evaluators.get(consumer.type_id), "representations", frozenset("R"))
+        where = f"{lk.source[0]}.{lk.source[1]} -> {lk.target[0]}.{lk.target[1]}"
+        out: list[Any] = []
+        try:
+            for item in value:
+                if rep == "H" and isinstance(item, RayBundle):
+                    item = rays_to_field(item)
+                if isinstance(item, FieldBundle) and ("H" not in native or consumer.muted):
+                    item = field_to_rays(item)
+                out.append(item)
+        except FieldError as e:
+            raise ExecutionError("exec.field", str(e), where) from e
+        return out
 
 
 def _hash(obj: object) -> str:

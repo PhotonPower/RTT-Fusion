@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from rtt_fusion._types import ComplexArray
 from rtt_fusion.graph import (
     Model,
     Node,
@@ -209,7 +210,7 @@ _OUT: dict[str, tuple[str, str]] = {  # light into a port leaves reflected and t
 }
 
 
-def _s_matrix(r: complex, t: complex) -> tuple[np.ndarray, dict[tuple[str, str], float]]:
+def _s_matrix(r: complex, t: complex) -> tuple[ComplexArray, dict[tuple[str, str], float]]:
     ports = list(_PLACES)
     s = np.zeros((4, 4), dtype=complex)
     powers: dict[tuple[str, str], float] = {}

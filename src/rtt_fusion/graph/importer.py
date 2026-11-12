@@ -27,7 +27,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from rtt_fusion.graph.model import Graph, Node, SocketSpec, data_out, light_in, light_out
+from rtt_fusion.graph.model import (
+    Graph,
+    Node,
+    PortSpec,
+    SocketSpec,
+    data_out,
+    light_in,
+    light_out,
+)
 from rtt_fusion.graph.topology import Branch, Model, Step, unroll
 
 # representations a Raytatouille block can take and give (rays now, fields with rtt-field)
@@ -253,6 +261,18 @@ def model_from_raytatouille(system: Any) -> Model:
         ) + tuple(light_out(n, _SECTION_REPS, b.sides.get(n, ""), n[3:]) for n in b.outs)
         if type_id == "rtt.detector":
             sockets += (data_out("image", "result", "image"),)
+        # ports named after the neighbours, with both channels (a ghost may go back, R27)
+        neighbours = list(dict.fromkeys([n[5:] for n in b.ins] + [n[3:] for n in b.outs]))
+        ports = (
+            tuple(
+                PortSpec(
+                    x, f"from_{x}", f"to_{x}", b.sides.get(f"from_{x}", b.sides.get(f"to_{x}", ""))
+                )
+                for x in neighbours
+            )
+            if type_id in ("rtt.section", "rtt.splitter")
+            else ()
+        )
         column = order.index(b.id) + 1
         m.add(
             Node(
@@ -268,6 +288,7 @@ def model_from_raytatouille(system: Any) -> Model:
                 position=(220.0 * column, 0.0),
                 sockets=sockets,
                 through=tuple((o, tuple(ins)) for o, ins in b.through.items()),
+                ports=ports,
             )
         )
     # one connection per pair of neighbours: the ports are named after the neighbour

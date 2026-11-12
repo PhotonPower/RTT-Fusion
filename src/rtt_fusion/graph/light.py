@@ -134,9 +134,14 @@ class Plane:
         v = np.cross(n, u)
         return Plane(o, n, u, v)
 
-    def intersect(self, bundle: RayBundle, index: float = 1.0) -> tuple[RayBundle, FloatArray]:
-        """Moves the rays to the plane (OPL grows by n·s); rays that do not reach it forward are
-        lost. Returns the moved bundle and the local (u, v) coordinates of the hits."""
+    def intersect(
+        self, bundle: RayBundle, index: float | None = None
+    ) -> tuple[RayBundle, FloatArray]:
+        """Moves the rays to the plane (OPL grows by n·s, n the medium the rays are in:
+        `bundle.index` unless given); rays that do not reach it forward are lost. Returns the
+        moved bundle and the local (u, v) coordinates of the hits."""
+        if index is None:
+            index = bundle.index
         d = np.asarray(bundle.direction)
         p = np.asarray(bundle.position)
         denom = d @ self.normal

@@ -6,6 +6,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R27 allgemeiner Teiler und Mehrfachumläufe: `optics.interface` (Grenzfläche zweier Medien,
+  Fresnel s und p, leistungsnormierte Amplitude, Totalreflexion) und `optics.splitter`
+  (verlustfreier Teiler mit vier Ports, Stokes-Beziehungen); `Plane.intersect` rechnet die OPL im
+  Medium des Bündels. Umläufe trägt der Modellierer als Äste ein (Abnahme: Airy-Teilsummen).
+  Geister in Raytatouille-Abschnitten: Streueintrag `ghost`, Kanal `ghost:<Fläche>,…`, das
+  Backend setzt die Ereignisse aus der Flächenfolge zusammen; importierte Abschnitte und Teiler
+  haben Ports mit beiden Kanälen, fehlende Sockets ergänzt `unroll`; „auto“-Pfade ohne Ast
+  werden für die Runs ausgeschrieben. Testsystem `ghost_plates` (Raytatouille M4), Abnahme
+  W50–W52.
 - R26 Posen (`graph/pose.py`): Isometrien in Raytatouilles Konvention (Translation, Rotation um
   den Pivot, intrinsisch X → Y → Z); Pose je Knoten ohne Geometrie (Parameter `pose`), Versatz
   `pose_offset` und je Treiber `pose_by_<id>` (sie addieren), Eingang `pose` an jedem Lichtblock,

@@ -237,6 +237,122 @@ detector.representations = frozenset("RH")  # type: ignore[attr-defined]
 # ------------------------------------------------------------------------------ registration
 
 
+def _fresnel(
+    b: RayBundle, plane: Plane, n1: float, n2: float, reflect: bool, name: str
+) -> RayBundle:
+    """Light of `b` (in medium n1) at an interface to n2: reflected or transmitted, Fresnel
+    coefficients for s and p (R27). The scalar amplitude is power-normalised (transmission:
+    t·sqrt(n2 cos θt / (n1 cos θi))) and taken along the geometrically carried polarisation – exact
+    for s or p light and at normal incidence; prt carries the geometry. Total internal reflection:
+    the transmitted rays are lost."""
+    moved, _ = plane.intersect(b)
+    k = np.asarray(moved.direction)
+    n = plane.normal
+    cos_i = k @ n
+    side = np.sign(np.where(cos_i == 0, 1.0, cos_i))[:, None]
+    nn = n[None, :] * side  # the normal along the light
+    ci = np.abs(cos_i)
+    sin_t2 = (n1 / n2) ** 2 * np.clip(1.0 - ci**2, 0.0, None)
+    tir = sin_t2 > 1.0
+    ct = np.sqrt(np.clip(1.0 - sin_t2, 0.0, None))
+    if reflect:
+        k_out = k - 2.0 * (k * nn).sum(axis=1)[:, None] * nn
+    else:
+        k_out = (n1 / n2) * k + ((ct - (n1 / n2) * ci)[:, None]) * nn
+        k_out = k_out / np.linalg.norm(k_out, axis=1)[:, None]
+    # s ⟂ plane of incidence; p_in = s × k; p_out = k_out × s (reflected) or s × k_out
+    # (transmitted), so that at normal incidence the geometric map is the identity transversally
+    s_vec = np.cross(k, nn)
+    norm = np.linalg.norm(s_vec, axis=1)
+    fallback = np.cross(np.tile(plane.u, (len(k), 1)), k)  # normal incidence: any transverse axis
+    s_vec = np.where(
+        norm[:, None] > 1e-12, s_vec / np.where(norm > 0, norm, 1.0)[:, None], fallback
+    )
+    s_vec = s_vec / np.linalg.norm(s_vec, axis=1)[:, None]
+    p_in = np.cross(s_vec, k)
+    p_out = np.cross(k_out, s_vec) if reflect else np.cross(s_vec, k_out)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        if reflect:
+            ct_c = np.sqrt((1.0 - sin_t2).astype(complex))  # imaginary under TIR
+            c_s = (n1 * ci - n2 * ct_c) / (n1 * ci + n2 * ct_c)
+            c_p = (n1 * ct_c - n2 * ci) / (n1 * ct_c + n2 * ci)
+        else:
+            gain = np.sqrt(np.where(tir, 0.0, n2 * ct / np.where(ci > 0, n1 * ci, 1.0)))
+            c_s = (2 * n1 * ci / (n1 * ci + n2 * ct)) * gain
+            c_p = (2 * n1 * ci / (n2 * ci + n1 * ct)) * gain
+    geometric = np.einsum("ni,nj->nij", s_vec, s_vec) + np.einsum("ni,nj->nij", p_out, p_in)
+    physical = c_s[:, None, None] * np.einsum("ni,nj->nij", s_vec, s_vec) + c_p[
+        :, None, None
+    ] * np.einsum("ni,nj->nij", p_out, p_in)
+    field = moved.field_direction()
+    carried = np.einsum("nij,nj->ni", geometric, field)
+    out_field = np.einsum("nij,nj->ni", physical, field)
+    norm2 = np.sum(np.abs(carried) ** 2, axis=1)
+    factor = np.sum(out_field * np.conj(carried), axis=1) / np.where(norm2 > 0, norm2, 1.0)
+    prt = np.asarray(moved.prt) if moved.prt is not None else np.tile(np.eye(3), (len(k), 1, 1))
+    alive = np.asarray(moved.alive) & (~tir if not reflect else True)
+    return moved.evolve(
+        direction=k_out,
+        amplitude=np.asarray(moved.amplitude) * np.where(alive, factor, 0.0),
+        alive=alive,
+        prt=np.einsum("nij,njk->nik", geometric, prt).astype(complex),
+        index=n2 if not reflect else n1,
+        path=(*b.path, name),
+        source_frame=moved.source_frame,
+    )
+
+
+def interface(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
+    """Plane interface between `n_front` (the side `normal` points to) and `n_back` (R27): light
+    in through one side leaves reflected through the same side, transmitted through the other."""
+    plane = _plane(node)
+    n_side = {
+        "front": float(node.params.get("n_front", 1.0)),
+        "back": float(node.params.get("n_back", 1.5)),
+    }
+    out_side = socket.split("_")[0]
+    out: list[RayBundle] = []
+    for in_socket, bundles in inputs.items():
+        in_side = in_socket.split("_")[0]
+        other = "back" if in_side == "front" else "front"
+        for b in bundles or []:
+            out.append(
+                _fresnel(b, plane, n_side[in_side], n_side[other], in_side == out_side, node.id)
+            )
+    return out
+
+
+def splitter(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
+    """Lossless thin splitter with four ports (R27): front_a, front_b on the side `normal`
+    points to, back_a, back_b behind; front_a and back_a lie on one line, as front_b and back_b.
+    Light in at a front port leaves reflected (r) at the other front port and transmitted (t) at
+    the back port on its line; from the back r' = −r*·t/t* (Stokes, lossless and reciprocal:
+    S = Sᵀ unitary)."""
+    plane = _plane(node)
+    r = complex(node.params.get("r", SQRT_HALF))
+    t = complex(node.params.get("t", SQRT_HALF))
+    r_back = -np.conj(r) * t / np.conj(t)
+    out_side, out_line = socket.split("_")[0], socket.split("_")[1]
+    out: list[RayBundle] = []
+    for in_socket, bundles in inputs.items():
+        in_side, in_line = in_socket.split("_")[0], in_socket.split("_")[1]
+        for b in bundles or []:
+            if in_side == out_side and in_line != out_line:
+                out.append(_reflect(b, plane, r if in_side == "front" else r_back, node.id))
+            elif in_side != out_side and in_line == out_line:
+                out.append(_transmit(b, plane, t, node.id))
+    return out
+
+
+def _interface_frames(node: Node) -> dict[str, PortFrame]:
+    plane = _plane(node)
+    o, n = _point(plane.origin), np.asarray(plane.normal)
+    return {
+        "front": PortFrame(o, _unit(n), None, float(node.params.get("n_front", 1.0))),
+        "back": PortFrame(o, _unit(-n), None, float(node.params.get("n_back", 1.5))),
+    }
+
+
 def _unit(v: Any) -> tuple[float, float, float]:
     a = np.asarray(v, dtype=float)
     a = a / np.linalg.norm(a)
@@ -340,6 +456,51 @@ TYPES = (
         description="Plane beam splitter (Michelson / Linnik arrangement)",
     ),
     NodeType(
+        "optics.interface",
+        Category.DOMAIN,
+        (
+            light_in("front_in", "RH", "front"),
+            light_out("front_out", "RH", "front"),
+            light_in("back_in", "RH", "back"),
+            light_out("back_out", "RH", "back"),
+        ),
+        (
+            *_PLANE_PARAMS,
+            ParamSpec(
+                "n_front", "number", 1.0, description="index on the side the normal points to"
+            ),
+            ParamSpec("n_back", "number", 1.5, description="index behind"),
+        ),
+        (
+            ("front_out", ("front_in", "back_in")),
+            ("back_out", ("front_in", "back_in")),
+        ),
+        scatter=tuple((i, o, "full", ()) for i in ("front", "back") for o in ("front", "back")),
+        port_frames=_interface_frames,
+        description="Plane interface of two media (Fresnel, s and p)",
+    ),
+    NodeType(
+        "optics.splitter",
+        Category.SPLITTER,
+        tuple(
+            spec
+            for side in ("front", "back")
+            for line in ("a", "b")
+            for spec in (
+                light_in(f"{side}_{line}_in", "RH", side),
+                light_out(f"{side}_{line}_out", "RH", side),
+            )
+        ),
+        (*_PLANE_PARAMS, ParamSpec("r", "number", SQRT_HALF), ParamSpec("t", "number", SQRT_HALF)),
+        (
+            ("front_a_out", ("front_b_in", "back_a_in")),
+            ("front_b_out", ("front_a_in", "back_b_in")),
+            ("back_a_out", ("back_b_in", "front_a_in")),
+            ("back_b_out", ("back_a_in", "front_b_in")),
+        ),
+        description="Lossless splitter with four ports (Stokes relations)",
+    ),
+    NodeType(
         "optics.aplanatic_lens",
         Category.DOMAIN,
         (light_in("in", "RH"), light_out("out", "RH")),
@@ -371,6 +532,8 @@ TYPES = (
 EVALUATORS: dict[str, Evaluator] = {
     "optics.collimated_source": source,
     "optics.plane_mirror": mirror,
+    "optics.interface": interface,
+    "optics.splitter": splitter,
     "optics.beam_splitter": beam_splitter,
     "optics.aplanatic_lens": aplanatic_lens,
     "optics.detector": detector,

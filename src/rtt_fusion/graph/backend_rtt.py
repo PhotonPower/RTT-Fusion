@@ -962,7 +962,7 @@ def _runs(ctx: Context) -> tuple[Any, list[Any], dict[Any, str], dict[tuple[str,
         name = str(p.get("name"))
         if name not in meta_paths:
             if not isinstance(p.get("events"), list):
-                continue
+                p["events"] = _auto_events(d)
             runs_of_path: list[tuple[str, list[Any]]] = []
             for e in p["events"]:
                 block = owner.get(str(e["surface"]), "")
@@ -1003,12 +1003,86 @@ def _runs(ctx: Context) -> tuple[Any, list[Any], dict[Any, str], dict[tuple[str,
             goes = f"to_{_base_id(blocks[i + 1])}" if i + 1 < len(blocks) else None
             by_key.setdefault((_base_id(block), f"from_{came}", goes, _channel(events)), run)
             by_place[(name, i)] = run
+    # ghosts (R27): a step "ghost:s1,s2,…" reflects at the named surfaces of a section
+    events_of: dict[str, Any] = {str(e["name"]): e["events"] for e in extra}
+    for b in ctx.graph.meta.get("branches", []):
+        steps = [s for s in b["steps"] if s[1] is not None]
+        blocks = meta_paths.get(b["name"], [])
+        for i, step in enumerate(steps):
+            channel = str(step[3]) if len(step) > 3 else ""
+            if not channel.startswith("ghost:") or i >= len(blocks):
+                continue
+            run = f"{b['name']}#{i}"
+            extra.append(
+                {"name": run, "events": _ghost_events(by_key, events_of, step, channel, blocks[i])}
+            )
+            by_place[(b["name"], i)] = run
     d["paths"] = [*d.get("paths", []), *extra]
     compiled = rt.compile(
         rt.System.from_json(json.dumps(d)), ctx.shared.get("materials", rt.MaterialLibrary())
     )
     cache[key] = (compiled, list(rt.layout.surfaces(compiled)), by_key, by_place)
     return cache[key]  # type: ignore[no-any-return]
+
+
+def _auto_events(d: dict[str, Any]) -> list[Any]:
+    """The events of an "auto" path: every surface in tree order, mirrors reflecting."""
+    out: list[Any] = []
+
+    def visit(node: dict[str, Any]) -> None:
+        for s in node.get("surfaces", []):
+            if isinstance(s, dict):
+                event = {"surface": str(s.get("id"))}
+                if node.get("type") == "mirror":
+                    event["kind"] = "reflect"
+                out.append(event)
+        for c in node.get("children", []):
+            if isinstance(c, dict):
+                visit(c)
+
+    visit(d["root"])
+    return out
+
+
+def _ghost_events(
+    by_key: dict[Any, str], events_of: dict[str, Any], step: list[Any], channel: str, block: str
+) -> list[Any]:
+    """Events of a ghost through a section: along the order of its surfaces as a path of the
+    system passes it from the port the light comes in, reflected at each named surface in turn,
+    the rest transmitted; it leaves through the port it came in after an odd number of
+    reflections, through the other after an even one."""
+    node, came = _base_id(block), str(step[1])
+    forward = next(
+        (events_of[r] for k, r in by_key.items() if k[0] == node and k[1] == f"from_{came}"),
+        None,
+    )
+    if forward is None:  # only passed the other way: reverse that run
+        back = next(
+            (events_of[r] for k, r in by_key.items() if k[0] == node and k[2] == f"to_{came}"),
+            None,
+        )
+        if back is None:
+            raise ExecutionError("exec.branch", f"no path of the system passes {node}", node)
+        forward = list(reversed(back))
+    order = [str(e["surface"]) for e in forward]
+    events: list[Any] = []
+    pos, direction = -1, 1
+    for target in [s for s in channel[6:].split(",") if s]:
+        k = pos + direction
+        while 0 <= k < len(order) and order[k] != target:
+            events.append({"surface": order[k], "kind": "transmit"})
+            k += direction
+        if not 0 <= k < len(order):
+            raise ExecutionError(
+                "exec.branch", f"ghost {channel!r}: {target} not ahead of the light in {node}", node
+            )
+        events.append({"surface": target, "kind": "reflect"})
+        pos, direction = k, -direction
+    k = pos + direction
+    while 0 <= k < len(order):
+        events.append({"surface": order[k], "kind": "transmit"})
+        k += direction
+    return events
 
 
 def _branch_steps(ctx: Context, name: str) -> list[Any]:
@@ -1048,7 +1122,7 @@ def _run_at(ctx: Context, name: str, i: int) -> str:
         raise ExecutionError(
             "exec.branch",
             f"branch {name!r}: no path of the system passes {blocks[i]} from {came} to "
-            f"{goes or 'the detector'} (ghosts follow with R27)",
+            f"{goes or 'the detector'}",
             blocks[i],
         )
     return run

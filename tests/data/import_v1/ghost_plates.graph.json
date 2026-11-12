@@ -1,0 +1,264 @@
+{
+  "format": "rtt-fusion-graph",
+  "version": 1,
+  "meta": {
+    "imported_from": "raytatouille",
+    "system": "M4 acceptance: ghosts of two plane plates (n = 1.5 and 2.0) in a collimated beam, rho = Fresnel products",
+    "paths": {
+      "main": [
+        "stop",
+        "A",
+        "B",
+        "image"
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "source",
+      "type": "rtt.source",
+      "name": "Source",
+      "sockets": [
+        {
+          "name": "to_stop",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "G",
+            "H",
+            "P",
+            "R",
+            "S"
+          ],
+          "label": "stop"
+        }
+      ]
+    },
+    {
+      "id": "stop",
+      "type": "rtt.section",
+      "name": "stop",
+      "params": {
+        "location": "/root/children/0",
+        "element_type": "stop",
+        "surfaces": [
+          "STO"
+        ],
+        "paths": [
+          "main"
+        ]
+      },
+      "position": [
+        220.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_source",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "source"
+        },
+        {
+          "name": "to_A",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "A"
+        }
+      ],
+      "through": {
+        "to_A": [
+          "from_source"
+        ]
+      }
+    },
+    {
+      "id": "A",
+      "type": "rtt.section",
+      "name": "A",
+      "params": {
+        "location": "/root/children/1",
+        "element_type": "plate",
+        "surfaces": [
+          "A.S1",
+          "A.S2"
+        ],
+        "paths": [
+          "main"
+        ]
+      },
+      "position": [
+        440.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_stop",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "side": "front",
+          "label": "stop"
+        },
+        {
+          "name": "to_B",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "side": "back",
+          "label": "B"
+        }
+      ],
+      "through": {
+        "to_B": [
+          "from_stop"
+        ]
+      }
+    },
+    {
+      "id": "B",
+      "type": "rtt.section",
+      "name": "B",
+      "params": {
+        "location": "/root/children/2",
+        "element_type": "plate",
+        "surfaces": [
+          "B.S1",
+          "B.S2"
+        ],
+        "paths": [
+          "main"
+        ]
+      },
+      "position": [
+        660.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_A",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "side": "front",
+          "label": "A"
+        },
+        {
+          "name": "to_image",
+          "direction": "out",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "side": "back",
+          "label": "image"
+        }
+      ],
+      "through": {
+        "to_image": [
+          "from_A"
+        ]
+      }
+    },
+    {
+      "id": "image",
+      "type": "rtt.detector",
+      "name": "image",
+      "params": {
+        "location": "/root/children/3",
+        "element_type": "detector",
+        "surfaces": [
+          "IMG"
+        ],
+        "paths": [
+          "main"
+        ]
+      },
+      "position": [
+        880.0,
+        0.0
+      ],
+      "sockets": [
+        {
+          "name": "from_B",
+          "direction": "in",
+          "kind": "light",
+          "accepts": [
+            "H",
+            "R"
+          ],
+          "label": "B"
+        },
+        {
+          "name": "image",
+          "direction": "out",
+          "kind": "data",
+          "accepts": [
+            "result"
+          ],
+          "label": "image"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": [
+        "source",
+        "to_stop"
+      ],
+      "to": [
+        "stop",
+        "from_source"
+      ]
+    },
+    {
+      "from": [
+        "stop",
+        "to_A"
+      ],
+      "to": [
+        "A",
+        "from_stop"
+      ]
+    },
+    {
+      "from": [
+        "A",
+        "to_B"
+      ],
+      "to": [
+        "B",
+        "from_A"
+      ]
+    },
+    {
+      "from": [
+        "B",
+        "to_image"
+      ],
+      "to": [
+        "image",
+        "from_B"
+      ]
+    }
+  ]
+}

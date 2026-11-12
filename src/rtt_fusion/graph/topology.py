@@ -232,6 +232,11 @@ def node_scatter(
         return {(i, o): (k, tuple(ch)) for i, o, k, ch in t.scatter}
     ports = node_ports(node, registry)
     out: dict[tuple[str, str], tuple[str, tuple[str, ...]]] = {}
+    if node.type_id == "rtt.section":  # surface reflections inside a section (R27): channel
+        for p_in in ports:  # "ghost:<surface>,…" names the reflecting surfaces
+            for p_out in ports:
+                if p_in.in_socket and p_out.out_socket:
+                    out[(p_in.name, p_out.name)] = ("ghost", ())
     for o_socket, ins in node_through(node, registry).items():
         po = _port_of_socket(ports, o_socket)
         if po is None or po.out_socket != o_socket:
@@ -349,6 +354,19 @@ def validate_model(model: Model, registry: NodeTypeRegistry) -> list[Diagnostic]
             for k, s in enumerate(b.steps):
                 block = model.nodes.get(s.node)
                 if block is None or not block.type_id.startswith("rtt.") or s.port_in is None:
+                    continue
+                if s.channel.startswith("ghost:"):
+                    surfaces = [x for x in s.channel[6:].split(",") if x]
+                    own = {str(x) for x in block.params.get("surfaces", [])}
+                    back = s.port_in == s.port_out
+                    if not surfaces or not set(surfaces) <= own or (len(surfaces) % 2 == 1) != back:
+                        err(
+                            "graph.branch_backend",
+                            f"step {k + 1}: ghost {s.channel!r} – surfaces of {s.node}, an odd "
+                            "number leaves through the port it came in, an even one through the "
+                            "other",
+                            f"branch {b.name}",
+                        )
                     continue
                 if (s.node, s.port_in, s.port_out or "", s.channel) not in known:
                     err(
@@ -573,10 +591,25 @@ def unroll(model: Model, registry: NodeTypeRegistry) -> Graph:
             same = {o: set(i) for o, i in through.items()} == {
                 o: set(i) for o, i in original.items()
             }
+            sockets = node.sockets
+            if node.sockets and mine:  # a ghost may use a channel no path of the import used
+                have = {s.name for s in node.sockets}
+                accepts = "".join(sorted(next(iter(node.sockets)).accepts))
+                for t in mine:
+                    for port_name, direction in ((t.step.port_in, "in"), (t.step.port_out, "out")):
+                        if port_name is None:
+                            continue
+                        p = ports[nid][port_name]
+                        name = p.in_socket if direction == "in" else p.out_socket
+                        if name and name not in have:
+                            make = light_in if direction == "in" else light_out
+                            sockets = (*sockets, make(name, accepts, p.side, port_name))
+                            have.add(name)
             g.add(
                 replace(
                     node,
                     id=_copy_id(nid, k),
+                    sockets=sockets,
                     params=dict(node.params),
                     position=(node.position[0], node.position[1] + 120.0 * k),
                     through=node.through

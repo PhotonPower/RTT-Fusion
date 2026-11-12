@@ -6,6 +6,23 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- S4 (ADR Nachtrag 1): neue Raytatouille-Bauteile aus der Bibliothek (`graph/parts.py`:
+  `rtt.part.mirror`, `rtt.part.splitter`, `rtt.part.lens`, `rtt.part.detector`). Das Element ist
+  der Parameter `rtt_new` (bearbeitbar wie die Daten importierter Blöcke), die Ports sind fest, die
+  Ereignisse eines Durchgangs folgen aus den Ports. Vor dem Abrollen bekommt jedes Bauteil seine
+  Stelle im System, eindeutige Flächen-IDs und seine Durchgänge (`prepare_parts`) und rechnet dann
+  wie ein importierter Block. Knotenweise Durchgänge werden über die Ports des Ast-Schritts
+  gesucht. Ein im Workflow gelöschter Block hinterlässt im erzeugten System eine leere Baugruppe.
+  Abnahme W59.
+
+### Behoben
+
+- Geister durch gekrümmte Flächen (R27): durchlaufene Flächen wurden als `transmit` (ungebrochen)
+  gerechnet, jetzt mit der Art des Vorwärtsdurchgangs (gebrochen); Test W52b mit Raytatouilles
+  `ghost_singlet`.
+
+### Hinzugefügt (früher)
+
 - S2 (ADR Nachtrag 1): Das Raytatouille-Backend rechnet mit dem System, das der Workflow ergibt
   (`importer.system_from_graph`: Baum aus den Daten der Blöcke, Pfade aus den Ästen; kompiliert je
   Zustand). Ohne gehaltene Daten (alte Graphen) weiter mit `shared["system"]`. Knotenweise Durchgänge

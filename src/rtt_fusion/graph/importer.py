@@ -467,8 +467,9 @@ def _system(
             children.append(None)
         children[k] = tree[location]
     root = tree.get("/root", {"type": "assembly", "children": []})
-    if any(c is None for c in _all_children(root)):
-        raise ValueError("the model tree has gaps (a block with part of the system was removed)")
+    # a block removed in the workflow: its place stays as an empty assembly (the other locations
+    # keep their meaning)
+    _fill_gaps(root)
     names = {name for name, _ in branches}
     order = source.params.get("rtt_paths", [])
     extras = {str(p["name"]): p for p in order}
@@ -502,6 +503,15 @@ def _system(
     d["root"] = root
     d["paths"] = paths
     return d
+
+
+def _fill_gaps(node: dict[str, Any]) -> None:
+    children = node.get("children", [])
+    for k, c in enumerate(children):
+        if c is None:
+            children[k] = {"type": "assembly", "name": "(removed)", "children": []}
+        elif isinstance(c, dict):
+            _fill_gaps(c)
 
 
 def _all_children(node: dict[str, Any]) -> list[Any]:

@@ -135,3 +135,85 @@ def test_w28_sweep_moves_a_raytatouille_mirror() -> None:
     assert abs(p[1]) / p[0] == pytest.approx(1.0, abs=1e-2)  # contrast
     assert np.abs(model(x, *p) - y).max() < 1e-3 * y.max()
     assert g.nodes["test_mirror"].params.get("offset") in (None, [0.0, 0.0, 0.0])  # restored
+
+
+def test_w35_phase_shifter_drives_a_mirror() -> None:
+    """R22: the phase shifter linked to the mirror's drive input (and observing the camera)
+    moves the mirror along its normal; the graph stays acyclic."""
+    from rtt_fusion.graph import validate
+
+    ex = michelson()
+    meta.register(ex.registry)
+    ex.evaluators.update(meta.EVALUATORS)
+    deltas = [k * WAVELENGTH_MM / 16 for k in range(9)]  # over λ/2
+    ex.graph.add(Node("ps", "meta.sweep", params={"measure": "centre", "values": deltas}))
+    ex.graph.connect(("ps", "drive"), ("mB", "drive"))
+    ex.graph.connect(("cam", "image"), ("ps", "observe"))
+    assert not [d for d in validate(ex.graph, ex.registry) if d.severity == "error"]
+    out: MetaResult = ex.evaluate("ps", "results")
+    assert out.parameter == "mB.drive"
+    assert out.measures == pytest.approx([expected(d) for d in deltas], abs=2e-3)
+    assert ex.graph.nodes["mB"].params.get("drive") in (None, 0.0)  # restored
+
+
+def test_w36_phase_shifter_on_a_raytatouille_mirror() -> None:
+    """The drive of an imported mirror moves its element along the surface normal: in
+    Raytatouille's Michelson the same interference as the offset sweep of W28 (period λ/2 in
+    the displacement, full contrast), and the same values as an offset along the normal."""
+    rt = pytest.importorskip("raytatouille")
+    import json
+
+    from scipy.optimize import curve_fit
+
+    from rtt_fusion.graph import backend_rtt, builtin_registry, graph_from_raytatouille
+
+    d = json.loads((Path(__file__).parent / "data" / "michelson.rtt.json").read_text("utf-8"))
+    d["aperture"] = {"type": "epd", "value": 1.0}
+    lam = 0.6328e-3
+    deltas = [k * lam / 2 / 8 for k in range(9)]
+
+    def sweep(link: bool) -> MetaResult:
+        g = graph_from_raytatouille(d)
+        reg = builtin_registry()
+        ev = dict(backend_rtt.EVALUATORS)
+        ev.update(meta.register(reg))
+        g.nodes["camera"].params["half_size"] = [0.2, 0.2]
+        if link:
+            g.add(Node("ps", "meta.sweep", params={"measure": "centre", "values": deltas}))
+            g.connect(("ps", "drive"), ("test_mirror", "drive"))
+            g.connect(("camera", "image"), ("ps", "observe"))
+        else:  # the test mirror's normal is ±y in its parent frame
+            g.add(
+                Node(
+                    "ps",
+                    "meta.sweep",
+                    params={
+                        "parameter": "test_mirror.offset[1]",
+                        "collect": "camera.image",
+                        "measure": "centre",
+                        "values": deltas,
+                    },
+                )
+            )
+        ex = Executor(
+            g,
+            reg,
+            ev,
+            {"system": rt.System.from_json(json.dumps(d)), "rings": 8, "pixels": [16, 16]},
+        )
+        result: MetaResult = ex.evaluate("ps", "results")
+        return result
+
+    driven = sweep(True)
+    x = np.asarray(driven.values)
+    y = np.asarray(driven.measures)
+
+    def model(x: FloatArray, a: float, b: float, period: float, phase: float) -> FloatArray:
+        return np.asarray(a + b * np.cos(2 * np.pi * x / period + phase), dtype=np.float64)
+
+    p = curve_fit(model, x, y, p0=[y.mean(), (y.max() - y.min()) / 2, lam / 2, 0.0])[0]
+    assert abs(p[2]) == pytest.approx(lam / 2, rel=1e-3)
+    assert abs(p[1]) / p[0] == pytest.approx(1.0, abs=1e-2)
+    # the same as an offset along the normal: the test mirror's normal is +y in its parent frame
+    shifted = np.asarray(sweep(False).measures)
+    assert np.allclose(y, shifted, rtol=0, atol=1e-9 * y.max())

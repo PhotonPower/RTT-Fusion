@@ -28,6 +28,7 @@ from rtt_fusion.graph.model import (
     Node,
     NodeType,
     ParamSpec,
+    data_in,
     data_out,
     light_in,
     light_out,
@@ -104,11 +105,11 @@ def source(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> lis
 
 
 def _plane(node: Node) -> Plane:
-    return Plane.make(
-        _vec(node, "point", (0.0, 0.0, 0.0)),
-        _vec(node, "normal", (0.0, 0.0, -1.0)),
-        _vec(node, "up", (0.0, 1.0, 0.0)),
-    )
+    """The element's plane; `drive` (mm, set by a phase shifter) shifts it along its normal."""
+    normal = _vec(node, "normal", (0.0, 0.0, -1.0))
+    normal = normal / np.linalg.norm(normal)
+    point = _vec(node, "point", (0.0, 0.0, 0.0)) + float(node.params.get("drive", 0.0)) * normal
+    return Plane.make(point, normal, _vec(node, "up", (0.0, 1.0, 0.0)))
 
 
 def _reflect(b: RayBundle, plane: Plane, factor: complex, name: str) -> RayBundle:
@@ -235,6 +236,7 @@ _PLANE_PARAMS = (
     ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
     ParamSpec("normal", "point", [0.0, 0.0, -1.0]),
     ParamSpec("up", "point", [0.0, 1.0, 0.0], description="direction of the local v axis"),
+    ParamSpec("drive", "number", 0.0, unit="mm", description="shift along the normal"),
 )
 
 TYPES = (
@@ -265,7 +267,7 @@ TYPES = (
     NodeType(
         "optics.plane_mirror",
         Category.DOMAIN,
-        (light_in("in", "RH"), light_out("out", "RH")),
+        (light_in("in", "RH"), light_out("out", "RH"), data_in("drive", "drive", "drive")),
         (*_PLANE_PARAMS, ParamSpec("reflectance_amplitude", "number", -1.0)),
         (("out", ("in",)),),
         description="Plane mirror",

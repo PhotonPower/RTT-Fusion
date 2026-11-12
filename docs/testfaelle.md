@@ -76,6 +76,8 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 | W32 | `display.image` an der Kamera, `display.plot` an einem Sweep | Definition: Bild bzw. Messgröße über den Werten unverändert | exakt | R21 | ✅ | `test_display.py` |
 | W33 | `display.beam` am Ausgang einer kollimierten Quelle (r = 0,3 mm, I₀ = 2), Strahlen bzw. Gauß-Feld (w = 0,12 mm) | Mitte I₀ (bzw. I₀ e^{−2r²/w²} an den Pixelmitten), Leistung π r² I₀ | 1e−2; 3e−2 | R21 | ✅ | `test_display.py` |
 | W34 | Fortschritt und laufende Blöcke bei einem Sweep | monoton in [0, 1], eine Meldung je Wert mit dem Parameter, laufende Blöcke gemeldet | exakt | R21 | ✅ | `test_display.py` |
+| W35 | Phasenschieber (`meta.sweep`) mit `drive` → Spiegel B, `observe` ← Kamera, analytischer Michelson | I(δ) = 2 I_Arm (1 + cos 2k₀δ); Graph kreisfrei; Parameter zurückgesetzt | 2e−3 | R22 | ✅ | `test_meta.py` |
+| W36 | Phasenschieber am Testspiegel des Raytatouille-Michelson | Periode λ/2, Kontrast 1; gleich der Verschiebung `offset` entlang der Flächennormalen | 1e−3; 1e−2; 1e−9 | R22 | ✅ (ohne Raytatouille übersprungen) | `test_meta.py` |
 | W9 | Michelson aus Raytatouilles Referenzen über Import, Graph und Raytatouille-Backend, Testspiegel um 1 mrad gekippt | λ/sin 2θ; eine Kohärenzgruppe für beide Arme | Abstand < 1e−2 rel. (Strahlraster), Kontrast > 0,99 | R15 | ✅ (ohne Raytatouille übersprungen) | `test_execute.py` |
 
 | PS1 | Phasenraum-Übergang Feld → Pakete (Husimi): Leistung, zweite Momente (Wigner + Fenster), Stokes, Kopplung in eine Gauß-Mode | analytische Gauß-Integrale | Leistung 1e−12, Momente ≤ 0,5 %, Kopplung 2 % | S9b-1 (Scattuccino D8/D10) | ✅ | `test_phasespace.py` |

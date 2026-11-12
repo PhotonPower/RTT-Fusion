@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- R22: Phasenschieber am Spiegel – Meta-Blöcke mit `drive` (aus) und `observe` (ein); Eingang
+  `drive` (Datentyp `drive`) an Spiegeln, Abschnitten und Teilern (`NodeType.extra_sockets` für
+  importierte Blöcke) sowie am ebenen Spiegel des analytischen Backends: Verschiebung entlang der
+  Flächennormalen. Tests W35, W36.
+
 - R21: Darstellungs-Blöcke (`rtt_fusion.graph.display`: `display.image`, `display.plot`,
   `display.beam` als Sonde an jedem Lichtausgang) mit dem Ergebnis `View`; Fortschritt der
   Ausführung (`Context.progress`, `Context.span`, `Context.report`; Raytatouille-Detektor je

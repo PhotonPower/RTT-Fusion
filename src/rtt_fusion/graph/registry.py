@@ -15,6 +15,7 @@ from rtt_fusion.graph.model import (
     NodeType,
     ParamSpec,
     SocketSpec,
+    data_in,
     data_out,
     light_in,
     light_out,
@@ -127,9 +128,17 @@ def builtin_registry() -> NodeTypeRegistry:
                     unit="mm",
                     description="shift of the elements of the block (Raytatouille backend)",
                 ),
+                ParamSpec(
+                    "drive",
+                    "number",
+                    0.0,
+                    unit="mm",
+                    description="shift along the surface normal (set by a phase shifter's drive)",
+                ),
             ),
             TWO_SIDED_THROUGH,
             dynamic_sockets=True,
+            extra_sockets=(data_in("drive", "drive", "drive"),),
             description="Sequential surfaces of a Raytatouille system (e.g. an objective)",
         )
     )
@@ -154,9 +163,17 @@ def builtin_registry() -> NodeTypeRegistry:
                     unit="mm",
                     description="shift of the elements of the block (Raytatouille backend)",
                 ),
+                ParamSpec(
+                    "drive",
+                    "number",
+                    0.0,
+                    unit="mm",
+                    description="shift along the surface normal (set by a phase shifter's drive)",
+                ),
             ),
             (("r", ("in",)), ("t", ("in",)), ("merged", ("r_in", "t_in"))),
             dynamic_sockets=True,
+            extra_sockets=(data_in("drive", "drive", "drive"),),
             description="Beam splitter: splits into channels, combines coherently per group",
         )
     )
@@ -174,9 +191,17 @@ def builtin_registry() -> NodeTypeRegistry:
                     unit="mm",
                     description="shift of the elements of the block (Raytatouille backend)",
                 ),
+                ParamSpec(
+                    "drive",
+                    "number",
+                    0.0,
+                    unit="mm",
+                    description="shift along the surface normal (set by a phase shifter's drive)",
+                ),
             ),
             (("out", ("in",)),),
             dynamic_sockets=True,
+            extra_sockets=(data_in("drive", "drive", "drive"),),
             description="Mirror (one surface, reflecting)",
         )
     )

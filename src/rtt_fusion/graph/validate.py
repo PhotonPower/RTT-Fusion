@@ -39,7 +39,9 @@ def node_sockets(node: Node, registry: NodeTypeRegistry) -> tuple[SocketSpec, ..
     """The sockets of a node: its own for types with dynamic sockets, else the type's."""
     t = registry.get(node.type_id)
     if node.sockets:
-        return node.sockets
+        extra = t.extra_sockets if t is not None else ()
+        names = {s.name for s in node.sockets}
+        return tuple(node.sockets) + tuple(s for s in extra if s.name not in names)
     return t.sockets if t is not None else ()
 
 

@@ -266,10 +266,39 @@ class Executor:
             outer = outer @ placement(g)
         return posed(bound, defaults, outer)
 
-    def status(self) -> dict[str, bool]:
+    def needed(self, wanted: list[tuple[str, str]]) -> dict[str, set[str]]:
+        """The outputs per block that the outputs `wanted` depend on (through the inputs and the
+        outputs meta blocks observe), `wanted` included – what a run of them computes."""
+        out: dict[str, set[str]] = {}
+        stack = list(wanted)
+        while stack:
+            node_id, socket = stack.pop()
+            if socket in out.get(node_id, set()) or node_id not in self.graph.nodes:
+                continue
+            out.setdefault(node_id, set()).add(socket)
+            node = self.graph.nodes[node_id]
+            for in_name in node_through(node, self.registry).get(socket, ()):
+                stack += [lk.source for lk in self.graph.links_to(node_id, in_name)]
+            key_extra = getattr(self.evaluators.get(node.type_id), "key_extra", None)
+            if key_extra is not None:
+                stack += [i for i in key_extra(self.context, node) if isinstance(i, tuple)]
+        return out
+
+    def status(self, wanted: list[tuple[str, str]] | None = None) -> dict[str, bool]:
         """Per block: True if its outputs are in the cache (up to date), without computing
-        anything (GUI: a green tick / a red cross)."""
+        anything (GUI: a green tick / a red cross). With `wanted` (e.g. the outputs of the
+        display blocks) only the blocks those need are listed, each up to date if the outputs
+        they need are – an output nobody needs (a splitter's way to a camera nobody shows) does
+        not count."""
         self.check()
+        if wanted is not None:
+            result: dict[str, bool] = {}
+            for node_id, sockets in self.needed(wanted).items():
+                try:
+                    result[node_id] = all(self._key(node_id, s) in self.cache for s in sockets)
+                except ExecutionError:
+                    result[node_id] = False
+            return result
         out: dict[str, bool] = {}
         for node in self.graph.nodes.values():
             # outputs with a value (a "drive" carries none), and of those the linked ones (an

@@ -80,3 +80,38 @@ def test_w38_cache_limit() -> None:
     _ = cache["k3"]  # used: stays
     cache["k5"] = np.zeros(10_000)
     assert "k3" in cache
+
+
+def test_w56_marks_count_what_the_displays_need() -> None:
+    """A splitter feeds two cameras, only one is shown: after the run the splitter is up to date
+    (its way to the other camera is not needed), the other camera gets no mark; without
+    `wanted` every linked output counts (the splitter is out of date)."""
+    from rtt_fusion.graph import Graph, builtin_registry, optics
+
+    reg = builtin_registry()
+    ev = dict(optics.register(reg))
+    ev.update(display.register(reg))
+    g = Graph()
+    g.add(
+        Node(
+            "src",
+            "optics.collimated_source",
+            params={"center": [0, 0, -10], "radius": 1.0, "rings": 4, "polarisation": [0, 1, 0]},
+        )
+    )
+    g.add(Node("split", "optics.splitter", params={"point": [0, 0, 0], "normal": [1, 0, -1]}))
+    g.add(Node("camT", "optics.detector", params={"point": [0, 0, 10], "normal": [0, 0, -1]}))
+    g.add(Node("camR", "optics.detector", params={"point": [10, 0, 0], "normal": [-1, 0, 0]}))
+    g.add(Node("shown", "display.image"))
+    g.connect(("src", "out"), ("split", "front_a_in"))
+    g.connect(("split", "back_a_out"), ("camT", "in"))
+    g.connect(("split", "front_b_out"), ("camR", "in"))
+    g.connect(("camT", "image"), ("shown", "in"))
+    ex = Executor(g, reg, ev)
+    ex.evaluate("shown", "view")
+    marks = ex.status(wanted=[("shown", "view")])
+    assert marks == {"shown": True, "camT": True, "split": True, "src": True}
+    assert ex.needed([("shown", "view")])["split"] == {"back_a_out"}
+    assert ex.status()["split"] is False  # every linked output: the way to camR is missing
+    ex.graph.nodes["camT"].params["half_size"] = [2.0, 2.0]
+    assert ex.status(wanted=[("shown", "view")])["camT"] is False  # an edit: out of date

@@ -342,7 +342,11 @@ class Executor:
             for item in value:
                 if rep == "H" and isinstance(item, RayBundle):
                     item = rays_to_field(item)
-                if isinstance(item, FieldBundle) and ("H" not in native or consumer.muted):
+                # rays where the consumer cannot take fields, and where the user asked for rays
+                # on the link (a block that got a field returns one)
+                if isinstance(item, FieldBundle) and (
+                    "H" not in native or consumer.muted or lk.transport == "R"
+                ):
                     item = field_to_rays(item)
                 out.append(item)
         except FieldError as e:

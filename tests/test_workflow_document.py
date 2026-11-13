@@ -86,18 +86,18 @@ def test_w70_provider_records_and_a_missing_plugin() -> None:
     reg, _ = registry()
     m = _linnik()
     grating = NodeType(
-        "fg.grating",
+        "fgx.grating",
         Category.DOMAIN,
         (light_in("in", "R"), light_out("out", "R")),
         description="a grating",
     )
     reg.add(grating)
-    m.nodes["sample"].type_id = "fg.grating"
-    now = {"fg.grating": {"plugin": "fouriergrating", "version": "0.2"}}
+    m.nodes["sample"].type_id = "fgx.grating"
+    now = {"fgx.grating": {"plugin": "fouriergrating", "version": "0.2"}}
     doc = model_document(m, reg, None, None, now)
     assert doc["providers"] == now
     assert (
-        next(t for t in doc["types"] if t["type"] == "fg.grating")["provider"] == "fouriergrating"
+        next(t for t in doc["types"] if t["type"] == "fgx.grating")["provider"] == "fouriergrating"
     )
     assert "provider" not in next(t for t in doc["types"] if t["type"] == "rtt.section")
     # the plugin is gone: its type is unknown, the record of the document says whose it was
@@ -112,7 +112,7 @@ def test_w70_provider_records_and_a_missing_plugin() -> None:
     assert "fouriergrating" in missing[0]["message"] and "0.2" in missing[0]["message"]
     assert not [d for d in again["diagnostics"] if d["code"] == "graph.node_type_unknown"]
     assert again["providers"] == now  # kept for the next time
-    assert next(n for n in again["model"]["nodes"] if n["id"] == "sample")["type"] == "fg.grating"
+    assert next(n for n in again["model"]["nodes"] if n["id"] == "sample")["type"] == "fgx.grating"
     # never recorded: an unknown type as before
     plain = model_document(m, bare)
     assert [d["code"] for d in plain["diagnostics"]] == ["graph.node_type_unknown"]

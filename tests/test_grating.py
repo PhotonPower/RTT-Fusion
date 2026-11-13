@@ -23,6 +23,7 @@ from rtt_fusion.graph import Graph, Node, builtin_registry, grating, optics
 from rtt_fusion.graph.execute import WITH_FIELDS, Executor
 from rtt_fusion.graph.imaging import Image
 from rtt_fusion.graph.light import Plane, RayBundle
+from rtt_fusion.graph.topology import Model
 
 TABLE = str(Path(__file__).parent.parent / "reference" / "jones_table_lamellar.result.json")
 LAMBDA_UM, PERIOD_UM = 0.6, 0.7
@@ -46,7 +47,7 @@ def setup(alpha_deg: float = 0.0, transport: str = "auto") -> tuple[Graph, Execu
             },
         )
     )
-    g.add(Node("gr", "fusion.grating", params={"table": TABLE}))
+    g.add(Node("gr", "fg.grating", params={"table": TABLE}))
     g.add(
         Node(
             "cam",
@@ -150,7 +151,7 @@ def test_w21_mirror_replaced_by_grating() -> None:
     g.connect(("src", "out"), ("sample", "in"))
     g.connect(("sample", "out"), ("cam", "in"))
     links = [(lk.source, lk.target) for lk in g.links]
-    g.replace_node("sample", Node("sample", "fusion.grating", params={"table": TABLE}))
+    g.replace_node("sample", Node("sample", "fg.grating", params={"table": TABLE}))
     assert [(lk.source, lk.target) for lk in g.links] == links
     image: Image = Executor(g, reg, ev).evaluate("cam", "image")
     assert image.values.max() > 0
@@ -161,3 +162,28 @@ def test_w21_mirror_replaced_by_grating() -> None:
     assert sorted(a) == sorted(b)
     for m in a:
         assert np.allclose(mean_direction(a[m]), mean_direction(b[m]), atol=1e-9)
+
+
+def test_w72_old_grating_type_loads_as_fg_grating() -> None:
+    """CAD ADR 0010 W4: `fusion.grating` (files before the rename) loads as `fg.grating` – graph,
+    model and the variants of a group – and is saved with the new id."""
+    from rtt_fusion.graph import io
+    from rtt_fusion.graph.workflow import registry as workflow_registry
+
+    old = Node("gr", "fusion.grating", params={"table": TABLE})
+    graph_dict = io.to_dict(Graph())
+    graph_dict["nodes"] = [{**io._node_to_dict(old)}]
+    graph = io.from_dict(graph_dict)
+    assert graph.nodes["gr"].type_id == "fg.grating"
+    assert '"fusion.grating"' not in io.dumps(graph) and '"fg.grating"' in io.dumps(graph)
+
+    reg, _ = workflow_registry()
+    assert reg.get("fg.grating") is not None and reg.get("fusion.grating") is None
+    model_dict = io.model_to_dict(io.model_from_dict(io.model_to_dict(_model_with(old)), reg))
+    assert [n["type"] for n in model_dict["nodes"]] == ["fg.grating"]
+
+
+def _model_with(node: Node) -> Model:  # a model holding one node, with its type id as given
+    m = Model()
+    m.add(node)
+    return m

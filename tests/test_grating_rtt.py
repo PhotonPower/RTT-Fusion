@@ -3,7 +3,7 @@
 Test system `tests/data/linnik_mini.rtt.json`: one Linnik arm with ideal lenses (Köhler
 illumination, objective f = 2 mm, tube lens f = 20 mm, magnification M = 10, sample in the front
 focal plane: a 4f image of the sample on the camera). The sample mirror is replaced by
-`fusion.grating` with tables built here from closed forms:
+`fg.grating` with tables built here from closed forms:
 
 - W22 a "mirror table" (order 0, J = −I): the split computation (Raytatouille up to the sample,
   the block, Raytatouille on) must give the image of the whole path with the mirror – for rays
@@ -84,7 +84,7 @@ def image(
     ev = dict(backend_rtt.EVALUATORS)
     ev.update(grating.register(reg))
     if table is not None:
-        replace_block(g, reg, "sample", Node("sample", "fusion.grating", params={"table": table}))
+        replace_block(g, reg, "sample", Node("sample", "fg.grating", params={"table": table}))
     for link in g.links_to("camera"):
         g.set_transport(link, transport)
     ex = Executor(

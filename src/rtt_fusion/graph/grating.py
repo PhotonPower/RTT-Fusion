@@ -1,14 +1,15 @@
 """Rigorous grating block in the working graph (stage R19, concept 4: sample -> FourierGrating).
 
-`fusion.grating` takes the place of a mirror or a plate (same sockets "in" and "out", so that
-`Graph.replace_node` keeps the links) and sends every requested diffraction order on: a
-splitter whose channels are the orders (concept 3.1, fusion plan 7.1). The interaction is the
-tabulated one of stage R6 (`couplings.jones_table`): power-normalised Jones matrices J_m over
-(λ, σ) from FourierGrating – either read from a stored table (`raytatouille-result` file, runs
-without the solver) or, with `fouriergrating` (a FourierGrating configuration file, as in
-`docs/konventionen.md`), built by the block itself around the incident rays: λ ± 1 nm and the σ
-range of the rays plus a margin, 4 nodes per axis at least (cubic interpolation), cached per
-configuration and grid. Building needs the solver in the environment.
+`fg.grating` (formerly `fusion.grating`, loaded through `io.TYPE_ALIASES`; provided by the
+FourierGrating plugin in Raytatouille Fusion, CAD ADR 0010 W4) takes the place of a mirror or a
+plate (same sockets "in" and "out", so that `Graph.replace_node` keeps the links) and sends every
+requested diffraction order on: a splitter whose channels are the orders (concept 3.1, fusion plan
+7.1). The interaction is the tabulated one of stage R6 (`couplings.jones_table`): power-normalised
+Jones matrices J_m over (λ, σ) from FourierGrating – either read from a stored table
+(`raytatouille-result` file, runs without the solver) or, with `fouriergrating` (a FourierGrating
+configuration file, as in `docs/konventionen.md`), built by the block itself around the incident
+rays: λ ± 1 nm and the σ range of the rays plus a margin, 4 nodes per axis at least (cubic
+interpolation), cached per configuration and grid. Building needs the solver in the environment.
 
 Per ray and order m (local frame: x = grating vector, y = grooves, z = surface normal towards the
 light's side of exit for "transmitted", towards the incident side for "reflected"):
@@ -264,7 +265,7 @@ def _carry(frame: Any, a: Any, b: Any) -> Any:
 
 
 TYPE = NodeType(
-    "fusion.grating",
+    "fg.grating",
     Category.SPLITTER,
     (light_in("in", "RH"), light_out("out", "RH", label="orders")),
     (
@@ -291,7 +292,7 @@ TYPE = NodeType(
     description="Periodic sample (FourierGrating table): diffraction orders as channels",
 )
 
-EVALUATORS: dict[str, Evaluator] = {"fusion.grating": grating}
+EVALUATORS: dict[str, Evaluator] = {"fg.grating": grating}
 
 
 def register(registry: NodeTypeRegistry) -> dict[str, Evaluator]:

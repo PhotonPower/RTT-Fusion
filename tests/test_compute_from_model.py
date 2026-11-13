@@ -132,7 +132,7 @@ def test_w58_grating_sample_from_the_workflow(tmp_path: Path) -> None:
         g = graph_from_raytatouille(d)
         if strip:
             _from_file(g)
-        replace_block(g, reg, "sample", Node("sample", "fusion.grating", params={"table": table}))
+        replace_block(g, reg, "sample", Node("sample", "fg.grating", params={"table": table}))
         images.append(_image(g, d, "camera", rings=15, pixels=[128, 8])[0])
     _same(images[0], images[1])
 

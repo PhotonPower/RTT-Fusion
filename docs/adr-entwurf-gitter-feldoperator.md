@@ -187,3 +187,27 @@ Krümmung der Wellenfront über eine Periode; bis dahin wählt der Nutzer.
 | 4 | Was heißt „Stapel“? | **`fg.stack`** für lateral invariante Schichtfolgen; Gitter gleicher oder kommensurabler Periode in einer Konfiguration von `fg.grating` (exakt, mit evaneszenter Kopplung); inkommensurable Gitter bleiben zwei Blöcke mit H dazwischen. |
 | 5 | „auto“ bleibt R? | **Ja, mit Hinweis:** Diagnose `fg.field_advised` (Warnung), wenn weniger als etwa 20 Perioden beleuchtet sind oder die Wellenfront über eine Periode merklich krümmt. Automatisch umschalten erst, wenn GF5 zeigt, wo R und H tatsächlich auseinanderlaufen. |
 | 6 | Reihenfolge? | **F4 zuerst, dann F1–F3:** `fg.stack` ist klein und sofort nützlich (beschichteter Referenzspiegel, AR-Schichten) und erprobt den Mechanismus „ein Block, Evaluator für R und H“ an einem diagonalen Operator ohne Fenster und Ordnungen; GF6 (Feld über die Prozessgrenze) wird schon dort geprüft. |
+
+## Nachtrag 1 (Umsetzung F1/F4b, 2026-11-13)
+
+Bei der Umsetzung zeigten sich drei Punkte, die den Abschnitt 2 genauer fassen:
+
+1. **Ordnungen als eigene Felder statt kommensurablen Fensters.** Die Ordnung (n, m) einer ebenen
+   Welle k_c + κ hat den Wellenvektor (k_c + nK) + κ. Mit dem Träger k_c + nK liegt ihr Spektrum auf
+   denselben Stützstellen κ wie das einfallende; jede Ordnung wird ein Feld mit der Phase ψ + nK·x
+   auf denselben Stützstellen. Das ist exakt, braucht kein mit Λ kommensurables Fenster und macht
+   die Ordnungen zu Kanälen wie im Strahlpfad von `fg.grating`; sie behalten den Kohärenzschlüssel
+   und interferieren dahinter. Der Fenster-Parameter aus Frage 2 entfällt; das Fenster folgt allein
+   aus dem Feld (Träger der Leistung, Krümmung, Stützstellenabstand).
+2. **Bloch-Familie hilft bei schmalen Spektren nicht.** Ein kollimierter Strahl überdeckt etwa ±1°;
+   keine zwei Spektralpunkte unterscheiden sich um ein Vielfaches von K, jede Stützstelle ist ihre
+   eigene Familie. Statt dessen gibt es die Wahl `field_transfer = "interpolated"`: T(κ) jeder
+   Ordnung von FourierGrating auf einem groben Teilgitter des Spektrums, bikubisch dazwischen,
+   **geprüft** an Stützstellen zwischen den Knoten gegen FourierGrating; über der Toleranz (10⁻⁸
+   von |T|) wird verfeinert bis zum exakten Weg, ebenso nahe einer Rayleigh-Anomalie (eine Ordnung
+   entsteht im Spektrum). Standard bleibt exakt (Frage 3). Beispiel: Strahl 0,3 mm, Gitter 128²,
+   exakt 32 s, interpoliert 2,6 s mit 33² Knoten (geprüft auf 7·10⁻⁹), gleiche Ergebnisse.
+3. **Interpolation.** `scipy.interpolate.RegularGridInterpolator(method="cubic")` konvergiert auf
+   solchen Gittern nicht (geprüft mit einer analytischen Funktion: der Fehler wächst mit feinerem
+   Gitter); verwendet wird FITPACKs `RectBivariateSpline` auf zentrierten Koordinaten
+   (`spectral.bicubic`). `graph.field._sample` (Feldbilder) nutzt noch die alte Interpolation.

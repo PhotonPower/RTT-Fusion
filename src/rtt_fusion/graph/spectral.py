@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import RectBivariateSpline
 from scipy.spatial import cKDTree
 
 from rtt_fusion._types import ComplexArray, FloatArray
@@ -137,35 +137,53 @@ def _centre_shift(nx: int, ny: int) -> ComplexArray:
     return np.asarray(np.exp(2j * np.pi * (fx[None, :] + fy[:, None])))
 
 
+def bicubic(
+    x: FloatArray, y: FloatArray, values: ComplexArray, qx: FloatArray, qy: FloatArray
+) -> ComplexArray:
+    """Interpolating bicubic spline (FITPACK) of values (len(y), len(x), ...) at the points
+    (qx, qy), on centred coordinates; zero outside the grid. (scipy's
+    RegularGridInterpolator(method="cubic") does not converge on such grids: tested with an
+    analytic function, its error grows as the grid gets finer.)"""
+    cx, cy = float(np.mean(x)), float(np.mean(y))
+    v = np.asarray(values)
+    flat = v.reshape(v.shape[0], v.shape[1], -1)
+    out = np.zeros((len(qx), flat.shape[2]), dtype=np.complex128)
+    inside = (qx >= x[0]) & (qx <= x[-1]) & (qy >= y[0]) & (qy <= y[-1])
+    for c in range(flat.shape[2]):
+        for part, unit in ((np.real, 1.0), (np.imag, 1j)):
+            spline = RectBivariateSpline(y - cy, x - cx, part(flat[:, :, c]), kx=3, ky=3, s=0)
+            out[inside, c] += unit * spline.ev(qy[inside] - cy, qx[inside] - cx)
+    return np.asarray(out.reshape(len(qx), *v.shape[2:]))
+
+
 def at_samples(residual_out: ComplexArray, grid: Grid, field: GridlessField) -> ComplexArray:
-    """E_out at the field's samples from an outgoing residual grid (cubic), (N, 3)."""
+    """E_out at the field's samples from an outgoing residual grid (bicubic), (N, 3)."""
     x, y = grid.axes()
     pts = np.asarray(field.points)
-    out = np.zeros((len(pts), 3), dtype=np.complex128)
-    for c in range(3):
-        for part, unit in ((np.real, 1.0), (np.imag, 1j)):
-            interp = RegularGridInterpolator(
-                (y, x),
-                part(residual_out[:, :, c]),
-                method="cubic",
-                bounds_error=False,
-                fill_value=0.0,
-            )
-            out[:, c] += unit * interp(np.stack([pts[:, 1], pts[:, 0]], axis=-1))
+    out = bicubic(x, y, residual_out, pts[:, 0], pts[:, 1])
     return np.asarray(out * np.exp(1j * (pts @ grid.carrier))[:, None])
 
 
 def outgoing(
-    field: GridlessField, e_out: ComplexArray, refractive_index: float, reflected: bool
+    field: GridlessField,
+    e_out: ComplexArray,
+    refractive_index: float,
+    reflected: bool,
+    shift: FloatArray | None = None,
 ) -> GridlessField:
-    """The outgoing field on the incident field's samples with its ψ (module docstring); for
-    reflected light in the mirrored frame (u, −v, −n)."""
+    """The outgoing field on the incident field's samples with its ψ (module docstring), plus
+    `shift`·x for a diffraction order (ψ + nK·x, gradient + nK); for reflected light in the
+    mirrored frame (u, −v, −n)."""
     from fieldtracing.field import GridlessField
 
     pts = np.asarray(field.points, dtype=float)
+    phase = np.asarray(field.phase, dtype=float)
     grad = np.asarray(field.gradient, dtype=float)
+    if shift is not None and np.any(shift):
+        phase = phase + pts @ np.asarray(shift, dtype=float)
+        grad = grad + np.asarray(shift, dtype=float)
     hess = np.asarray(field.hessian, dtype=float)
-    u = np.asarray(e_out) * np.exp(-1j * np.asarray(field.phase))[:, None]
+    u = np.asarray(e_out) * np.exp(-1j * phase)[:, None]
     if reflected:
         flip = np.array([1.0, -1.0])
         pts, grad = pts * flip, grad * flip
@@ -173,7 +191,7 @@ def outgoing(
         u = u * np.array([1.0, -1.0, -1.0])
     return GridlessField(
         pts,
-        np.asarray(field.phase, dtype=float),
+        phase,
         grad,
         hess,
         np.asarray(u, dtype=np.complex128),
@@ -202,10 +220,20 @@ def sample(field: Any, max_points: int = 1024) -> Sampled:
         res_in = residual_grid(field, grid)
 
         def back_gridless(
-            res: ComplexArray, n: float, reflected: bool, t0: ComplexArray | None = None
+            res: ComplexArray,
+            n: float,
+            reflected: bool,
+            t0: ComplexArray | None = None,
+            shift: FloatArray | None = None,
         ) -> Any:
+            # an order n: the residual refers to the carrier k_c + nK
+            kick = (
+                np.exp(1j * (np.asarray(field.points) @ np.asarray(shift)))[:, None]
+                if shift is not None and np.any(shift)
+                else 1.0
+            )
             if t0 is None:
-                return outgoing(field, at_samples(res, grid, field), n, reflected)
+                return outgoing(field, at_samples(res, grid, field) * kick, n, reflected, shift)
             # the carrier wave's transfer t0 (3 x 2) pointwise on the samples – exact for a plane
             # wave and free of the reconstruction's ripple at hard edges –, only the rest
             # (T(κ) − t0)·Ẽ(κ) through the grid
@@ -213,8 +241,8 @@ def sample(field: Any, max_points: int = 1024) -> Sampled:
                 np.asarray(field.amplitude)[:, :2] * np.exp(1j * np.asarray(field.phase))[:, None]
             )
             rest = res - np.einsum("ij,yxj->yxi", t0, res_in[..., :2])
-            e_out = e_in @ t0.T + at_samples(rest, grid, field)
-            return outgoing(field, e_out, n, reflected)
+            e_out = (e_in @ t0.T + at_samples(rest, grid, field)) * kick
+            return outgoing(field, e_out, n, reflected, shift)
 
         return Sampled(grid, res_in, back_gridless)
     return _sample_gridded(field, max_points)
@@ -239,9 +267,20 @@ def _sample_gridded(field: Any, max_points: int) -> Sampled:
     carrier = np.exp(0.5j * (c[0, 0] * xx**2 + (c[0, 1] + c[1, 0]) * xx * yy + c[1, 1] * yy**2))
 
     def back_gridded(
-        res: ComplexArray, refractive_index: float, reflected: bool, t0: Any = None
+        res: ComplexArray,
+        refractive_index: float,
+        reflected: bool,
+        t0: Any = None,
+        shift: FloatArray | None = None,
     ) -> Any:  # on its own nodes the inverse FFT is exact: t0 is not needed
         values = res / carrier[..., None]
+        if shift is not None and np.any(shift):  # an order n: e^(i nK·x) on the grid
+            if float(np.max(np.abs(shift))) * grid.step > np.pi:
+                raise SpectralError(
+                    "the gridded field's grid does not resolve the diffraction order "
+                    f"(|nK|·step = {float(np.max(np.abs(shift))) * grid.step:.2f} > π)"
+                )
+            values = values * np.exp(1j * (shift[0] * xx + shift[1] * yy))[..., None]
         curvature = c
         if reflected:  # frame (u, −v, −n): y -> −y on the centred grid
             values = np.roll(values[::-1], 1, axis=0) * np.array([1.0, -1.0, -1.0])

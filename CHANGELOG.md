@@ -6,6 +6,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Geändert
 
+- Felder werden bikubisch mit FITPACK (`spectral.bicubic`) auf ihre Stützstellen zurückgelegt;
+  `RegularGridInterpolator(method="cubic")` konvergiert auf solchen Gittern nicht.
+
 - Eine Verbindung mit Transport R liefert Strahlen, auch wenn der Block davor ein Feld ausgibt
   (vorher kam das Feld bei einem Empfänger, der Felder nimmt, als Feld an).
 
@@ -15,6 +18,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Kennungen beim Laden auf die neuen ab, gespeichert wird die neue. Abnahme W72.
 
 ### Hinzugefügt
+
+- Gitter als Feldoperator, ohne Graph (ADR Gitter/Stapel, Stufe F1): `couplings.grating_field`
+  bringt ein Feld in die Ebene eines periodischen Elements, zerlegt es in ebene Wellen, rechnet
+  jede mit FourierGrating und gibt je Seite und Ordnung ein eigenes Feld mit dem Träger k_c + nK
+  zurück (Nachtrag 1 zum ADR). `fg.stack` nutzt denselben Weg. Neue Wahl `field_transfer =
+  "interpolated"`: Übertrag von einem geprüften Teilgitter des Spektrums, für breite Strahlen
+  etwa zehnmal schneller. Abnahme GF1, GF2.
 
 - `fg.stack` nimmt Felder (H, Stufe F4b): das Feld wird in die Ebene des Stapels gebracht
   (geometrisch, bei einem Fokus auf dem Stapel durch Wellenausbreitung), ohne seinen Träger auf

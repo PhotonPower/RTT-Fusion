@@ -206,7 +206,7 @@ def test_st3_a_field_running_away_is_refused(tmp_path: Path) -> None:
     path = _config(tmp_path, 1.0, [], 1.5, "bare")
     fb = rays_to_field(_collimated(0.0, rings=6))
     node = Node("st", stack.TYPE_ID, params={"fouriergrating": path})
-    with pytest.raises(ExecutionError, match="does not run into the stack"):
+    with pytest.raises(ExecutionError, match="does not run into the block"):
         stack.stack(Context(Graph()), node, "front_out", {"back_in": [fb]})
 
 

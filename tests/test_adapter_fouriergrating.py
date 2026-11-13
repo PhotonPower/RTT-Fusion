@@ -258,3 +258,24 @@ def test_cross_check_with_bwpm() -> None:
         )
         < 1e-9
     )
+
+
+def test_l4_apply_many_equals_apply() -> None:
+    handle = fga.prepare(fga.Structure(_config(GRATING, nx=6)), [LAM])
+    rng = np.random.default_rng(3)
+    incidents = [
+        _incident(
+            handle,
+            0.4 * rng.random(),
+            2 * np.pi * rng.random(),
+            (rng.normal() + 1j * rng.normal(), rng.normal()),
+        )
+        for _ in range(20)
+    ]
+    for inc, b in zip(incidents, fga.apply_many(handle, incidents), strict=True):
+        a = fga.apply(handle, inc)
+        for side in ("front", "back"):
+            assert np.array_equal(a[side].kx, b[side].kx)
+            assert (
+                np.abs(a[side].field - b[side].field).max() <= 1e-12 * np.abs(a[side].field).max()
+            )

@@ -62,5 +62,13 @@ def apply(
     return result
 
 
+def apply_many(
+    handle: Any, incidents: list[GriddedField], iterations: int = 3, backend: str = "auto"
+) -> list[dict[str, GriddedField]]:
+    """`apply` for many incident fields (L4); one march each – BWPM has no assembly to share (a
+    batch of fields in BWPM itself: plan L4, stage O3)."""
+    return [apply(handle, inc, iterations, backend) for inc in incidents]
+
+
 def estimate(handle: Any, iterations: int = 3, backend: str = "auto") -> dict[str, float]:
     return dict(_bw().estimate(handle, iterations, backend))

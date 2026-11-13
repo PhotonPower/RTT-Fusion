@@ -119,3 +119,16 @@ def test_energy_over_orders(grating: Any) -> None:
     out = hpa.apply(grating, inc)
     p = sum(float(np.sum(out[s].power_density())) for s in ("front", "back"))
     assert abs(p / float(inc.power_density()[0]) - 1) < 5e-3  # lossless; FEM residual ~1e-3
+
+
+def test_l4_apply_many_equals_apply(grating: Any) -> None:
+    port = hpa.front_port(grating, LAM)
+    incidents = [
+        _incident(port, t, p, (0.6, 0.3j)) for t, p in ((0.1, 0.0), (0.25, 0.4), (0.1, 0.0))
+    ]
+    for inc, b in zip(incidents, hpa.apply_many(grating, incidents), strict=True):
+        a = hpa.apply(grating, inc)
+        for side in ("front", "back"):
+            assert (
+                np.abs(a[side].field - b[side].field).max() <= 1e-12 * np.abs(a[side].field).max()
+            )

@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- L4, Stufe O1 (Plan `docs/plan-l4-operatoren.md`): `apply_many(handle, incidents)` in allen fünf
+  Adaptern. CliffordBem nutzt dabei Krylov-Recycling (`use_recycling`, je Wellenlänge), SpeckleBem
+  den einmal assemblierten Operator; FourierGrating, hp-FEM und BWPM schleifen, bis die Löser
+  Operatoren anbieten (O3). Abnahme W62.
+- L5: CliffordBem und SpeckleBem nehmen Licht auch am hinteren Port (Richtung −1) an; Ausgänge
+  `"back"` (reflektiert), `"front"` (durchgelassen) und `"front_scattered"`. Abnahme W63.
+
 - `section_to_group` (ADR Nachtrag 1): ein Raytatouille-Abschnitt (mehrere Elemente einer Baugruppe
   in einem Block) wird eine Gruppe mit einem Block je Element. Jeder Block hält die Daten seines
   Elements und seinen Teil jedes Durchgangs; die Durchgänge des Abschnitts werden innere Äste, die

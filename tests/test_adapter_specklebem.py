@@ -25,7 +25,7 @@ except ImportError:
 from mie_reference import S12, qext
 
 from rtt_fusion.adapters import specklebem as sba
-from rtt_fusion.ports import PlaneWaves, spectrum_power
+from rtt_fusion.ports import PlaneWaves, Port, spectrum_power
 
 LAM, R = 0.6, 0.25  # µm
 EPS = 2.25 + 0.3j  # absorbing, our convention
@@ -125,3 +125,52 @@ def test_superposition_of_two_waves(handle: Any) -> None:
         PlaneWaves(port, np.array([kx]), np.array([0.0]), np.array([e2], dtype=np.complex128)),
     ).far_field(dirs)
     assert np.max(np.abs(sum_ff - one - two)) < 1e-6 * np.max(np.abs(sum_ff))
+
+
+# ---------------------------------------------------------------------------- L4 / L5
+
+
+def _incident(port: Any, kx: float, ky: float, e: tuple[complex, complex]) -> PlaneWaves:
+    return PlaneWaves(port, np.array([kx]), np.array([ky]), np.array([e], dtype=np.complex128))
+
+
+def test_l4_apply_many_equals_apply(handle: Any) -> None:
+    rng = np.random.default_rng(11)
+    k_mm = K_UM * 1000
+    incidents = []
+    for _ in range(5):
+        s, phi = 0.3 * np.sqrt(rng.random()), 2 * np.pi * rng.random()
+        e = rng.normal(size=2) + 1j * rng.normal(size=2)
+        incidents.append(
+            _incident(
+                sba.front_port(handle, LAM),
+                s * k_mm * np.cos(phi),
+                s * k_mm * np.sin(phi),
+                (e[0], e[1]),
+            )
+        )
+    many = sba.apply_many(handle, incidents, 12, 24)
+    for inc, b in zip(incidents, many, strict=True):
+        a = sba.apply(handle, inc, 12, 24)
+        for key in a:
+            assert np.abs(a[key].field - b[key].field).max() < 1e-6 * np.abs(a[key].field).max()
+
+
+def test_l5_light_from_the_back_mirrors_the_front(handle: Any) -> None:
+    # the sphere lies midway between the ports: light coming in at the back (−z) gives the
+    # mirror image of light coming in at the front (+z), up to the mesh, which need not be
+    # symmetric under z → −z (a wrong direction would differ by order one)
+    front = sba.apply(handle, _incident(sba.front_port(handle, LAM), 0.0, 0.0, (1.0, 0.0)), 16, 32)
+    back = sba.apply(
+        handle, _incident(Port(0.004, -1, 1.0 + 0j, LAM), 0.0, 0.0, (1.0, 0.0)), 16, 32
+    )
+    assert sorted(back) == ["back", "front", "front_scattered"]
+    assert back["back"].port.direction == 1 and back["front"].port.direction == -1
+    for f_key, b_key in (("front", "back"), ("back_scattered", "front_scattered")):
+        a, b = front[f_key], back[b_key]
+        assert np.allclose(a.kx, b.kx) and np.allclose(a.ky, b.ky)
+        assert np.abs(a.field - b.field).max() < 2e-2 * np.abs(a.field).max()
+        pa, pb = a.power_density().sum(), b.power_density().sum()
+        assert abs(pb / pa - 1) < 2e-2
+    with pytest.raises(ValueError, match="back port with direction -1"):
+        sba.apply(handle, _incident(Port(0.004, 1, 1.0 + 0j, LAM), 0.0, 0.0, (1.0, 0.0)))

@@ -1420,6 +1420,7 @@ EVALUATORS: dict[str, Evaluator] = {
     # S4: new Raytatouille elements from the library
     "rtt.part.mirror": _block_nodes,
     "rtt.part.lens": _block_nodes,
+    "rtt.part.stop": _block_nodes,
     "rtt.part.splitter": _block_nodes,
     "rtt.part.detector": detector,
 }

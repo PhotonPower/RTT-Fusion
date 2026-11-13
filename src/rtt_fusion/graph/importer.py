@@ -535,3 +535,75 @@ def graph_from_raytatouille(system: Any) -> Graph:
     from rtt_fusion.graph.registry import builtin_registry
 
     return unroll(model_from_raytatouille(system), builtin_registry())
+
+
+#: settings of a new system (ADR Nachtrag 1, no import): mm/µm, the d line, an entrance pupil of
+#: 4 mm, one field point on the axis
+NEW_SYSTEM: dict[str, Any] = {
+    "schema_version": "0.9.0",
+    "name": "New system",
+    "units": {"length": "mm", "wavelength": "um"},
+    "wavelengths": [{"um": 0.5876, "reference": True}],
+    "aperture": {"type": "epd", "value": 4.0},
+    "fields": {"points": [{}]},
+}
+
+
+def new_system(name: str = "New system") -> Model:
+    """A Raytatouille system made in the workflow, without an import: a source with the settings
+    of `NEW_SYSTEM` (editable like an imported system's), an empty tree, a stop at z = 0 and a
+    detector at z = 50 from the library and the branch "main" through them. Further parts go in
+    between (connections and branch steps through their ports); everything is computed and saved
+    like an imported system."""
+    from rtt_fusion.graph.parts import PARTS
+
+    def part(kind: str, z: float) -> dict[str, Any]:
+        element: dict[str, Any] = json.loads(json.dumps(PARTS[kind][1]))
+        element["pose"] = {"position": [0.0, 0.0, z], "rotation_deg": [0.0, 0.0, 0.0]}
+        return element
+
+    m = Model()
+    m.add(
+        Node(
+            "source",
+            "rtt.source",
+            "Source",
+            params={
+                "rtt_system": {**json.loads(json.dumps(NEW_SYSTEM)), "name": name},
+                "rtt_tree": {"/root": {"type": "assembly", "name": name, "children": []}},
+                "rtt_paths": [],
+            },
+            position=(0.0, 0.0),
+        )
+    )
+    m.add(
+        Node(
+            "stop",
+            "rtt.part.stop",
+            "Stop",
+            params={"rtt_new": part("stop", 0.0)},
+            position=(220.0, 0.0),
+        )
+    )
+    m.add(
+        Node(
+            "detector",
+            "rtt.part.detector",
+            "Detector",
+            params={"rtt_new": part("detector", 50.0)},
+            position=(440.0, 0.0),
+        )
+    )
+    m.connect(("source", "out"), ("stop", "front"))
+    m.connect(("stop", "back"), ("detector", "in"))
+    m.branches.append(
+        Branch(
+            "main",
+            (
+                Step("source", None, "out"),
+                Step("stop", "front", "back"),
+                Step("detector", "in", None),
+            ),
+        )
+    )
+    return m

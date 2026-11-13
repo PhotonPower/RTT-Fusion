@@ -244,3 +244,83 @@ def test_w59_a_new_part_is_in_the_exported_system() -> None:
         "extra.S1",
         "extra.S2",
     ]
+
+
+# ---------------------------------------------------------------------------- W64
+
+
+def test_w64_a_new_system_without_import_computes() -> None:
+    from rtt_fusion.graph import backend_rtt, new_system, validate_model
+    from rtt_fusion.graph.importer import system_from_model
+
+    m = new_system("bench")
+    reg = builtin_registry()
+    assert not [x for x in validate_model(m, reg) if x.severity == "error"]
+    d = system_from_model(m)
+    assert d["name"] == "bench" and [c["type"] for c in d["root"]["children"]] == [
+        "stop",
+        "detector",
+    ]
+    assert not rt.validate(rt.System.from_json(json.dumps(d)))  # a valid Raytatouille file
+    ex = Executor(unroll(m, reg), reg, backend_rtt.EVALUATORS, {"rings": 12, "pixels": [32, 32]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        im: Image = ex.evaluate("detector", "image")
+    # the collimated beam lies inside the window (the pixels at the rim of the disc miss ~4 %)
+    assert im.power > 0.9 * im.ray_power > 0
+
+
+def test_w64_a_lens_inserted_equals_the_saved_file() -> None:
+    from rtt_fusion.graph import io, new_system
+    from rtt_fusion.graph.importer import system_from_model
+    from rtt_fusion.graph.parts import PARTS
+
+    m = new_system()
+    lens: dict[str, Any] = json.loads(json.dumps(PARTS["lens"][1]))
+    lens["pose"] = {"position": [0.0, 0.0, 5.0], "rotation_deg": [0.0, 0.0, 0.0]}
+    m.add(Node("lens", "rtt.part.lens", params={"rtt_new": lens}))
+    # as in the editor: the connection stop–detector replaced by stop–lens–detector, the branch
+    # recorded again through the lens
+    m.connections = [c for c in m.connections if {c.a[0], c.b[0]} != {"stop", "detector"}]
+    m.connect(("stop", "back"), ("lens", "front"))
+    m.connect(("lens", "back"), ("detector", "in"))
+    m.branches = [
+        Branch(
+            "main",
+            (
+                Step("source", None, "out"),
+                Step("stop", "front", "back"),
+                Step("lens", "front", "back"),
+                Step("detector", "in", None),
+            ),
+        )
+    ]
+    m.nodes["source"].params["rtt_system"]["wavelengths"] = [{"um": 0.6328, "reference": True}]
+    again = io.model_from_dict(json.loads(json.dumps(io.model_to_dict(m))), builtin_registry())
+    d = system_from_model(again)  # the system as saved
+    assert d["wavelengths"] == [{"um": 0.6328, "reference": True}]
+    assert [e["surface"] for e in d["paths"][0]["events"]] == [
+        "stop.STO",
+        "lens.S1",
+        "lens.S2",
+        "detector.IMG",
+    ]
+    from_model = _image(unroll(again, builtin_registry()), d, "detector")
+    imported = model_from_raytatouille(d)  # the saved file, imported again: ids from the names
+    (camera,) = [n.id for n in imported.nodes.values() if n.type_id == "rtt.detector"]
+    _same(_from_file(d, camera), from_model)
+    assert from_model.power > 0
+
+
+def test_w64_derived_parameters_of_parts_are_no_warning() -> None:
+    from rtt_fusion.graph import new_system, validate
+    from rtt_fusion.graph.parts import prepare_parts
+
+    m = new_system()
+    m.nodes.update(prepare_parts(m.nodes))  # as the workflow holds them after a computation
+    assert "runs" in m.nodes["stop"].params
+    reg = builtin_registry()
+    assert not [d for d in validate(unroll(m, reg), reg) if d.code == "graph.param_unknown"]
+    m.nodes["stop"].params["typo"] = 1  # a real unknown parameter still warns
+    found = [d for d in validate(unroll(m, reg), reg) if d.code == "graph.param_unknown"]
+    assert [d.location for d in found] == ["stop"] and "typo" in found[0].message

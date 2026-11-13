@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Ein Raytatouille-System lässt sich ohne Import im Workflow anlegen (`new_system`): eine Quelle mit
+  Standard-Einstellungen (mm/µm, d-Linie, Eintrittspupille 4 mm, ein Feldpunkt auf der Achse),
+  bearbeitbar wie die eines importierten Systems, ein leerer Baum, eine Blende und ein Detektor aus
+  der Bibliothek und der Ast „main“. Neues Bauteil `rtt.part.stop` (Raytatouille braucht eine
+  Blende im Pfad). Abnahme W64.
 - L4, Stufe O1 (Plan `docs/plan-l4-operatoren.md`): `apply_many(handle, incidents)` in allen fünf
   Adaptern. CliffordBem nutzt dabei Krylov-Recycling (`use_recycling`, je Wellenlänge), SpeckleBem
   den einmal assemblierten Operator; FourierGrating, hp-FEM und BWPM schleifen, bis die Löser
@@ -277,6 +282,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Die Prüfung warnte bei jedem Bauteil aus der Bibliothek vor den Parametern, die `prepare_parts`
+  ihm gibt (`rtt`, `runs`, `surfaces`, `location`, `element_type`; `graph.param_unknown`). Diese
+  abgeleiteten Parameter gelten jetzt als bekannt; ein wirklich unbekannter warnt weiter (W64).
 - Raytatouille-Backend: Ein Strahl galt als angekommen, wenn er alle Plätze des aufgezeichneten
   Pfads füllte. Raytatouille gibt aber auch einem Strahl, der am letzten Ereignis verloren geht,
   alle Plätze (`count = j + 2`). Knotenweise liefen so z. B. an der letzten Fläche eines Laufs

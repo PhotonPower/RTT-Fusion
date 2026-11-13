@@ -1,7 +1,7 @@
 """Node workflow: working graph, block types, checks, file format, import from Raytatouille
 and planner (docs/konzept-node-workflow.md, stages R14–R17)."""
 
-from rtt_fusion.graph.importer import graph_from_raytatouille, model_from_raytatouille
+from rtt_fusion.graph.importer import graph_from_raytatouille, model_from_raytatouille, new_system
 from rtt_fusion.graph.io import dumps, load, loads, model_from_dict, model_to_dict, save
 from rtt_fusion.graph.model import (
     Category,
@@ -70,6 +70,7 @@ __all__ = [
     "model_from_graph",
     "model_from_raytatouille",
     "model_to_dict",
+    "new_system",
     "node_type_from_describe",
     "plan",
     "replace_block",

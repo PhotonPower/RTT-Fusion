@@ -52,6 +52,8 @@ def node_sockets(node: Node, registry: NodeTypeRegistry) -> tuple[SocketSpec, ..
 #: the offset input of every block with a pose (R26): six values, driven by meta blocks
 POSE_INPUT = SocketSpec("pose", Direction.IN, SocketKind.DATA, frozenset({"drive"}), "", "pose")
 _POSED = (Category.SOURCE, Category.DOMAIN, Category.SPLITTER, Category.DETECTOR)
+#: parameters prepare_parts gives a library part (its place in the system), not set by the user
+PART_DERIVED = ("rtt", "runs", "surfaces", "location", "element_type")
 
 
 def node_through(node: Node, registry: NodeTypeRegistry) -> dict[str, tuple[str, ...]]:
@@ -116,6 +118,8 @@ def validate(graph: Graph, registry: NodeTypeRegistry) -> list[Diagnostic]:
             continue
         sockets[node.id] = {s.name: s for s in node_sockets(node, registry)}
         known = {p.name for p in t.params}
+        if node.type_id.startswith("rtt.part."):  # placed in the system by prepare_parts (S4)
+            known |= set(PART_DERIVED)
         if known and not t.dynamic_sockets:
             for name in node.params:
                 if (

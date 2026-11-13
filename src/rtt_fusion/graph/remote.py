@@ -11,6 +11,13 @@ Two sides of one small protocol; the transport (CAD's plugin channel) carries pl
 A remote block gets its inputs, its parameters and the run's plain settings (numbers, strings,
 lists – `shared` without objects); it cannot ask for other blocks' values (`ctx.evaluate`, meta
 blocks stay in the engine) and has no port frames (code, not data).
+
+Prepare (ADR 0010, D6, stage W3): blocks that need more than their inputs – Raytatouille blocks
+make one system from the data of all `rtt.*` blocks and follow the branches of the whole graph –
+get the run's unrolled graph once, before the first of their evaluations in that run
+(`{"kind": "prepare", "run", "graph", "shared"}`); their evaluations then name the run and work in
+its context (`Context.graph` the whole graph, `shared` the plain settings plus what the provider's
+`prepare` hook adds, e.g. a material library).
 """
 
 from __future__ import annotations
@@ -19,11 +26,14 @@ import itertools
 import json
 import shutil
 import tempfile
+import uuid
+from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from rtt_fusion import portdata
+from rtt_fusion.graph import io
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.model import Graph, Node, NodeType
 from rtt_fusion.graph.registry import NodeTypeRegistry
@@ -46,25 +56,62 @@ def _plain(shared: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-class BlockProvider:
-    """The blocks of a plugin: their types and the evaluators that run them in its process."""
+#: what a provider's prepare hook adds to a run's shared settings (objects such as a library)
+Prepare = Callable[[Graph, dict[str, Any]], dict[str, Any]]
+#: prepared runs a provider keeps (the newest)
+KEPT_RUNS = 4
 
-    def __init__(self, types: list[NodeType], evaluators: dict[str, Evaluator]) -> None:
+
+class BlockProvider:
+    """The blocks of a plugin: their types and the evaluators that run them in its process.
+    `prepare`: what a run's context needs beyond the plain settings (D6), from its graph."""
+
+    def __init__(
+        self,
+        types: list[NodeType],
+        evaluators: dict[str, Evaluator],
+        prepare: Prepare | None = None,
+    ) -> None:
         missing = [t.type_id for t in types if t.type_id not in evaluators]
         if missing:
             raise ValueError(f"no evaluator for {', '.join(missing)}")
         self.types = {t.type_id: t for t in types}
         self.evaluators = evaluators
+        self.prepare_hook = prepare
         #: kept across requests (operators, prepared solvers – ADR 0010 D5)
         self.operators: dict[str, Any] = {}
+        self._runs: OrderedDict[str, tuple[Graph, dict[str, Any]]] = OrderedDict()
+
+    def prepare(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Keep a run's graph and context (D6); the newest `KEPT_RUNS` runs stay."""
+        try:
+            graph = io.from_dict(request["graph"])
+            shared = dict(request.get("shared", {}))
+            if self.prepare_hook is not None:
+                shared.update(self.prepare_hook(graph, shared))
+            self._runs[str(request["run"])] = (graph, shared)
+            while len(self._runs) > KEPT_RUNS:
+                self._runs.popitem(last=False)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    def handle(self, request: dict[str, Any]) -> dict[str, Any]:
+        """One request of the engine: prepare a run or evaluate a block."""
+        if request.get("kind") == "prepare":
+            return self.prepare(request)
+        return self.evaluate(request)
 
     def catalogue(self) -> list[dict[str, Any]]:
-        """The block types for the hello: the static description and the representations each
-        evaluator works in natively."""
+        """The block types for the hello: the static description, the representations each
+        evaluator works in natively and whether a run is prepared for them (D6)."""
         out = []
         for type_id, t in self.types.items():
             reps = getattr(self.evaluators[type_id], "representations", frozenset("R"))
-            out.append({**t.to_dict(), "representations": sorted(reps)})
+            entry = {**t.to_dict(), "representations": sorted(reps)}
+            if self.prepare_hook is not None:
+                entry["prepare"] = True
+            out.append(entry)
         return out
 
     def evaluate(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -83,9 +130,14 @@ class BlockProvider:
                 raise ValueError(f"this plugin provides no block type {node.type_id!r}")
             folders = request.get("folders", {})
             inputs = {k: portdata.read(h, folders[k]) for k, h in request.get("inputs", {}).items()}
-            graph = Graph()
-            graph.add(node)
-            ctx = Context(graph, shared=dict(request.get("shared", {})), operators=self.operators)
+            run = request.get("run")
+            if run is not None and str(run) in self._runs:  # the prepared run's context (D6)
+                graph, shared = self._runs[str(run)]
+                node = graph.nodes.get(node.id, node)
+            else:
+                graph, shared = Graph(), dict(request.get("shared", {}))
+                graph.add(node)
+            ctx = Context(graph, shared=dict(shared), operators=self.operators)
             value = self.evaluators[node.type_id](ctx, node, str(request["socket"]), inputs)
             log = list(ctx.log)
             handle = portdata.write(value, request["out"])
@@ -113,19 +165,52 @@ def remote_types(catalogues: list[dict[str, Any]]) -> list[tuple[str, NodeType, 
 class RemoteEvaluator:
     """An evaluator for a block of another plugin: inputs as port data into a folder below `root`,
     one request, the outputs read back. The provider's error – or a broken channel, a provider
-    that stopped – is the block's ExecutionError "exec.remote"; the run goes on elsewhere."""
+    that stopped – is the block's ExecutionError "exec.remote"; the run goes on elsewhere.
+    `prepare`: before the provider's first block of a run, its graph is sent (D6)."""
 
     _count = itertools.count()
 
     def __init__(
-        self, provider: str, call: Call, representations: frozenset[str], root: str | Path
+        self,
+        provider: str,
+        call: Call,
+        representations: frozenset[str],
+        root: str | Path,
+        prepare: bool = False,
+        runs: dict[tuple[str, int], str] | None = None,
     ) -> None:
         self.provider = provider
         self.call = call
         self.representations = representations
         self.root = Path(root)
+        self.prepare = prepare
+        #: prepared runs by (provider, graph): shared by the evaluators of one engine
+        self.runs = runs if runs is not None else {}
+
+    def _run(self, ctx: Context, node: Node) -> str | None:
+        if not self.prepare:
+            return None
+        key = (self.provider, id(ctx.graph))
+        if key not in self.runs:
+            run = uuid.uuid4().hex
+            request = {
+                "kind": "prepare",
+                "run": run,
+                "graph": io.to_dict(ctx.graph),
+                "shared": _plain(ctx.shared),
+            }
+            try:
+                answer = self.call(self.provider, request)
+            except Exception as e:
+                raise ExecutionError("exec.remote", f"{self.provider}: {e}", node.id) from e
+            if not answer.get("ok"):
+                why = answer.get("error", "prepare failed")
+                raise ExecutionError("exec.remote", f"{self.provider}: {why}", node.id)
+            self.runs[key] = run
+        return self.runs[key]
 
     def __call__(self, ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
+        run = self._run(ctx, node)
         self.root.mkdir(parents=True, exist_ok=True)
         folder = Path(tempfile.mkdtemp(prefix=f"{next(self._count)}-", dir=self.root))
         try:
@@ -144,6 +229,8 @@ class RemoteEvaluator:
                 "out": str(folder / "out"),
                 "shared": _plain(ctx.shared),
             }
+            if run is not None:
+                request["run"] = run
             try:
                 response = self.call(self.provider, request)
             except Exception as e:
@@ -166,12 +253,16 @@ def register_remote(
     call: Call,
     root: str | Path,
 ) -> dict[str, Evaluator]:
-    """Adds the providers' block types to `registry`; their evaluators (by type id)."""
+    """Adds the providers' block types to `registry`; their evaluators (by type id). A type the
+    registry has already (e.g. `rtt.*`, built in) keeps its description and is evaluated by the
+    provider. A catalogue entry with "prepare": true gets the run's graph first (D6)."""
     evaluators: dict[str, Evaluator] = {}
-    for provider, t, reps in remote_types(catalogues):
+    runs: dict[tuple[str, int], str] = {}
+    for entry, (provider, t, reps) in zip(catalogues, remote_types(catalogues), strict=True):
         if registry.get(t.type_id) is None:
             registry.add(t)
-        evaluators[t.type_id] = RemoteEvaluator(provider, call, reps, root)
+        prepare = bool(entry["type"].get("prepare", False))
+        evaluators[t.type_id] = RemoteEvaluator(provider, call, reps, root, prepare, runs)
     return evaluators
 
 

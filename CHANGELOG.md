@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Vorbereitete Läufe für fremde Blöcke (CAD ADR 0010, D6, Stufe W3): Blöcke, die mehr als ihre
+  Eingänge brauchen – Raytatouille-Blöcke bauen ein System aus den Daten aller `rtt.*`-Blöcke und
+  folgen den Ästen des ganzen Graphen –, bekommen vor ihrer ersten Auswertung den abgerollten Graphen
+  des Laufs (`prepare`, ein Rückruf des Lieferanten ergänzt z. B. eine Materialbibliothek); die
+  Auswertungen rechnen in diesem Kontext. `BlockProvider.handle` nimmt beide Anfragen. Abnahme W71.
+
 - Lieferanten im Workflow-Dokument (CAD ADR 0010, D7): `model_document(…, providers, recorded)`
   vermerkt unter `providers`, welches Plugin (mit Version) einen im Modell benutzten Blocktyp
   liefert, und markiert die Bibliothekseinträge mit ihrem Plugin. Fehlt ein vermerktes Plugin,

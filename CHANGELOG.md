@@ -6,6 +6,24 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Lieferanten im Workflow-Dokument (CAD ADR 0010, D7): `model_document(…, providers, recorded)`
+  vermerkt unter `providers`, welches Plugin (mit Version) einen im Modell benutzten Blocktyp
+  liefert, und markiert die Bibliothekseinträge mit ihrem Plugin. Fehlt ein vermerktes Plugin,
+  meldet die Prüfung `graph.provider_missing` mit Plugin und Version statt eines unbekannten Typs;
+  der Block bleibt mit seinen Daten. Abnahme W70.
+
+- `graph.remote` (CAD ADR 0010, D2/D3, Stufe W2b): Blöcke in einem anderen Prozess. Lieferant:
+  `BlockProvider` beschreibt seine Blocktypen (`catalogue`, mit den nativen Darstellungen) und
+  rechnet eine Anfrage mit Port-Daten (`evaluate`). Engine: `register_remote` übernimmt die Kataloge
+  in die Registry, `RemoteEvaluator` rechnet über eine Anfrage. `NodeType.to_dict`/`from_dict` für
+  den statischen Teil (ohne Port-Rahmen). Ein fremder Block bekommt seine Eingänge, Parameter und die
+  JSON-fähigen Einstellungen des Laufs. Ein Fehler des Lieferanten oder des Kanals (ein Lieferant,
+  der abbricht) ist der `ExecutionError` „exec.remote“ des Blocks; der Lauf geht anderswo weiter.
+  Abnahme W69.
+- Die Blockbibliothek der Workflow-Engine (`graph.workflow.registry`) enthält auch die allgemeinen
+  Optik-Blöcke (`optics.*`: Quellen, Detektoren, Grenzflächen, Teiler, dünne Linse) und den
+  Evaluator verdichteter Gruppen (R29), die der Editor schon einstellen kann.
+
 - `rtt_fusion.portdata` (CAD ADR 0010, D4, Stufe W2a): die Werte auf den Links des Workflows als
   Dateien – ein JSON-Baum (Datenklassen, Listen, Zahlen; Gleitkommazahlen bitgenau als Hex, auch NaN
   und ±∞) und je Array eine `.npy`-Datei. Damit rechnet ein Block im Prozess eines anderen Plugins.

@@ -24,9 +24,12 @@ from rtt_fusion.graph.registry import NodeTypeRegistry, builtin_registry
 from rtt_fusion.graph.topology import Model, node_ports, unroll, validate_model
 from rtt_fusion.graph.validate import node_sockets, validate
 
-#: modules with block types beyond the built-in ones: grating (R19), particle (R20), meta blocks
-#: and displays (R21); each registers what its optional packages allow
+#: modules with block types beyond the built-in ones: general optics (interfaces, splitters, thin
+#: lenses, sources, detectors – R27/R28), condensed groups (R29), grating (R19), particle (R20),
+#: meta blocks and displays (R21); each registers what its optional packages allow
 OPTIONAL_MODULES = (
+    "rtt_fusion.graph.optics",
+    "rtt_fusion.graph.condense",
     "rtt_fusion.graph.grating",
     "rtt_fusion.graph.particle",
     "rtt_fusion.graph.meta",
@@ -120,10 +123,18 @@ def model_document(
     reg: NodeTypeRegistry,
     describe: Describe | None = None,
     keep_fields: dict[str, list[dict[str, Any]]] | None = None,
+    providers: dict[str, dict[str, str]] | None = None,
+    recorded: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """The workflow document of a model: {"model", "types", "diagnostics", "plan"}. The fields of
-    a node come from `describe` (the providing plugin), else from `keep_fields` (by node id: what
-    the document held before – the engine keeps what the providers described)."""
+    """The workflow document of a model: {"model", "types", "diagnostics", "plan", "providers"}.
+    The fields of a node come from `describe` (the providing plugin), else from `keep_fields` (by
+    node id: what the document held before – the engine keeps what the providers described).
+
+    `providers`: block type → {"plugin", "version"} of the types other plugins provide now
+    (CAD ADR 0010, D7); `recorded`: the same from the document before. The document records the
+    provider of every such type its model uses; a block whose type nobody provides but whose
+    provider is recorded gets `graph.provider_missing` (the plugin is missing or too old) instead
+    of `graph.node_type_unknown` – it stays in the model with its data."""
     for node in model.nodes.values():  # with the inputs every block has (drive, pose)
         node.sockets = tuple(node_sockets(node, reg))
         if not node.ports:
@@ -137,6 +148,30 @@ def model_document(
         p["connections"] = connection_plan(graph, model, reg, p)
     for d in diagnostics:  # copies and blocks inside groups: the block of the model
         d["location"] = re.sub(r"@\d+", "", str(d["location"]))
+    now, before = providers or {}, recorded or {}
+    used: set[str] = set()
+
+    def types_of(m: Model) -> None:
+        for n in m.nodes.values():
+            used.add(n.type_id)
+        for g in m.groups.values():
+            for v in g.variants.values():
+                types_of(v.model)
+
+    types_of(model)
+    record = {t: dict(now.get(t) or before[t]) for t in sorted(used) if t in now or t in before}
+    for d in diagnostics:
+        if d["code"] != "graph.node_type_unknown":
+            continue
+        t = next((x for x in record if f"{x!r}" in str(d["message"])), None)
+        if t is not None and t not in now:
+            r = record[t]
+            d["code"] = "graph.provider_missing"
+            d["message"] = (
+                f"block type {t!r} comes from the plugin {r.get('plugin', '?')} "
+                f"(version {r.get('version', '?')}), which is not available – the block keeps its "
+                "data; install or start the plugin"
+            )
     data = io.model_to_dict(model)
     kept = keep_fields or {}
 
@@ -149,7 +184,17 @@ def model_document(
                 fields(body.get("nodes", []))
 
     fields(data["nodes"])
-    return {"model": data, "types": catalogue(reg), "diagnostics": diagnostics, "plan": p}
+    types = catalogue(reg)
+    for entry in types:  # the editor groups the block library by plugin
+        if entry["type"] in now:
+            entry["provider"] = now[entry["type"]].get("plugin", "")
+    return {
+        "model": data,
+        "types": types,
+        "diagnostics": diagnostics,
+        "plan": p,
+        "providers": record,
+    }
 
 
 def kept_fields(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:

@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- L4, Stufe O3 für FourierGrating: `apply_many` nutzt die S-Matrix in der s/p-Basis der Ordnungen
+  (FourierGrating `Simulation.smatrix`, FG #4): ein Eigenproblem je Richtung für beide
+  Polarisationen statt zweier Lösungen, gleich `apply`. Mit `bloch=True` ein Eigenproblem je
+  Bloch-Familie; dann weicht eine Welle außerhalb der Mitte um den Trunkierungsfehler ab (das
+  Ordnungsfenster liegt um die Einfallsordnung, etwa 7e−3 bei N = 6). Ohne `smatrix` (älteres
+  FourierGrating) wie bisher. Die CI baut FourierGrating auf dem Stand b3e2c31. Abnahme W67.
 - `graph.workflow` (CAD ADR 0010, Stufe W1a): das Workflow-Dokument, das der Node-Editor zeigt –
   Modell mit Sockets und Ports, Blockbibliothek, Diagnosen von Modell und abgerolltem Graphen, Plan
   je Link und je Verbindung – samt Blockzuständen je Block des Modells. Bisher im Raytracer-Plugin

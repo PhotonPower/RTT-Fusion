@@ -111,6 +111,7 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 | W64 | Ein neues System ohne Import (`new_system`): Quelle mit Standard-Einstellungen, Blende und Detektor aus der Bibliothek; dazu eine eingefügte Linse und eine geänderte Wellenlänge | gültiges Raytatouille-System, Bild mit der Leistung des Bündels; gespeichert und wieder importiert dasselbe Bild wie aus dem Modell | 1e−12 | Nachtrag 1 | ✅ | `test_parts.py` |
 | W65 | Bild eines Flecks, der kleiner als ein Pixel ist (Fokus auf ±5 mm, 32 Pixel); passendes Fenster; Dunkelheit durch Interferenz | Warnung mit Fensterwert; mit dem vorgeschlagenen Fenster keine Warnung und die Leistung im Bild; passendes Fenster und gegenphasige Kopien (dunkel, gut abgetastet) ohne Warnung | Leistung 10 % | R15 | ✅ | `test_field.py` |
 | W66 | Workflow-Dokument (`graph.workflow`, CAD ADR 0010 W1a): Modell mit Sockets und Ports, Bibliothek, Diagnosen und Plan; Felder vom Lieferanten, von der Engine übernommen (auch in Gruppen); Blockzustände je Block des Modells | vollständig, JSON-fähig; Felder beim zweiten Durchlauf gleich; Zustände zusammengefasst (lokal geprüft: bytegleich zum bisherigen Plugin-Code für Linnik und Feature-Tour mit Gruppe) | exakt | ADR 0010 | ✅ | `test_workflow_document.py` |
+| W67 | FourierGrating-Adapter mit der S-Matrix (L4 O3, FG `Simulation.smatrix`): `apply_many` je Richtung und mit `bloch` je Bloch-Familie | je Richtung: kein `solve`, ein Eigenproblem für beide Polarisationen, gleich `apply` samt Ordnungsnummern; mit `bloch`: ein Eigenproblem für die Familie, gleich `apply` bis auf den Trunkierungsfehler | 1e−12 / 2e−2 | L4 | ✅ | `test_adapter_fouriergrating.py` |
 | W9 | Michelson aus Raytatouilles Referenzen über Import, Graph und Raytatouille-Backend, Testspiegel um 1 mrad gekippt | λ/sin 2θ; eine Kohärenzgruppe für beide Arme | Abstand < 1e−2 rel. (Strahlraster), Kontrast > 0,99 | R15 | ✅ (ohne Raytatouille übersprungen) | `test_execute.py` |
 
 | PS1 | Phasenraum-Übergang Feld → Pakete (Husimi): Leistung, zweite Momente (Wigner + Fenster), Stokes, Kopplung in eine Gauß-Mode | analytische Gauß-Integrale | Leistung 1e−12, Momente ≤ 0,5 %, Kopplung 2 % | S9b-1 (Scattuccino D8/D10) | ✅ | `test_phasespace.py` |
@@ -119,7 +120,8 @@ Status: ✅ umgesetzt und grün, ◐ teilweise, ○ offen.
 ## F1–F5: FourierGrating-Adapter (R1)
 
 FourierGrating 0.16.0 (Commit `959c93b`), RCWA, CPU-Kern; seit 2026-11-12 eingestellt auf 0.18.0
-(Commit `174ef93`, baut auch mit Apple clang), Tests F1–F5, K1, J1–J5, W26/W27 unverändert grün. Alle Vergleiche über die
+(Commit `174ef93`, baut auch mit Apple clang), seit 2026-11-13 auf `b3e2c31` (S-Matrix in der
+s/p-Basis, FG #4), Tests F1–F5, K1, J1–J5, W26/W27 unverändert grün. Alle Vergleiche über die
 Adapter-Schnittstelle in den Konventionen von Raytatouille.
 
 **Befund zur Basis bei senkrechtem Einfall:** FourierGrating nimmt für die Ordnungen bei κ = 0

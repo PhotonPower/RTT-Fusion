@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 from rtt_fusion.graph import Graph, Node, builtin_registry, optics
@@ -107,3 +108,56 @@ def test_w69_errors_of_the_provider(tmp_path: Path) -> None:
         }
     )
     assert not unknown["ok"] and "no block type" in unknown["error"]
+
+
+# ---------------------------------------------------------------------------- W71
+
+
+@pytest.mark.parametrize("execution", ["nodes", "paths"])
+def test_w71_raytatouille_blocks_in_another_process(tmp_path: Path, execution: str) -> None:
+    """ADR 0010, D6/W3: every rtt.* block of the Linnik evaluated by a provider behind a JSON
+    channel, the run prepared once (its graph: the system from the blocks' data, the branches);
+    the camera image equals the one computed in the engine's process."""
+    pytest.importorskip("raytatouille")
+    import time
+
+    from rtt_fusion.graph import backend_rtt, model_from_raytatouille, unroll
+    from rtt_fusion.graph.workflow import registry
+
+    d = json.loads((Path(__file__).parent / "data" / "linnik_mini.rtt.json").read_text("utf-8"))
+    reg, extra = registry()
+    shared = {"rings": 12, "pixels": [32, 32], "rtt_execution": execution}
+    rtt_types = [t for t in reg.types() if t.type_id in backend_rtt.EVALUATORS]
+    start = time.perf_counter()
+    local: Image = Executor(
+        unroll(model_from_raytatouille(d), reg), reg, {**backend_rtt.EVALUATORS, **extra}, shared
+    ).evaluate("camera", "image")
+    t_local = time.perf_counter() - start
+    provider = BlockProvider(
+        rtt_types, dict(backend_rtt.EVALUATORS), prepare=lambda graph, plain: {"prepared": True}
+    )
+    kinds: list[str] = []
+
+    def call(name: str, request: dict[str, Any]) -> dict[str, Any]:
+        wire = json.loads(json.dumps(request, allow_nan=False))
+        kinds.append(str(wire.get("kind", "evaluate")))
+        answer: dict[str, Any] = json.loads(json.dumps(provider.handle(wire), allow_nan=False))
+        return answer
+
+    engine_reg, engine_extra = registry()
+    catalogue = [{"provider": "raytracer", "type": e} for e in provider.catalogue()]
+    remote = register_remote(engine_reg, catalogue, call, tmp_path / "portdata")
+    assert set(remote) == {t.type_id for t in rtt_types}
+    start = time.perf_counter()
+    again: Image = Executor(
+        unroll(model_from_raytatouille(d), engine_reg),
+        engine_reg,
+        {**engine_extra, **remote},
+        shared,
+    ).evaluate("camera", "image")
+    t_remote = time.perf_counter() - start
+    assert kinds.count("prepare") == 1 and kinds.count("evaluate") >= 2  # prepared once per run
+    assert local.values.max() > 0
+    np.testing.assert_allclose(again.values, local.values, rtol=0, atol=1e-12 * local.values.max())
+    n = kinds.count("evaluate")
+    print(f"W71 {execution}: local {t_local:.3f} s, remote {t_remote:.3f} s, {n} requests")

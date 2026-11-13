@@ -211,3 +211,18 @@ Bei der Umsetzung zeigten sich drei Punkte, die den Abschnitt 2 genauer fassen:
    solchen Gittern nicht (geprüft mit einer analytischen Funktion: der Fehler wächst mit feinerem
    Gitter); verwendet wird FITPACKs `RectBivariateSpline` auf zentrierten Koordinaten
    (`spectral.bicubic`). `graph.field._sample` (Feldbilder) nutzt noch die alte Interpolation.
+
+## Nachtrag 2 (Umsetzung F2, 2026-11-13)
+
+1. **`fg.grating` mit H.** Mit einer FourierGrating-Konfiguration (`fouriergrating`) rechnet der Block
+   den Feldoperator; mit nur einer Jones-Tabelle wird ein ankommendes Feld wie bisher an seinem
+   Port zu Strahlen (die Tabelle beschreibt Strahlen; W21). Der Feldpfad gibt ohne `orders` alle
+   ausbreitungsfähigen Ordnungen der Seite aus; der Strahlpfad mit Konfiguration baut ohne
+   `orders` nur (−1, 0, 1) – wer beide vergleicht, nennt die Ordnungen.
+2. **GF3 statt Talbot.** Die Talbot-Wiederkehr gilt für unendlich breite Felder; hinter dem Gitter
+   laufen die Ordnungen ±1 über z_T um z_T·K/k seitlich auseinander (Λ = 10 µm, λ = 0,55 µm: etwa
+   20 µm). Für 10⁻³ bräuchte der Test Strahlen von Millimetern. Geprüft wird statt dessen, worauf
+   es ankommt – der Phasenbezug der Ordnungen: ihre Summe direkt hinter dem Gitter, auf den
+   Stützstellen ohne Interpolation, gleich der Überlagerung der Ordnungen einer ebenen Welle
+   (3·10⁻³, die Winkelbreite des Gauß-Strahls). Ein falscher Phasenbezug gäbe Abweichungen der
+   Größenordnung 1.

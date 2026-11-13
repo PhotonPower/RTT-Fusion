@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- `section_to_group` (ADR Nachtrag 1): ein Raytatouille-Abschnitt (mehrere Elemente einer Baugruppe
+  in einem Block) wird eine Gruppe mit einem Block je Element. Jeder Block hält die Daten seines
+  Elements und seinen Teil jedes Durchgangs; die Durchgänge des Abschnitts werden innere Äste, die
+  Baugruppe selbst kommt in den Rest des Baums an der Quelle. Das erzeugte System bleibt dasselbe.
+  Abgelehnt: ein Abschnitt aus einem Element, ein verschobener Abschnitt, ein Geist durch ihn.
+  Abnahme W61.
+
 - S4 (ADR Nachtrag 1): neue Raytatouille-Bauteile aus der Bibliothek (`graph/parts.py`:
   `rtt.part.mirror`, `rtt.part.splitter`, `rtt.part.lens`, `rtt.part.detector`). Das Element ist
   der Parameter `rtt_new` (bearbeitbar wie die Daten importierter Blöcke), die Ports sind fest, die
@@ -260,6 +267,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- `system_from_model` las nur die oberste Ebene: Raytatouille-Blöcke in Gruppen fehlten im erzeugten
+  System (das Zeichnen im CAD verlor sie). Gruppen zählen jetzt mit ihrer aktiven Variante, aufgelöst
+  wie zum Rechnen (W61).
 - `graph.branch_backend` prüfte die Durchgänge eines Raytatouille-Blocks gegen die Liste des Imports
   nach Block-ID; in einer Gruppe (`<Gruppe>/<Block>`) fand sie nichts. Jetzt zählen die Durchgänge,
   die der Block selbst hält (S2), bei älteren Modellen die Liste ohne den Pfad der Gruppen (W60).

@@ -337,3 +337,105 @@ def test_w60_raytatouille_blocks_in_a_group_compute(kept: bool) -> None:
     m = _grouped(model_from_raytatouille(d), {"objective", "sample"}, "arm")
     assert not validate_model(m, reg)
     np.testing.assert_allclose(image(m).values, plain.values, atol=1e-12 * plain.values.max())
+
+
+# ---------------------------------------------------------------------------- W61
+
+
+def _sections(d: dict[str, Any]) -> list[str]:
+    from rtt_fusion.graph import model_from_raytatouille
+
+    m = model_from_raytatouille(d)
+    return [
+        n.id
+        for n in m.nodes.values()
+        if n.type_id == "rtt.section"
+        and sum(1 for e in n.params.get("rtt", {}).values() if e.get("surfaces")) > 1
+    ]
+
+
+def _linnik_two_element_objective() -> dict[str, Any]:
+    """linnik_mini with the objective as an assembly of two elements: a weak front lens (a
+    window, f = 1 m) and the objective's lens – a section of several elements that computes."""
+    d: dict[str, Any] = json.loads(
+        (Path(__file__).parent / "data" / "linnik_mini.rtt.json").read_text(encoding="utf-8")
+    )
+    lens = d["root"]["children"][2]
+    front = copy.deepcopy(lens)
+    front["name"] = "front lens"
+    front["pose"] = {"position": [0.0, 0.0, -0.5]}
+    front["surfaces"][0]["id"] = "WIN"
+    front["surfaces"][0]["interaction"] = {"type": "ideal_lens", "focal_length": 1000.0}
+    lens = {**lens, "name": "objective lens", "pose": {"position": [0.0, 0.0, 0.0]}}
+    d["root"]["children"][2] = {
+        "type": "assembly",
+        "name": "objective",
+        "pose": {"position": [0.0, 0.0, 12.0]},
+        "children": [front, lens],
+    }
+    events = d["paths"][0]["events"]
+    k = next(i for i, e in enumerate(events) if e["surface"] == "OBJ")
+    events.insert(k, {"surface": "WIN", "kind": "transmit"})
+    k = max(i for i, e in enumerate(events) if e["surface"] == "OBJ")
+    events.insert(k + 1, {"surface": "WIN", "kind": "transmit"})
+    return d
+
+
+@pytest.mark.parametrize("name", ["feature_tour", "linnik"])
+def test_w61_section_to_group_keeps_the_system(name: str) -> None:
+    from rtt_fusion.graph import model_from_raytatouille, section_to_group
+    from rtt_fusion.graph.importer import system_from_model
+
+    if name == "feature_tour":  # Raytatouille's reference system (MIT)
+        path = Path(__file__).parent / "data" / "raytatouille" / "feature_tour.rtt.json"
+        d = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        d = _linnik_two_element_objective()
+    targets = _sections(d)
+    assert targets
+    reg, _ = _registry()
+    m = model_from_raytatouille(d)
+    before = system_from_model(m)
+    for t in targets:
+        section_to_group(m, t)
+        assert m.nodes[t].type_id == "group"
+        assert len(m.groups[t].variants[m.groups[t].active].model.nodes) > 1
+    assert not [x for x in validate_model(m, reg) if x.severity == "error"]
+    again = model_from_dict(json.loads(json.dumps(model_to_dict(m))), reg)  # through the file
+    assert system_from_model(again) == before  # the same system, exactly (groups resolved)
+
+
+def test_w61_section_to_group_keeps_the_image() -> None:
+    rt = pytest.importorskip("raytatouille")
+    from rtt_fusion.graph import backend_rtt, model_from_raytatouille, section_to_group
+
+    d = _linnik_two_element_objective()
+    reg, _ = _registry()
+
+    def image(m: Model) -> Any:
+        ex = Executor(
+            unroll(m, reg),
+            reg,
+            backend_rtt.EVALUATORS,
+            {"system": rt.System.from_json(json.dumps(d)), "rings": 12, "pixels": [32, 32]},
+        )
+        return ex.evaluate("camera", "image").values
+
+    plain = image(model_from_raytatouille(d))
+    assert plain.max() > 0
+    grouped = image(section_to_group(model_from_raytatouille(d), "objective"))
+    np.testing.assert_allclose(grouped, plain, atol=1e-12 * plain.max())
+
+
+def test_w61_refusals() -> None:
+    from rtt_fusion.graph import model_from_raytatouille, section_to_group
+
+    m = model_from_raytatouille(
+        json.loads(
+            (Path(__file__).parent / "data" / "linnik_mini.rtt.json").read_text(encoding="utf-8")
+        )
+    )
+    with pytest.raises(ValueError, match="one element"):
+        section_to_group(m, "objective")
+    with pytest.raises(ValueError, match="no Raytatouille section"):
+        section_to_group(m, "camera")

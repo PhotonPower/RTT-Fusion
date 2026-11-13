@@ -418,7 +418,11 @@ def system_from_model(model: Model) -> dict[str, Any]:
     """The Raytatouille system of a model (ADR, Nachtrag 1): the system's settings and the tree
     from the source and the blocks (each node at its location), the paths from the branches
     (the events of each step from its block's `runs`). After an import without edits it is the
-    imported system."""
+    imported system. Groups count with their active variant (resolved as for computing)."""
+    if model.groups:
+        from rtt_fusion.graph.topology import flatten
+
+        model = flatten(model)
     branches = [
         (b.name, [(s.node, s.port_in, s.port_out, s.channel) for s in b.steps])
         for b in model.branches

@@ -332,6 +332,8 @@ als absolute Größe (W), damit Strahl- und Feldbeiträge an einem Vereiniger di
 
 ### L4 Wiederverwendbare Operatoren
 
+Plan mit Bestandsaufnahme der Löser und Stufen O1–O4: [plan-l4-operatoren.md](plan-l4-operatoren.md).
+
 - **Schnittstelle:** `apply_many(handle, incidents) -> list[PortFields]` als Pflicht (darf intern
   einzeln rechnen), dazu optional `operator(handle, basis_in, basis_out) -> SMatrix`. `SMatrix` ist
   eine Blockmatrix zwischen den Basen der Ports (bei S: Liste der ebenen Wellen bzw. Ordnungen und

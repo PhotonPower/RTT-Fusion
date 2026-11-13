@@ -1,9 +1,10 @@
-# ADR-Entwurf: Gitter als Feldoperator und Schichtstapel (`fg.*`)
+# ADR: Gitter als Feldoperator und Schichtstapel (`fg.*`)
 
-Stand: Entwurf zur Entscheidung (2026-11-13). Anlass: CAD ADR 0010, Stufe W4, nennt als Blöcke des
-FourierGrating-Plugins „Gitter als Jones-Tabelle, als S-Matrix-Operator, Stapel“. Die Jones-Tabelle
-gibt es (`fg.grating`, R19, W72/W73); für die beiden anderen fehlt eine Festlegung. Dieser Entwurf
-schlägt sie vor. Die Fragen am Ende entscheidet der Maintainer.
+Stand: **angenommen** 2026-11-13 – der Maintainer folgt den Empfehlungen zu allen sechs Fragen
+(Tabelle am Ende). Anlass: CAD ADR 0010, Stufe W4, nennt als Blöcke des FourierGrating-Plugins
+„Gitter als Jones-Tabelle, als S-Matrix-Operator, Stapel“. Die Jones-Tabelle gibt es (`fg.grating`,
+R19, W72/W73); dieses ADR legt die beiden anderen fest. Reihenfolge: F4 (`fg.stack`) zuerst, dann
+F1–F3.
 
 Bezüge: Fusionsplan 6.2 (Darstellungen S, M), 6.3 (Umwandlungen), 6.4 (`operator`);
 [plan-l4-operatoren.md](plan-l4-operatoren.md) (O3: `Simulation.smatrix` in der s/p-Basis der
@@ -41,7 +42,7 @@ Ordnungen in der s/p-Basis (`Simulation.smatrix`, Plan eq:Ssp); die Wiederverwen
 Bloch-Familie ist wegen der um die Einfallsordnung zentrierten Abschneidung nur genähert (≈ 7·10⁻³
 bei N = 6, L4/O3).
 
-## Entscheidung (Vorschlag)
+## Entscheidung
 
 ### 1. Ein Gitterblock, zwei Darstellungen
 
@@ -166,7 +167,7 @@ Krümmung der Wellenfront über eine Periode; bis dahin wählt der Nutzer.
 | ST2 | Bragg-Spiegel aus N Paaren | Transfermatrix (analytisch, eigener Code im Test) für s und p über Winkel und λ | 1e−10 |
 | ST3 | `fg.stack` mit R und mit H | gleiche Koeffizienten je Richtung | 1e−12 |
 
-## Stufen (Vorschlag)
+## Stufen
 
 | Stufe | Inhalt | Abnahme |
 | --- | --- | --- |
@@ -176,9 +177,9 @@ Krümmung der Wellenfront über eine Periode; bis dahin wählt der Nutzer.
 | F4 | `fg.stack` mit R und H (empfohlen als erste Stufe) | ST1–ST3, GF6 sinngemäß |
 | F5 (später) | S und G als Verbindungsdarstellungen, wenn ein zweiter Block Spektren tauscht | – |
 
-## Fragen an den Maintainer, mit Empfehlung
+## Entscheidungen des Maintainers (2026-11-13: Empfehlungen übernommen)
 
-| Nr. | Frage | Empfehlung |
+| Nr. | Frage | Entscheidung |
 | --- | --- | --- |
 | 1 | Ein Block, zwei Darstellungen (Abschnitt 1) statt eines eigenen Feld-Gitterblocks? | **Ja.** Die Methode gehört an die Verbindung; ein zweiter Typ baut Workflows bei jedem Wechsel um. Die Feldparameter (Fenster, Schwelle, Bloch) bilden eine eigene Gruppe „Feldpfad“, die bei R unbeachtet bleibt. |
 | 2 | Fenster automatisch oder vom Nutzer? | **Automatisch mit Überschreiben:** Träger der Feldleistung (ohne die letzten 10⁻⁶) plus Rand – mindestens 10 Perioden und der seitliche Versatz durch die Gitterdicke –, aufgerundet auf ein Vielfaches von Λ; `window_um` (0 = automatisch) überschreibt, zu klein ergibt `fg.window_small`. |

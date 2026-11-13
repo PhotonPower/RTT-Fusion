@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from rtt_fusion import portdata
-from rtt_fusion.graph.execute import Context, Evaluator
+from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.model import Graph, Node, NodeType
 from rtt_fusion.graph.registry import NodeTypeRegistry
 
@@ -112,7 +112,8 @@ def remote_types(catalogues: list[dict[str, Any]]) -> list[tuple[str, NodeType, 
 
 class RemoteEvaluator:
     """An evaluator for a block of another plugin: inputs as port data into a folder below `root`,
-    one request, the outputs read back. Raises the provider's error as RuntimeError."""
+    one request, the outputs read back. The provider's error – or a broken channel, a provider
+    that stopped – is the block's ExecutionError "exec.remote"; the run goes on elsewhere."""
 
     _count = itertools.count()
 
@@ -143,10 +144,15 @@ class RemoteEvaluator:
                 "out": str(folder / "out"),
                 "shared": _plain(ctx.shared),
             }
-            response = self.call(self.provider, request)
+            try:
+                response = self.call(self.provider, request)
+            except Exception as e:  # noqa: BLE001 - the channel: the provider stopped, …
+                raise ExecutionError("exec.remote", f"{self.provider}: {e}", node.id) from e
             ctx.log.extend(str(x) for x in response.get("log", []))
             if not response.get("ok"):
-                raise RuntimeError(f"{self.provider}: {response.get('error', 'evaluation failed')}")
+                raise ExecutionError(
+                    "exec.remote", f"{self.provider}: {response.get('error', 'evaluation failed')}", node.id
+                )
             return portdata.read(response["outputs"], folder / "out")
         finally:
             shutil.rmtree(folder, ignore_errors=True)

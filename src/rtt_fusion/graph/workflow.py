@@ -24,9 +24,12 @@ from rtt_fusion.graph.registry import NodeTypeRegistry, builtin_registry
 from rtt_fusion.graph.topology import Model, node_ports, unroll, validate_model
 from rtt_fusion.graph.validate import node_sockets, validate
 
-#: modules with block types beyond the built-in ones: grating (R19), particle (R20), meta blocks
-#: and displays (R21); each registers what its optional packages allow
+#: modules with block types beyond the built-in ones: general optics (interfaces, splitters, thin
+#: lenses, sources, detectors – R27/R28), condensed groups (R29), grating (R19), particle (R20),
+#: meta blocks and displays (R21); each registers what its optional packages allow
 OPTIONAL_MODULES = (
+    "rtt_fusion.graph.optics",
+    "rtt_fusion.graph.condense",
     "rtt_fusion.graph.grating",
     "rtt_fusion.graph.particle",
     "rtt_fusion.graph.meta",

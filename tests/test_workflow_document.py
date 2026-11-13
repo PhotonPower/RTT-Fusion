@@ -44,7 +44,8 @@ def test_w66_document_of_a_model() -> None:
     assert nodes["objective"]["sockets"] and nodes["objective"]["ports"]
     assert nodes["objective"]["fields"] == [{"name": "/location", "type": "text", "label": "where"}]
     assert "fields" not in nodes["source"]
-    assert {t["type"] for t in doc["types"]} >= {"rtt.section", "rtt.source"}
+    assert {t["type"] for t in doc["types"]} >= {"rtt.section", "rtt.source", "optics.thin_lens"}
+    assert "fusion.condensed" in registry()[1]  # the evaluator of condensed groups (R29)
     assert doc["types"] == catalogue(reg)
     json.dumps(doc)  # plain JSON for the channel to CAD
 

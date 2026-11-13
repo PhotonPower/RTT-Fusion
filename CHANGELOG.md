@@ -17,7 +17,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   rechnet eine Anfrage mit Port-Daten (`evaluate`). Engine: `register_remote` übernimmt die Kataloge
   in die Registry, `RemoteEvaluator` rechnet über eine Anfrage. `NodeType.to_dict`/`from_dict` für
   den statischen Teil (ohne Port-Rahmen). Ein fremder Block bekommt seine Eingänge, Parameter und die
-  JSON-fähigen Einstellungen des Laufs. Abnahme W69.
+  JSON-fähigen Einstellungen des Laufs. Ein Fehler des Lieferanten oder des Kanals (ein Lieferant,
+  der abbricht) ist der `ExecutionError` „exec.remote“ des Blocks; der Lauf geht anderswo weiter.
+  Abnahme W69.
+- Die Blockbibliothek der Workflow-Engine (`graph.workflow.registry`) enthält auch die allgemeinen
+  Optik-Blöcke (`optics.*`: Quellen, Detektoren, Grenzflächen, Teiler, dünne Linse) und den
+  Evaluator verdichteter Gruppen (R29), die der Editor schon einstellen kann.
 
 - `rtt_fusion.portdata` (CAD ADR 0010, D4, Stufe W2a): die Werte auf den Links des Workflows als
   Dateien – ein JSON-Baum (Datenklassen, Listen, Zahlen; Gleitkommazahlen bitgenau als Hex, auch NaN

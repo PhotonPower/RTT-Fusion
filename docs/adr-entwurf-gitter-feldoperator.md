@@ -127,6 +127,7 @@ Phasenbezug am Ursprung der Port-Ebene. Für `fg.stack` entfällt `grating_vecto
 | `fg.rayleigh` | Warnung | ein Spektralpunkt liegt näher als die Toleranz an einer Rayleigh-Anomalie (wie Beugungstabelle 6) |
 | `fg.bloch_error` | Warnung | mit `bloch = true`: geschätzter Abschneidefehler über der Toleranz |
 | `fg.energy` | Warnung | verlustfreie Struktur: Σ P_aus ≠ P_ein über 10⁻⁸ |
+| `fg.field_advised` | Warnung | R auf der Verbindung, aber weniger als etwa 20 Perioden beleuchtet oder merklich gekrümmte Wellenfront über eine Periode: H wählen |
 
 Ein späteres Kriterium für „auto“ (R oder H): die beleuchtete Breite in Perioden und die
 Krümmung der Wellenfront über eine Periode; bis dahin wählt der Nutzer.
@@ -172,20 +173,16 @@ Krümmung der Wellenfront über eine Periode; bis dahin wählt der Nutzer.
 | F1 | `couplings/grating_field.py`: Fenster, H → G → S → M → S → G → H, ohne Graph | GF1, GF2, GF3 |
 | F2 | `fg.grating` nimmt H; Planer und Ausführung; Diagnosen | GF4, GF6 |
 | F3 | Linnik im Feldpfad | GF5 |
-| F4 | `fg.stack` mit R und H | ST1–ST3 |
+| F4 | `fg.stack` mit R und H (empfohlen als erste Stufe) | ST1–ST3, GF6 sinngemäß |
 | F5 (später) | S und G als Verbindungsdarstellungen, wenn ein zweiter Block Spektren tauscht | – |
 
-## Fragen an den Maintainer
+## Fragen an den Maintainer, mit Empfehlung
 
-1. **Ein Block, zwei Darstellungen** (1) statt eines eigenen Feld-Gitterblocks – einverstanden?
-2. **Fenster** automatisch (beleuchtete Fläche plus Rand, aufgerundet auf ein Vielfaches von Λ) mit
-   einem Parameter zum Überschreiben – oder immer vom Nutzer?
-3. **Exakt als Standard**, Bloch-Familie als Opt-in (2) – einverstanden?
-4. **Was „Stapel“ heißt**: der lateral invariante Schichtstapel als eigener Block `fg.stack` (3), und
-   Gitterstapel gleicher Periode über die FourierGrating-Konfiguration von `fg.grating` – trifft das
-   die Absicht, oder war mit „Stapel“ etwas anderes gemeint (etwa eine Kaskade verschiedener Gitter
-   als ein Block)?
-5. **„auto“ bleibt R**, bis ein Gültigkeitskriterium (5) entscheidet – oder soll der Planer schon jetzt
-   bei wenigen beleuchteten Perioden H wählen?
-6. **Reihenfolge**: F1–F3 vor F4, oder der Schichtstapel zuerst (kleiner, sofort nützlich für
-   beschichtete Proben)?
+| Nr. | Frage | Empfehlung |
+| --- | --- | --- |
+| 1 | Ein Block, zwei Darstellungen (Abschnitt 1) statt eines eigenen Feld-Gitterblocks? | **Ja.** Die Methode gehört an die Verbindung; ein zweiter Typ baut Workflows bei jedem Wechsel um. Die Feldparameter (Fenster, Schwelle, Bloch) bilden eine eigene Gruppe „Feldpfad“, die bei R unbeachtet bleibt. |
+| 2 | Fenster automatisch oder vom Nutzer? | **Automatisch mit Überschreiben:** Träger der Feldleistung (ohne die letzten 10⁻⁶) plus Rand – mindestens 10 Perioden und der seitliche Versatz durch die Gitterdicke –, aufgerundet auf ein Vielfaches von Λ; `window_um` (0 = automatisch) überschreibt, zu klein ergibt `fg.window_small`. |
+| 3 | Exakt als Standard, Bloch-Familie als Opt-in (Abschnitt 2)? | **Ja** (Regel D8). Größenordnung Linnik-Fokus NA 0,8, λ 0,6 µm, Fenster 20 µm: etwa 2 800 Spektralpunkte = Lösungen (Sekunden bis Minuten, im Operator-Speicher wiederverwendet); Bloch etwa halb so viele bei Λ = 0,7 µm, mit Fehler ≈ 10⁻³. *Estimate* zeigt die Zahl vorher; bei vielen Lösungen weist der Block auf Bloch hin. |
+| 4 | Was heißt „Stapel“? | **`fg.stack`** für lateral invariante Schichtfolgen; Gitter gleicher oder kommensurabler Periode in einer Konfiguration von `fg.grating` (exakt, mit evaneszenter Kopplung); inkommensurable Gitter bleiben zwei Blöcke mit H dazwischen. |
+| 5 | „auto“ bleibt R? | **Ja, mit Hinweis:** Diagnose `fg.field_advised` (Warnung), wenn weniger als etwa 20 Perioden beleuchtet sind oder die Wellenfront über eine Periode merklich krümmt. Automatisch umschalten erst, wenn GF5 zeigt, wo R und H tatsächlich auseinanderlaufen. |
+| 6 | Reihenfolge? | **F4 zuerst, dann F1–F3:** `fg.stack` ist klein und sofort nützlich (beschichteter Referenzspiegel, AR-Schichten) und erprobt den Mechanismus „ein Block, Evaluator für R und H“ an einem diagonalen Operator ohne Fenster und Ordnungen; GF6 (Feld über die Prozessgrenze) wird schon dort geprüft. |

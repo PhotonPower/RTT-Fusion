@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- `graph.workflow` (CAD ADR 0010, Stufe W1a): das Workflow-Dokument, das der Node-Editor zeigt –
+  Modell mit Sockets und Ports, Blockbibliothek, Diagnosen von Modell und abgerolltem Graphen, Plan
+  je Link und je Verbindung – samt Blockzuständen je Block des Modells. Bisher im Raytracer-Plugin
+  des CAD; jetzt in der Bibliothek, damit Workflow-Engine und Plugins es gemeinsam nutzen. Die
+  bearbeitbaren Felder liefert der Lieferant über einen Rückruf; die Engine übernimmt sie. Abnahme
+  W66.
+
 - Bilder warnen, wenn das Licht zu wenige Pixelmitten bedeckt (`Image.note`): Das Feld wird an den
   Pixelmitten abgetastet, ein Fleck kleiner als wenige Pixel fehlt dann ganz oder teilweise, ohne
   dass etwas falsch ist. Die Warnung nennt Pixelgröße, Fleckgröße und ein passendes Fenster. Sie

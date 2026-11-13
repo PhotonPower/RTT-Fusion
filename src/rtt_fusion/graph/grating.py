@@ -34,6 +34,7 @@ import numpy as np
 from rtt_fusion._types import FloatArray
 from rtt_fusion.couplings import jones_table as jt
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
+from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays
 from rtt_fusion.graph.light import Plane, RayBundle, rotation_between
 from rtt_fusion.graph.model import (
     Category,
@@ -138,7 +139,107 @@ def _inside(axis: Any, x: float) -> bool:
     return bool(a.min() - 1e-12 <= x <= a.max() + 1e-12)
 
 
-def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
+def _field_handle(ctx: Context, node: Node, wavelength_um: float) -> Any:
+    """FourierGrating prepared for the block's configuration at one wavelength (cached)."""
+    path = str(node.params.get("fouriergrating", ""))
+    if not path:
+        raise ExecutionError(
+            "exec.param",
+            "a field (H) needs the grating's FourierGrating configuration (a table is for rays)",
+            node.id,
+        )
+    cache = ctx.shared.setdefault("fg_grating_handles", {})
+    key = (path, round(wavelength_um, 12))
+    if key not in cache:
+        try:
+            from rtt_fusion.adapters import fouriergrating as fga
+
+            with open(path, encoding="utf-8") as f:
+                config = json.load(f)
+            for k in ("incidence", "output", "sweep", "nearfield"):
+                config.pop(k, None)
+            cache[key] = fga.prepare(fga.Structure(config), (wavelength_um,))
+        except (OSError, ValueError, KeyError) as e:
+            raise ExecutionError("exec.param", f"grating {path}: {e}", node.id) from e
+        except ImportError as e:
+            raise ExecutionError(
+                "exec.solver", f"FourierGrating is not installed: {e}", node.id
+            ) from e
+    return cache[key]
+
+
+def grating_fields(ctx: Context, node: Node, fb: FieldBundle) -> list[FieldBundle]:
+    """A field through the grating (stage F2): every order of the chosen side a field of its own
+    (`couplings.grating_field`), in the plane `point`/`normal` with x = `grating_vector`; the
+    light enters from the side it arrives on (as for rays)."""
+    from rtt_fusion.couplings import grating_field as gf
+    from rtt_fusion.graph.spectral import SpectralError
+
+    point = np.asarray(node.params.get("point", [0.0, 0.0, 0.0]), dtype=float)
+    normal = np.asarray(node.params.get("normal", [0.0, 0.0, 1.0]), dtype=float)
+    normal = normal / np.linalg.norm(normal)
+    toward_light = normal if float(np.asarray(fb.plane.normal) @ normal) < 0 else -normal
+    plane = Plane.make(point, toward_light)
+    log: list[str] = []
+    try:
+        target = gf.onto_plane(fb, plane, False, log)
+        fr = gf.frame(target, node.params.get("grating_vector", [1.0, 0.0, 0.0]))
+        field = gf.in_frame(target.field, fr.q)
+    except FieldError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
+    finally:
+        ctx.log.extend(f"{node.id}: {line}" for line in log)
+    handle = _field_handle(ctx, node, float(field.wavelength_um))
+    side = "front" if str(node.params.get("side", "reflected")) == "reflected" else "back"
+    wanted = {int(m) for m in node.params.get("orders", []) or []}
+    log = []
+    try:
+        applied = gf.apply(
+            handle,
+            field,
+            orders=(lambda n, m: n in wanted) if wanted else None,
+            threshold=float(node.params.get("field_threshold", 1e-10)),
+            grid_max=int(node.params.get("field_grid_max", 1024)),
+            transfer=str(node.params.get("field_transfer", "exact")),
+            log=log,
+        )
+    except SpectralError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
+    except (ValueError, RuntimeError) as e:
+        raise ExecutionError("exec.solver", f"FourierGrating: {e}", node.id) from e
+    ctx.log.extend(f"{node.id}: {line}" for line in log)
+    if applied.dropped > 1e-12:
+        ctx.log.append(
+            f"{node.id}: {applied.dropped:.2e} of the field's spectrum left out (evanescent or "
+            "below the threshold)"
+        )
+    origin = np.asarray(target.plane.origin)
+    out_plane = (
+        Plane(origin, -fr.z, fr.x, -fr.y) if side == "front" else Plane(origin, fr.z, fr.x, fr.y)
+    )
+    out: list[FieldBundle] = []
+    for (s, (n, m)), f in sorted(applied.fields.items()):
+        if s != side:
+            continue
+        label = f"{n}" if m == 0 else f"{n},{m}"
+        out.append(FieldBundle(fb.key, out_plane, f, (*fb.path, f"{node.id}[{label}]")))
+    return out
+
+
+def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:
+    fields = [b for b in inputs.get("in", []) if isinstance(b, FieldBundle)]
+    if fields:
+        rays = [b for b in inputs.get("in", []) if isinstance(b, RayBundle)]
+        if not node.params.get("fouriergrating"):
+            # a table describes rays: a field arriving at a table grating becomes rays at its port
+            ctx.log.append(f"{node.id}: field converted to rays (the table is for rays)")
+            try:
+                rays += [field_to_rays(fb) for fb in fields]
+            except FieldError as e:
+                raise ExecutionError("exec.field", str(e), node.id) from e
+            return grating(ctx, node, socket, {"in": rays})
+        from_fields: list[Any] = [o for fb in fields for o in grating_fields(ctx, node, fb)]
+        return from_fields + (grating(ctx, node, socket, {"in": rays}) if rays else [])
     built = bool(node.params.get("fouriergrating")) and not node.params.get("table")
     table = None if built else _table(ctx, node)
     point = np.asarray(node.params.get("point", [0.0, 0.0, 0.0]), dtype=float)
@@ -277,11 +378,49 @@ TYPE = NodeType(
     (
         ParamSpec("table", "file", "", description="Jones table (raytatouille-result file)"),
         ParamSpec(
+            "fouriergrating",
+            "file",
+            "",
+            description="FourierGrating configuration: the block builds its table around the rays "
+            "(R) or computes every plane wave of a field (H)",
+        ),
+        ParamSpec(
+            "side",
+            "choice",
+            "reflected",
+            options=("reflected", "transmitted"),
+            description="the orders passed on (with a configuration)",
+        ),
+        ParamSpec(
             "orders", "numbers", [], description="orders to pass on; empty: all of the table"
         ),
+        ParamSpec("n_in", "number", 1.0, description="index of the incident medium (R, built)"),
         ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
         ParamSpec("normal", "point", [0.0, 0.0, 1.0]),
         ParamSpec("grating_vector", "point", [1.0, 0.0, 0.0], description="local x, ⟂ grooves"),
+        ParamSpec(
+            "field_transfer",
+            "choice",
+            "exact",
+            options=("exact", "interpolated"),
+            group="Field path",
+            description="exact: FourierGrating per plane wave; interpolated: from a verified "
+            "sub-grid of the spectrum (1e-8), much faster for wide beams",
+        ),
+        ParamSpec(
+            "field_threshold",
+            "number",
+            1e-10,
+            group="Field path",
+            description="plane waves below this share of the largest amplitude are left out (H)",
+        ),
+        ParamSpec(
+            "field_grid_max",
+            "integer",
+            1024,
+            group="Field path",
+            description="at most this many grid points per axis for a field (H)",
+        ),
     ),
     (("out", ("in",)),),
     ports=(PortSpec("front", "in", "out", "front"),),
@@ -297,6 +436,8 @@ TYPE = NodeType(
     },
     description="Periodic sample (FourierGrating table): diffraction orders as channels",
 )
+
+grating.representations = frozenset("RH")  # type: ignore[attr-defined]
 
 EVALUATORS: dict[str, Evaluator] = {"fg.grating": grating}
 

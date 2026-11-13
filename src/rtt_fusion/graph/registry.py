@@ -145,6 +145,9 @@ def builtin_registry() -> NodeTypeRegistry:
                 ParamSpec("rtt_system", "data", {}, description="settings of the system"),
                 ParamSpec("rtt_tree", "data", {}, description="tree nodes no block owns"),
                 ParamSpec("rtt_paths", "data", [], description="order and keys of the paths"),
+                # glass catalogues of the system (files, written by the Raytracer plugin): the
+                # workflow engine builds the material library from them (CAD ADR 0010, W1)
+                ParamSpec("rtt_catalogs", "data", [], description="glass catalogue files"),
             ),
             description="Field points, wavelengths, polarisation of a system (coherence groups)",
         )

@@ -61,7 +61,7 @@ def order_powers(path: str, side: str, alpha_deg: float) -> tuple[dict[int, floa
     g.add(
         Node(
             "gr",
-            "fusion.grating",
+            "fg.grating",
             params={"fouriergrating": path, "side": side, "orders": [-1, 0, 1]},
         )
     )

@@ -64,11 +64,16 @@ def _node_to_dict(n: Node) -> dict[str, Any]:
     return d
 
 
+#: Renamed block types: old id -> new id. Files with the old id load as the new type and are
+#: saved with it (CAD ADR 0010, decision 3: a type id carries its plugin's prefix).
+TYPE_ALIASES: dict[str, str] = {"fusion.grating": "fg.grating"}
+
+
 def _node_from_dict(nd: dict[str, Any]) -> Node:
     pos = nd.get("position", [0.0, 0.0])
     return Node(
         id=str(nd["id"]),
-        type_id=str(nd["type"]),
+        type_id=TYPE_ALIASES.get(str(nd["type"]), str(nd["type"])),
         name=str(nd.get("name", "")),
         params=dict(nd.get("params", {})),
         position=(float(pos[0]), float(pos[1])),

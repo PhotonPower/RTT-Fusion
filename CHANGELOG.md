@@ -4,6 +4,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Geändert
+
+- Der Gitterblock heißt jetzt `fg.grating` (vorher `fusion.grating`; CAD ADR 0010, Entscheidung 3:
+  Typkennungen tragen das Präfix ihres Plugins). In Raytatouille Fusion liefert ihn das
+  FourierGrating-Plugin (W4). Ältere Dateien laden weiter: `io.TYPE_ALIASES` bildet alte
+  Kennungen beim Laden auf die neuen ab, gespeichert wird die neue. Abnahme W72.
+
 ### Hinzugefügt
 
 - Vorbereitete Läufe für fremde Blöcke (CAD ADR 0010, D6, Stufe W3): Blöcke, die mehr als ihre

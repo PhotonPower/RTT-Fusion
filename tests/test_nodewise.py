@@ -175,7 +175,7 @@ def test_w43_grating_sample_node_wise(tmp_path: Path) -> None:
             g,
             builtin_registry_with_grating(),
             "sample",
-            Node("sample", "fusion.grating", params={"table": table}),
+            Node("sample", "fg.grating", params={"table": table}),
         )
         images.append(_image(g, system, "camera", mode, rings=15, pixels=[256, 8])[0])
     _same(images[0], images[1])

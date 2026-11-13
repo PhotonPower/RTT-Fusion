@@ -18,7 +18,13 @@ Conversions (only here):
   origin; evanescent waves are left out (ports ≥ about a wavelength from the body).
 
 Outputs: "front" = backscattered waves (direction −1); "back" = incident waves propagated to the
-back port plus forward-scattered waves (direction +1).
+back port plus forward-scattered waves (direction +1). Light may also come in at the back port
+(direction −1, L5): then "back" holds the backscattered waves (direction +1) and "front" the
+transmitted and forward-scattered ones (direction −1), with "front_scattered" alone.
+
+Many incidences (L4, `apply_many`): one BEM operator per wavelength anyway; with recycling the
+Krylov subspace of earlier solves is reused (CliffordBem `use_recycling`), results equal to the
+solver tolerance.
 """
 
 from __future__ import annotations
@@ -72,6 +78,7 @@ class Handle:
     wavelengths_um: tuple[float, ...]
     content_hash: str
     _problems: dict[float, Any] = field(default_factory=dict, repr=False)
+    _recycling: set[float] = field(default_factory=set, repr=False)
 
 
 def describe() -> dict[str, Any]:
@@ -172,22 +179,35 @@ class Scattering:
         return np.asarray(self.h - self.rhs)
 
 
+def _incident_side(handle: Handle, p: Port) -> str:
+    """ "front" (front port, direction +1) or "back" (back port, direction −1)."""
+    s = handle.structure
+    if complex(p.index) == complex(s.n_background):
+        if p.direction == 1 and p.z == s.z_front_mm:
+            return "front"
+        if p.direction == -1 and p.z == s.z_back_mm:
+            return "back"
+    raise ValueError(
+        "incident waves must be on the front port with direction +1 or on the back port with "
+        "direction -1"
+    )
+
+
 def scatter(handle: Handle, incident: PlaneWaves) -> Scattering:
-    """Solve the BEM for plane waves incident on the front port."""
+    """Solve the BEM for plane waves incident on the front port (+z) or the back port (−z)."""
     cb = _cb()
     s = handle.structure
     p = incident.port
-    if p.direction != 1 or p.z != s.z_front_mm or complex(p.index) != complex(s.n_background):
-        raise ValueError("incident waves must be on the front port with direction +1")
+    _incident_side(handle, p)
     problem = _problem(handle, p.wavelength_um)
     k_um = s.n_background * 2 * np.pi / p.wavelength_um
     kz = p.kz(incident.kx, incident.ky)
     if np.any(np.abs(np.imag(kz)) > 0):
         raise ValueError("incident waves must propagate")
     k_mm = k_um * UM_PER_MM
-    dirs = np.column_stack([incident.kx, incident.ky, np.real(kz)]) / k_mm
+    dirs = np.column_stack([incident.kx, incident.ky, p.direction * np.real(kz)]) / k_mm
     amps = np.column_stack([incident.field[:, 0], incident.field[:, 1], incident.ez()])
-    origin = (np.array([0.0, 0.0, s.z_front_mm]) - np.asarray(s.center_mm)) * UM_PER_MM
+    origin = (np.array([0.0, 0.0, p.z]) - np.asarray(s.center_mm)) * UM_PER_MM
     medium = cb.Medium(eps=s.n_background**2)
     fld = cb.AngularSpectrumField(medium, 2 * np.pi / p.wavelength_um, dirs, amps, focus=origin)
     b = np.asarray(fld.project(s.mesh, medium))
@@ -212,26 +232,47 @@ def scattered_plane_waves(
 def apply(
     handle: Handle, incident: PlaneWaves, n_theta: int = 48, n_phi: int = 96
 ) -> dict[str, PlaneWaves]:
-    """Plane waves on the front port → backscattered (front) and transmitted + scattered (back)."""
+    """Plane waves on the front port → backscattered (front) and transmitted + scattered (back);
+    on the back port (direction −1) the same mirrored: backscattered (back), transmitted +
+    scattered (front) and "front_scattered"."""
+    side = _incident_side(handle, incident.port)
     sol = scatter(handle, incident)
     p = incident.port
-    front = scattered_plane_waves(
-        handle, sol, front_port(handle, p.wavelength_um, -1), n_theta, n_phi
+    front_out = front_port(handle, p.wavelength_um, -1)
+    back_out = back_port(handle, p.wavelength_um)
+    near, far = (front_out, back_out) if side == "front" else (back_out, front_out)
+    reflected = scattered_plane_waves(handle, sol, near, n_theta, n_phi)
+    far_s = scattered_plane_waves(handle, sol, far, n_theta, n_phi)
+    dz = handle.structure.z_back_mm - handle.structure.z_front_mm  # path between the ports
+    inc_far = np.asarray(incident.field) * np.exp(1j * p.kz(incident.kx, incident.ky) * dz)[:, None]
+    through = PlaneWaves(
+        far_s.port,
+        np.concatenate([incident.kx, far_s.kx]),
+        np.concatenate([incident.ky, far_s.ky]),
+        np.concatenate([inc_far, far_s.field]).astype(np.complex128),
     )
-    back_s = scattered_plane_waves(handle, sol, back_port(handle, p.wavelength_um), n_theta, n_phi)
-    dz = handle.structure.z_back_mm - handle.structure.z_front_mm
-    inc_back = (
-        np.asarray(incident.field) * np.exp(1j * p.kz(incident.kx, incident.ky) * dz)[:, None]
-    )
-    back = PlaneWaves(
-        back_s.port,
-        np.concatenate([incident.kx, back_s.kx]),
-        np.concatenate([incident.ky, back_s.ky]),
-        np.concatenate([inc_back, back_s.field]).astype(np.complex128),
-    )
-    # "back" mixes the incident waves (discrete or with their own weights) and the scattered
-    # spectrum, so it carries no common solid-angle weights; "back_scattered" carries them.
-    return {"front": front, "back": back, "back_scattered": back_s}
+    # the far side mixes the incident waves (discrete or with their own weights) and the
+    # scattered spectrum, so it carries no common solid-angle weights; "*_scattered" carries them.
+    other = "back" if side == "front" else "front"
+    return {side: reflected, other: through, f"{other}_scattered": far_s}
+
+
+def apply_many(
+    handle: Handle,
+    incidents: list[PlaneWaves],
+    n_theta: int = 48,
+    n_phi: int = 96,
+    recycle: bool = True,
+) -> list[dict[str, PlaneWaves]]:
+    """`apply` for many incidences (L4). With `recycle` the BEM solves of a wavelength reuse
+    their Krylov subspace (CliffordBem recycling, switched on for that wavelength from then on);
+    results equal `apply` to the solver tolerance."""
+    if recycle:
+        for wl in {inc.port.wavelength_um for inc in incidents}:
+            if wl not in handle._recycling:
+                _problem(handle, wl).use_recycling()
+                handle._recycling.add(wl)
+    return [apply(handle, inc, n_theta, n_phi) for inc in incidents]
 
 
 def estimate(handle: Handle) -> dict[str, float]:

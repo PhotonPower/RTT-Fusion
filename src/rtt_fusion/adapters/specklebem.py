@@ -17,6 +17,11 @@ largest difference among the solvers of the Fusion:
 Each incident plane wave is one solve; further waves reuse the assembled operator
 (`Simulation.set_excitation`). Rough surfaces (open meshes with PML) are not covered: their
 illumination must be a Gaussian beam in SpeckleBem (no arbitrary spectra yet, Fusion plan D12).
+
+Light may also come in at the back port (direction −1, L5): then "back" holds the backscattered
+waves (direction +1) and "front" the transmitted and forward-scattered ones (direction −1), with
+"front_scattered" alone. `apply_many` (L4) applies many incidences with the operator of each
+wavelength assembled once.
 """
 
 from __future__ import annotations
@@ -177,20 +182,34 @@ class Scattering:
         return total
 
 
+def _incident_side(handle: Handle, p: Port) -> str:
+    """ "front" (front port, direction +1) or "back" (back port, direction −1)."""
+    s = handle.structure
+    if complex(p.index) == complex(s.n_background):
+        if p.direction == 1 and p.z == s.z_front_mm:
+            return "front"
+        if p.direction == -1 and p.z == s.z_back_mm:
+            return "back"
+    raise ValueError(
+        "incident waves must be on the front port with direction +1 or on the back port with "
+        "direction -1"
+    )
+
+
 def scatter(handle: Handle, incident: PlaneWaves) -> Scattering:
-    """Solve for plane waves incident on the front port (one solve per wave)."""
+    """Solve for plane waves incident on the front port (+z) or the back port (−z), one solve
+    per wave."""
     sb = _sb()
     s = handle.structure
     p = incident.port
-    if p.direction != 1 or p.z != s.z_front_mm or complex(p.index) != complex(s.n_background):
-        raise ValueError("incident waves must be on the front port with direction +1")
+    _incident_side(handle, p)
     if p.wavelength_um not in handle.wavelengths_um:
         raise ValueError("wavelength was not prepared")
     kz = p.kz(incident.kx, incident.ky)
     if np.any(np.abs(np.imag(kz)) > 0):
         raise ValueError("incident waves must propagate")
     k = s.n_background * p.k0
-    dirs = np.column_stack([incident.kx, incident.ky, np.real(kz)]) / k
+    dirs = np.column_stack([incident.kx, incident.ky, p.direction * np.real(kz)]) / k
     amps = np.column_stack([incident.field[:, 0], incident.field[:, 1], incident.ez()])
     shift = np.asarray(s.center_mm) - np.array([0.0, 0.0, p.z])
     excitations: list[Any] = []
@@ -224,7 +243,9 @@ def apply(
     handle: Handle, incident: PlaneWaves, n_theta: int = 48, n_phi: int = 96
 ) -> dict[str, PlaneWaves]:
     """Plane waves on the front port → backscattered (front), incident + forward scattered (back)
-    and the forward-scattered spectrum alone (back_scattered, with solid-angle weights)."""
+    and the forward-scattered spectrum alone (back_scattered, with solid-angle weights); on the
+    back port (direction −1) the same mirrored: back, front and front_scattered."""
+    side = _incident_side(handle, incident.port)
     sol = scatter(handle, incident)
     p = incident.port
     # both hemispheres in one far-field call: one solve per incident wave
@@ -238,17 +259,25 @@ def apply(
     back_s = far_field_to_spectrum(
         back_port(handle, p.wavelength_um), c, d_back, w_back, e_inf[len(d_front) :]
     )
-    dz = handle.structure.z_back_mm - handle.structure.z_front_mm
-    inc_back = (
-        np.asarray(incident.field) * np.exp(1j * p.kz(incident.kx, incident.ky) * dz)[:, None]
+    reflected, far_s = (front, back_s) if side == "front" else (back_s, front)
+    dz = handle.structure.z_back_mm - handle.structure.z_front_mm  # path between the ports
+    inc_far = np.asarray(incident.field) * np.exp(1j * p.kz(incident.kx, incident.ky) * dz)[:, None]
+    through = PlaneWaves(
+        far_s.port,
+        np.concatenate([incident.kx, far_s.kx]),
+        np.concatenate([incident.ky, far_s.ky]),
+        np.concatenate([inc_far, far_s.field]).astype(np.complex128),
     )
-    back = PlaneWaves(
-        back_s.port,
-        np.concatenate([incident.kx, back_s.kx]),
-        np.concatenate([incident.ky, back_s.ky]),
-        np.concatenate([inc_back, back_s.field]).astype(np.complex128),
-    )
-    return {"front": front, "back": back, "back_scattered": back_s}
+    other = "back" if side == "front" else "front"
+    return {side: reflected, other: through, f"{other}_scattered": far_s}
+
+
+def apply_many(
+    handle: Handle, incidents: list[PlaneWaves], n_theta: int = 48, n_phi: int = 96
+) -> list[dict[str, PlaneWaves]]:
+    """`apply` for many incidences (L4): the operator of each wavelength is assembled once and
+    kept in the handle (`set_excitation` per wave); results equal `apply`."""
+    return [apply(handle, inc, n_theta, n_phi) for inc in incidents]
 
 
 def estimate(handle: Handle) -> dict[str, float]:

@@ -24,7 +24,7 @@ except ImportError:
 from mie_reference import S12, qext
 
 from rtt_fusion.adapters import cliffordbem as cba
-from rtt_fusion.ports import PlaneWaves, spectrum_power
+from rtt_fusion.ports import PlaneWaves, Port, spectrum_power
 
 LAM, R, N_P = 0.6, 0.25, 1.5  # µm
 K_UM = 2 * np.pi / LAM
@@ -112,3 +112,67 @@ def test_back_port_carries_the_incident_wave(handle: Any) -> None:
     assert abs(back.field[0, 0] - np.exp(1j * K_UM * 1000 * 0.004)) < 1e-12
     with pytest.raises(ValueError):
         cba.prepare(cba.Structure(_mesh(), N_P**2, 1.0, CENTER, 0.0019, 0.004), [LAM])
+
+
+# ---------------------------------------------------------------------------- L4 / L5
+
+
+def _incident(port: Any, kx: float, ky: float, e: tuple[complex, complex]) -> PlaneWaves:
+    return PlaneWaves(port, np.array([kx]), np.array([ky]), np.array([e], dtype=np.complex128))
+
+
+def _random_incidents(h: Any, n: int, seed: int = 7) -> list[PlaneWaves]:
+    rng = np.random.default_rng(seed)
+    k_mm = K_UM * 1000
+    out = []
+    for _ in range(n):
+        s = 0.3 * np.sqrt(rng.random())  # sin θ up to 0.3
+        phi = 2 * np.pi * rng.random()
+        e = rng.normal(size=2) + 1j * rng.normal(size=2)
+        out.append(
+            _incident(
+                cba.front_port(h, LAM), s * k_mm * np.cos(phi), s * k_mm * np.sin(phi), (e[0], e[1])
+            )
+        )
+    return out
+
+
+def _fresh() -> Any:
+    return cba.prepare(cba.Structure(_mesh(), N_P**2, 1.0, CENTER, 0.0, 0.004), [LAM])
+
+
+def test_l4_apply_many_equals_apply() -> None:
+    plain, many = _fresh(), _fresh()
+    incidents = _random_incidents(plain, 20)
+    one_by_one = [cba.apply(plain, inc, 12, 24) for inc in incidents]
+    exact = cba.apply_many(_fresh(), incidents, 12, 24, recycle=False)
+    recycled = cba.apply_many(many, incidents, 12, 24)
+    assert LAM in many._recycling and LAM not in plain._recycling
+    for a, b, c in zip(one_by_one, exact, recycled, strict=True):
+        for key in a:
+            scale = np.abs(a[key].field).max()
+            # the same solves; CliffordBem's H-matrix sums in an unspecified order with several
+            # threads (its docs: bitwise only with OMP_NUM_THREADS=1), so to the solver tolerance
+            assert np.abs(a[key].field - b[key].field).max() < 1e-6 * scale
+            assert np.abs(a[key].field - c[key].field).max() < 1e-6 * scale  # solver tolerance
+
+
+def test_l5_light_from_the_back_mirrors_the_front() -> None:
+    # the sphere lies midway between the ports and its mesh is symmetric under z → −z: light
+    # coming in at the back (−z) gives the mirror image of light coming in at the front (+z)
+    h = _fresh()
+    front = cba.apply(h, _incident(cba.front_port(h, LAM), 300.0, -200.0, (1.0, 0.5j)), 16, 32)
+    back_port = Port(0.004, -1, 1.0 + 0j, LAM)
+    back = cba.apply(h, _incident(back_port, 300.0, -200.0, (1.0, 0.5j)), 16, 32)
+    assert sorted(back) == ["back", "front", "front_scattered"]
+    assert back["back"].port.direction == 1 and back["front"].port.direction == -1
+    for f_key, b_key in (
+        ("front", "back"),
+        ("back", "front"),
+        ("back_scattered", "front_scattered"),
+    ):
+        a, b = front[f_key], back[b_key]
+        assert np.allclose(a.kx, b.kx) and np.allclose(a.ky, b.ky)
+        assert np.abs(a.field - b.field).max() < 1e-4 * np.abs(a.field).max()
+    with pytest.raises(ValueError, match="back port with direction -1"):
+        cba.apply(h, _incident(Port(0.004, 1, 1.0 + 0j, LAM), 0.0, 0.0, (1.0, 0.0)))

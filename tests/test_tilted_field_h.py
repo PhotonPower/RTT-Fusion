@@ -124,9 +124,11 @@ def test_issue_69_off_axis_field_points_focus_at_f_tan_theta() -> None:
     (6.7 µm) about the image point is the on-axis one (before the fix the spot lay 22 µm away and
     the share was a few per cent); the power is that of the axis (nothing vignettes).
 
-    Not checked: the peak. Raytatouille's ideal lens gives off-axis rays OPLs with a tilt of about
-    1e−4 against their directions (ADR 0031 of Raytatouille), which moves the field's focus by
-    about 1 µm from where the rays meet – a pixel-sized peak then drops by a third."""
+    The peak is checked at field angles whose image point is a pixel centre (the Airy disc, radius
+    3.4 µm, is sampled by 2.5 µm pixels; half a pixel off lowers the peak a lot): within 3 % of the
+    axis. The start term needs the index of object space – an index estimated from the first
+    segment (here the ideal lens, which adds its phase there) gave 0.987 and left a tilt that moved
+    the field's focus by about 1 µm."""
     airy = 0.61 * LAM * 1e-3 / 0.1
     image0, _ = _image(0.0)
     share0 = _encircled(image0, (0.0, 0.0), 2 * airy)
@@ -138,6 +140,13 @@ def test_issue_69_off_axis_field_points_focus_at_f_tan_theta() -> None:
         centre = (0.0, float(np.sign(y)) * expected)
         assert _encircled(image, centre, 2 * airy) == pytest.approx(share0, abs=0.03), field_deg
         assert image.power == pytest.approx(image0.power, rel=1e-3)
+    _, _, peak0 = _peak(image0)
+    pixel = 0.5 / 201
+    for near in (0.5, 1.0):
+        on_pixel = round(F_MM * np.tan(np.radians(near)) / pixel) * pixel  # 201 pixels: one at 0
+        image, _ = _image(float(np.degrees(np.arctan(on_pixel / F_MM))))
+        _, y, peak = _peak(image)
+        assert abs(abs(y) - on_pixel) < 1e-9 and peak == pytest.approx(peak0, rel=0.03), near
 
 
 def test_issue_69_start_opl_agrees_with_the_directions() -> None:

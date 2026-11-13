@@ -237,6 +237,13 @@ def apply(handle: Handle, incident: PlaneWaves) -> dict[str, PlaneWaves]:
     return result
 
 
+def apply_many(handle: Handle, incidents: list[PlaneWaves]) -> list[dict[str, PlaneWaves]]:
+    """`apply` for many incidences (L4). The Simulation of each wavelength is kept in the handle;
+    each direction is still one solve per polarisation until FourierGrating gives its S-matrix
+    (plan L4, stage O3)."""
+    return [apply(handle, inc) for inc in incidents]
+
+
 def estimate(handle: Handle) -> dict[str, float]:
     """Rough cost: FG reports no model yet; matrix size (2 n_f)³ per slice as a proxy."""
     cfg = handle.structure.config

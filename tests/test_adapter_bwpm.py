@@ -103,3 +103,13 @@ def test_cross_check_with_fouriergrating_through_common_types() -> None:
     j = next(i for i, o in enumerate(fg_out["front"].orders) if tuple(o) == (0, 0))
     assert abs(fg_out["front"].kx[j] - bw_r.kx[0]) < 1e-6
     assert np.max(np.abs(fg_out["front"].field[j] - bw_r.field[0])) < 1e-9
+
+
+def test_l4_apply_many_equals_apply() -> None:
+    handle = _handle(MEDIA)
+    incidents = [_plane_wave(handle, mx, my, (0.5, 0.2j)) for mx, my in ((0, 0), (1, 1), (2, -1))]
+    many = bwa.apply_many(handle, incidents, iterations=10, backend="python")
+    for inc, b in zip(incidents, many, strict=True):
+        a = bwa.apply(handle, inc, iterations=10, backend="python")
+        for side in ("front", "back"):
+            assert np.array_equal(a[side].field, b[side].field)

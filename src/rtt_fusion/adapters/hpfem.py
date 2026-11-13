@@ -219,6 +219,13 @@ def apply(handle: Handle, incident: PlaneWaves) -> dict[str, PlaneWaves]:
     return result
 
 
+def apply_many(handle: Handle, incidents: list[PlaneWaves]) -> list[dict[str, PlaneWaves]]:
+    """`apply` for many incidences (L4): the Jones matrices of each (λ, θ, φ) are computed once
+    and kept in the handle; a conical operator in hp-FEM (plan L4, stage O3) will share the
+    factorisation between s and p."""
+    return [apply(handle, inc) for inc in incidents]
+
+
 def estimate(handle: Handle) -> dict[str, float]:
     n = int(getattr(handle.structure.mesh, "num_cells", 1000))
     return {

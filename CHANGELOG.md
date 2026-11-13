@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- `rtt_fusion.portdata` (CAD ADR 0010, D4, Stufe W2a): die Werte auf den Links des Workflows als
+  Dateien – ein JSON-Baum (Datenklassen, Listen, Zahlen; Gleitkommazahlen bitgenau als Hex, auch NaN
+  und ±∞) und je Array eine `.npy`-Datei. Damit rechnet ein Block im Prozess eines anderen Plugins.
+  Beim Lesen entstehen nur Klassen aus `rtt_fusion` und `fieldtracing`. Abnahme W68.
+
 - Bilder warnen, wenn das Licht zu wenige Pixelmitten bedeckt (`Image.note`): Das Feld wird an den
   Pixelmitten abgetastet, ein Fleck kleiner als wenige Pixel fehlt dann ganz oder teilweise, ohne
   dass etwas falsch ist. Die Warnung nennt Pixelgröße, Fleckgröße und ein passendes Fenster. Sie

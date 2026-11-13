@@ -18,6 +18,13 @@ get the run's unrolled graph once, before the first of their evaluations in that
 (`{"kind": "prepare", "run", "graph", "shared"}`); their evaluations then name the run and work in
 its context (`Context.graph` the whole graph, `shared` the plain settings plus what the provider's
 `prepare` hook adds, e.g. a material library).
+
+Changes within a run (issue #70): meta blocks (`meta.sweep`, `meta.replicates`, `meta.optimise`)
+change parameters of blocks in the engine's graph after the run was prepared – the drive of a
+mirror, a pose, a parameter. Every evaluation therefore names the blocks whose parameters differ
+from the prepared graph (`"changes": {id: params}`), and the provider sets every block of its copy
+to the prepared parameters plus these changes before it evaluates (a value that goes back to the
+prepared one is reset too).
 """
 
 from __future__ import annotations
@@ -81,6 +88,8 @@ class BlockProvider:
         #: kept across requests (operators, prepared solvers – ADR 0010 D5)
         self.operators: dict[str, Any] = {}
         self._runs: OrderedDict[str, tuple[Graph, dict[str, Any]]] = OrderedDict()
+        #: the parameters of every block of a prepared run, as prepared (issue #70)
+        self._prepared: dict[str, dict[str, str]] = {}
 
     def prepare(self, request: dict[str, Any]) -> dict[str, Any]:
         """Keep a run's graph and context (D6); the newest `KEPT_RUNS` runs stay."""
@@ -90,8 +99,10 @@ class BlockProvider:
             if self.prepare_hook is not None:
                 shared.update(self.prepare_hook(graph, shared))
             self._runs[str(request["run"])] = (graph, shared)
+            self._prepared[str(request["run"])] = _snapshot(graph)
             while len(self._runs) > KEPT_RUNS:
-                self._runs.popitem(last=False)
+                old, _ = self._runs.popitem(last=False)
+                self._prepared.pop(old, None)
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}
@@ -133,6 +144,7 @@ class BlockProvider:
             run = request.get("run")
             if run is not None and str(run) in self._runs:  # the prepared run's context (D6)
                 graph, shared = self._runs[str(run)]
+                _apply_changes(graph, self._prepared[str(run)], request.get("changes", {}))
                 node = graph.nodes.get(node.id, node)
             else:
                 graph, shared = Graph(), dict(request.get("shared", {}))
@@ -144,6 +156,25 @@ class BlockProvider:
             return {"ok": True, "outputs": handle, "log": log}
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}", "log": log}
+
+
+def _snapshot(graph: Graph) -> dict[str, str]:
+    """The parameters of every block as JSON text (a comparable, independent copy)."""
+    return {nid: json.dumps(n.params, sort_keys=True) for nid, n in graph.nodes.items()}
+
+
+def _apply_changes(graph: Graph, prepared: dict[str, str], changes: dict[str, Any]) -> None:
+    """Every block of a prepared copy to its prepared parameters plus the request's changes."""
+    for nid, node in graph.nodes.items():
+        if nid in changes:
+            params = dict(changes[nid])
+        elif nid in prepared:
+            params = json.loads(prepared[nid])
+        else:
+            continue
+        if params != node.params:
+            node.params.clear()
+            node.params.update(params)
 
 
 def remote_types(catalogues: list[dict[str, Any]]) -> list[tuple[str, NodeType, frozenset[str]]]:
@@ -177,15 +208,25 @@ class RemoteEvaluator:
         representations: frozenset[str],
         root: str | Path,
         prepare: bool = False,
-        runs: dict[tuple[str, int], str] | None = None,
+        runs: dict[tuple[str, int], tuple[str, dict[str, str]]] | None = None,
     ) -> None:
         self.provider = provider
         self.call = call
         self.representations = representations
         self.root = Path(root)
         self.prepare = prepare
-        #: prepared runs by (provider, graph): shared by the evaluators of one engine
+        #: prepared runs by (provider, graph) with the parameters sent then: shared by the
+        #: evaluators of one engine
         self.runs = runs if runs is not None else {}
+
+    def _changes(self, ctx: Context, key: tuple[str, int]) -> dict[str, Any]:
+        """The blocks whose parameters differ from those the run was prepared with (#70)."""
+        prepared = self.runs[key][1]
+        out: dict[str, Any] = {}
+        for nid, n in ctx.graph.nodes.items():
+            if nid in prepared and json.dumps(n.params, sort_keys=True) != prepared[nid]:
+                out[nid] = n.params
+        return out
 
     def _run(self, ctx: Context, node: Node) -> str | None:
         if not self.prepare:
@@ -206,8 +247,8 @@ class RemoteEvaluator:
             if not answer.get("ok"):
                 why = answer.get("error", "prepare failed")
                 raise ExecutionError("exec.remote", f"{self.provider}: {why}", node.id)
-            self.runs[key] = run
-        return self.runs[key]
+            self.runs[key] = (run, _snapshot(ctx.graph))
+        return self.runs[key][0]
 
     def __call__(self, ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
         run = self._run(ctx, node)
@@ -231,6 +272,7 @@ class RemoteEvaluator:
             }
             if run is not None:
                 request["run"] = run
+                request["changes"] = self._changes(ctx, (self.provider, id(ctx.graph)))
             try:
                 response = self.call(self.provider, request)
             except Exception as e:
@@ -257,7 +299,7 @@ def register_remote(
     registry has already (e.g. `rtt.*`, built in) keeps its description and is evaluated by the
     provider. A catalogue entry with "prepare": true gets the run's graph first (D6)."""
     evaluators: dict[str, Evaluator] = {}
-    runs: dict[tuple[str, int], str] = {}
+    runs: dict[tuple[str, int], tuple[str, dict[str, str]]] = {}
     for entry, (provider, t, reps) in zip(catalogues, remote_types(catalogues), strict=True):
         if registry.get(t.type_id) is None:
             registry.add(t)

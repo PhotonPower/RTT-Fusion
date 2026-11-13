@@ -38,16 +38,11 @@ from typing import Any
 
 import numpy as np
 
+from rtt_fusion.couplings import grating_field as gf
 from rtt_fusion.couplings import jones_table as jt
 from rtt_fusion.graph import spectral
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
-from rtt_fusion.graph.field import (
-    FieldBundle,
-    FieldError,
-    field_to_rays,
-    propagate_to,
-    rays_to_field,
-)
+from rtt_fusion.graph.field import FieldBundle, FieldError
 from rtt_fusion.graph.grating import split_prt
 from rtt_fusion.graph.light import Plane, RayBundle
 from rtt_fusion.graph.model import (
@@ -196,53 +191,17 @@ def _apply(
     )
 
 
-def _in_frame(field: Any, q: Any) -> Any:
-    """A field with its in-plane coordinates turned by the 2x2 rotation q (new = q·old); a gridded
-    field only by a multiple of 90° (its grid stays axis-parallel), else FieldError."""
-    from fieldtracing.field import GridlessField
-
-    if np.allclose(q, np.eye(2), atol=1e-12):
-        return field
-    if not isinstance(field, GridlessField):
-        raise FieldError(
-            "a gridded field whose axes are not those of the stack (anisotropic layers need "
-            "the stack's frame): turn the stack's plane axes onto the field's"
-        )
-    u = np.asarray(field.amplitude)
-    u = np.concatenate([u[:, :2] @ q.T, u[:, 2:]], axis=1)
-    return GridlessField(
-        np.asarray(field.points) @ q.T,
-        np.asarray(field.phase),
-        np.asarray(field.gradient) @ q.T,
-        np.einsum("ij,njk,lk->nil", q, np.asarray(field.hessian), q),
-        np.asarray(u, dtype=np.complex128),
-        float(field.wavelength_um),
-        float(field.refractive_index),
-    )
-
-
 def _to_plane(
     ctx: Context, node: Node, fb: FieldBundle, plane: Plane, from_back: bool
 ) -> FieldBundle:
-    """The field in the stack's plane: geometrically (field -> rays -> field on the plane, as the
-    ray path, keeping ψ) unless the rays have a caustic there – a focus on the stack –, then by
-    Fieldtracing's wave propagation (`field.propagate_to`, possibly a gridded field)."""
-    from fieldtracing.field import GridlessField
-
-    light = np.asarray(plane.normal) * (1.0 if from_back else -1.0)
-    ahead = float((np.asarray(plane.origin) - np.asarray(fb.plane.origin)) @ light)
-    if float(np.asarray(fb.plane.normal) @ light) <= 0 or ahead < -1e-12:
-        raise ExecutionError(
-            "exec.field", "the field does not run into the stack (wrong side or direction)", node.id
-        )
-    if isinstance(fb.field, GridlessField):
-        on = Plane.make(plane.origin, light, plane.v)
-        try:
-            return rays_to_field(field_to_rays(fb), on)
-        except FieldError as e:
-            ctx.log.append(f"{node.id}: {e} – wave propagation onto the stack instead")
-    target, notes = propagate_to(fb, Plane.make(plane.origin, light, plane.v))
-    ctx.log.extend(f"{node.id}: {n}" for n in notes)
+    """The field in the stack's plane (`couplings.grating_field.onto_plane`)."""
+    log: list[str] = []
+    try:
+        target = gf.onto_plane(fb, plane, from_back, log)
+    except FieldError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
+    finally:
+        ctx.log.extend(f"{node.id}: {line}" for line in log)
     return target
 
 
@@ -251,88 +210,52 @@ def _apply_field(
 ) -> FieldBundle:
     from fieldtracing.field import GridlessField
 
-    from rtt_fusion.adapters import fouriergrating as fga
-    from rtt_fusion.ports import PlaneWaves
-
     target = _to_plane(ctx, node, fb, plane, from_back)
-    z = np.asarray(target.plane.normal, dtype=float)
-    light = np.asarray(plane.normal) * (1.0 if from_back else -1.0)
-    if float(z @ light) <= 0:
-        raise ExecutionError("exec.field", "the field does not run into the stack", node.id)
-    x = np.asarray(plane.u) - z * float(np.asarray(plane.u) @ z)
-    x = x / np.linalg.norm(x)
-    y = np.cross(z, x)
-    q = np.array(
-        [[x @ target.plane.u, x @ target.plane.v], [y @ target.plane.u, y @ target.plane.v]]
-    )
-    if not isinstance(target.field, GridlessField) and _isotropic(ctx, node):
-        q = np.eye(2)  # isotropic layers: the frame's orientation in the plane does not matter
-        x, y = np.asarray(target.plane.u), np.asarray(target.plane.v)
-    field = _in_frame(target.field, q)
+    keep_axes = not isinstance(target.field, GridlessField) and _isotropic(ctx, node)
+    fr = gf.frame(target, plane.u, keep_axes)
+    try:
+        field = gf.in_frame(target.field, fr.q)
+    except FieldError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
     lam = float(field.wavelength_um)
     handle = _handle(ctx, node, lam, from_back)
     n_in = handle.front_index.real
-    n_out = n_in if reflect else handle.back_index.real
     if abs(float(field.refractive_index) - n_in) > 1e-9:
         ctx.log.append(
             f"{node.id}: field in index {field.refractive_index}, the stack expects {n_in}"
         )
-    try:
-        sampled = spectral.sample(field, int(node.params.get("field_grid_max", 1024)))
-    except spectral.SpectralError as e:
-        raise ExecutionError("exec.field", str(e), node.id) from e
-    grid = sampled.grid
-    spec = spectral.spectrum(sampled.residual)
-    kxx, kyy = grid.frequencies()
-    kx, ky = kxx + grid.carrier[0], kyy + grid.carrier[1]
-    port = fga.front_port(handle, lam)
-    propagating = np.hypot(kx, ky) < n_in * port.k0 * (1.0 - 1e-12)
-    keep = propagating & spectral.significant(
-        spec[..., :2], float(node.params.get("field_threshold", 1e-10))
-    )
-    total = float(np.sum(np.abs(spec[..., :2]) ** 2)) or 1.0
-    dropped = float(np.sum(np.abs(spec[..., :2][~keep]) ** 2)) / total
-    if dropped > 1e-12:
-        ctx.log.append(
-            f"{node.id}: {dropped:.2e} of the field's spectrum left out (evanescent or below "
-            "the threshold)"
-        )
-    rows, cols = np.nonzero(keep)
     # reflection and transmission come from one solve per field (the two outputs are asked for
     # separately): the results are kept for the run
     store = ctx.shared.setdefault("fg_stack_field_results", {})
     run_key = (node.id, id(fb), from_back)
     if run_key not in store:
-        c = grid.carrier
-        units = [
-            PlaneWaves(port, np.array([c[0]]), np.array([c[1]]), np.array([u], dtype=complex))
-            for u in ((1.0, 0.0), (0.0, 1.0))
-        ]
-        incident = PlaneWaves(port, kx[rows, cols], ky[rows, cols], spec[rows, cols, :2])
+        log_lines: list[str] = []
         try:
-            store[run_key] = (fb, fga.apply_many(handle, [incident, *units]))
+            applied = gf.apply(
+                handle,
+                field,
+                threshold=float(node.params.get("field_threshold", 1e-10)),
+                grid_max=int(node.params.get("field_grid_max", 1024)),
+                transfer=str(node.params.get("field_transfer", "exact")),
+                log=log_lines,
+            )
+        except spectral.SpectralError as e:
+            raise ExecutionError("exec.field", str(e), node.id) from e
         except (ValueError, RuntimeError) as e:
             raise ExecutionError("exec.solver", f"FourierGrating: {e}", node.id) from e
-    results = store[run_key][1]
-    side = "front" if reflect else "back"
-    waves = results[0][side]
-    # the carrier wave's transfer (3 x 2): columns for unit x and y input
-    t0 = np.zeros((3, 2), dtype=complex)
-    for j, r in enumerate(results[1:]):
-        w = r[side]
-        if len(w.kx):
-            t0[:2, j] = np.asarray(w.field)[0]
-            t0[2, j] = w.ez()[0]
-    out_spec = np.zeros_like(spec)
-    dk_x = 2.0 * np.pi / (grid.nx * grid.step)
-    dk_y = 2.0 * np.pi / (grid.ny * grid.step)
-    ix = np.rint((np.asarray(waves.kx) - grid.carrier[0]) / dk_x).astype(int) % grid.nx
-    iy = np.rint((np.asarray(waves.ky) - grid.carrier[1]) / dk_y).astype(int) % grid.ny
-    out_spec[iy, ix, :2] = np.asarray(waves.field)
-    out_spec[iy, ix, 2] = waves.ez()
-    new = sampled.back(spectral.inverse(out_spec), n_out, reflect, t0)
+        ctx.log.extend(f"{node.id}: {line}" for line in log_lines)
+        if applied.dropped > 1e-12:
+            ctx.log.append(
+                f"{node.id}: {applied.dropped:.2e} of the field's spectrum left out (evanescent "
+                "or below the threshold)"
+            )
+        store[run_key] = (fb, applied)
+    applied = store[run_key][1]
+    new = applied.fields.get(("front" if reflect else "back", (0, 0)))
+    if new is None:
+        raise ExecutionError("exec.field", "no light leaves on this side", node.id)
     origin = np.asarray(target.plane.origin)
-    out_plane = Plane(origin, -z, x, -y) if reflect else Plane(origin, z, x, y)
+    out_plane = Plane(origin, -fr.z, fr.x, -fr.y) if reflect else Plane(origin, fr.z, fr.x, fr.y)
     return FieldBundle(fb.key, out_plane, new, (*fb.path, f"{node.id}[{'r' if reflect else 't'}]"))
 
 
@@ -400,6 +323,15 @@ TYPE = NodeType(
             1e-10,
             group="Field path",
             description="plane waves below this share of the largest amplitude are left out (H)",
+        ),
+        ParamSpec(
+            "field_transfer",
+            "choice",
+            "exact",
+            options=("exact", "interpolated"),
+            group="Field path",
+            description="exact: FourierGrating per plane wave; interpolated: from a verified "
+            "sub-grid of the spectrum (1e-8), much faster for wide beams",
         ),
         ParamSpec(
             "field_grid_max",

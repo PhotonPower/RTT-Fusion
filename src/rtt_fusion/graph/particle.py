@@ -245,10 +245,10 @@ def particle(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> l
         and not k.startswith("pose_by_")
     }
     store = ctx.operators if ctx.operators is not None else ctx.shared.setdefault("operators", {})
-    out: list[RayBundle] = []
-    for b in inputs.get("in", []):
-        if not isinstance(b, RayBundle):
-            continue
+    # the bundles grouped by operator, each group in one apply_many (L4)
+    groups: dict[str, list[tuple[int, RayBundle, Any, Any]]] = {}
+    bundles = [b for b in inputs.get("in", []) if isinstance(b, RayBundle)]
+    for index, b in enumerate(bundles):
         alive = np.asarray(b.alive)
         axis = np.asarray(b.direction)[alive].mean(axis=0)
         axis = axis / np.linalg.norm(axis)
@@ -264,14 +264,22 @@ def particle(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> l
         waves, rot = rays_to_spectrum(
             b, centre, axis, handle.structure.z_front_mm, handle.structure.n_background
         )
-        try:
-            result = cba.apply(handle, waves, n_theta=n_theta, n_phi=n_phi)
+        groups.setdefault(key, []).append((index, b, waves, rot))
+    results: dict[int, RayBundle] = {}
+    for key, group in groups.items():
+        handle = store[key]
+        try:  # recycling only pays across several solves; one bundle stays as with apply
+            applied = cba.apply_many(
+                handle, [g[2] for g in group], n_theta, n_phi, recycle=len(group) > 1
+            )
         except (ValueError, RuntimeError) as e:
             raise ExecutionError("exec.solver", f"CliffordBem: {e}", node.id) from e
-        back = result["front"]  # backscattered, direction −1 on the front port
-        out.append(spectrum_to_rays(back, centre, rot, b, (*b.path, f"{node.id}[back]")))
-        ctx.log.append(f"{node.id}: CliffordBem, {len(waves.kx)} incident waves, key {b.key}")
-    return out
+        for (index, b, waves, rot), result in zip(group, applied, strict=True):
+            back = result["front"]  # backscattered, direction −1 on the front port
+            results[index] = spectrum_to_rays(back, centre, rot, b, (*b.path, f"{node.id}[back]"))
+            ctx.log.append(f"{node.id}: CliffordBem, {len(waves.kx)} incident waves, key {b.key}")
+        ctx.log.append(f"{node.id}: CliffordBem apply_many, {len(group)} incidence(s)")
+    return [results[i] for i in sorted(results)]
 
 
 TYPE = NodeType(

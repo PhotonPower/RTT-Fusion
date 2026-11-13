@@ -134,3 +134,20 @@ def test_rayleigh_anomaly_detection() -> None:
     assert jt.near_rayleigh_anomaly(table, 0.6, 0.150, 0.01)
     assert not jt.near_rayleigh_anomaly(table, 0.6, 0.05, 0.0)
     assert not jt.near_rayleigh_anomaly(table, 0.6, 0.24, 0.0)
+
+
+def test_w62_table_from_apply_many_equals_point_by_point() -> None:
+    """L4 O2: the table built with one apply_many per wavelength equals direct_jones point by
+    point, bitwise (FourierGrating still solves each incidence on its own)."""
+    pytest.importorskip("fouriergrating")
+    handle = _handle()
+    sx, sy = np.array([-0.2, 0.0, 0.15]), np.array([0.0, 0.1])
+    table = jt.build_table(handle, np.array([LAM]), sx, sy, (-1, 0, 1))
+    for b, x in enumerate(sx):
+        for c, y in enumerate(sy):
+            d = jt.direct_jones(handle, LAM, float(x), float(y))
+            for o, m in enumerate((-1, 0, 1)):
+                if m in d:
+                    assert np.array_equal(table.jones[o, 0, b, c], d[m])
+                else:
+                    assert np.all(np.isnan(table.jones[o, 0, b, c]))

@@ -68,6 +68,31 @@ def direct_jones(
     side: str = "transmitted",
 ) -> dict[int, ComplexArray]:
     """J_m for every propagating order at one point, directly from FourierGrating (4 solves)."""
+    pair = fga.apply_many(handle, _unit_incidents(handle, wavelength_um, sigma_x, sigma_y))
+    return _jones_of(handle, wavelength_um, sigma_x, sigma_y, side, pair)
+
+
+def _unit_incidents(
+    handle: fga.Handle, wavelength_um: float, sigma_x: float, sigma_y: float
+) -> list[PlaneWaves]:
+    """The two unit incidences (x, y polarised) at one point of the table."""
+    port = fga.front_port(handle, wavelength_um)
+    kx, ky = sigma_x * port.k0, sigma_y * port.k0
+    return [
+        PlaneWaves(port, np.array([kx]), np.array([ky]), np.array([unit], dtype=np.complex128))
+        for unit in ((1.0, 0.0), (0.0, 1.0))
+    ]
+
+
+def _jones_of(
+    handle: fga.Handle,
+    wavelength_um: float,
+    sigma_x: float,
+    sigma_y: float,
+    side: str,
+    pair: list[dict[str, PlaneWaves]],
+) -> dict[int, ComplexArray]:
+    """J_m from the results of the two unit incidences."""
     port = fga.front_port(handle, wavelength_um)
     k0 = port.k0
     kx, ky = sigma_x * k0, sigma_y * k0
@@ -75,11 +100,8 @@ def direct_jones(
     out_side = "back" if side == "transmitted" else "front"
     n_out = (handle.back_index if side == "transmitted" else handle.front_index).real
     kz_in = float(np.real(port.kz(np.array(kx), np.array(ky))))
-    for unit in ((1.0, 0.0), (0.0, 1.0)):
-        incident = PlaneWaves(
-            port, np.array([kx]), np.array([ky]), np.array([unit], dtype=np.complex128)
-        )
-        waves = fga.apply(handle, incident)[out_side]
+    for result in pair:
+        waves = result[out_side]
         assert waves.orders is not None
         for j, order in enumerate(waves.orders):
             m = int(order[0])
@@ -101,12 +123,22 @@ def build_table(
     shape = (len(orders), len(wavelengths_um), len(sigma_x), len(sigma_y), 2, 2)
     jones = np.full(shape, np.nan + 0j, dtype=np.complex128)
     for a, lam in enumerate(wavelengths_um):
-        for b, sx in enumerate(sigma_x):
-            for c, sy in enumerate(sigma_y):
-                d = direct_jones(handle, float(lam), float(sx), float(sy), side)
-                for o, m in enumerate(orders):
-                    if m in d:
-                        jones[o, a, b, c] = d[m]
+        # every point of a wavelength in one apply_many (L4): with an operator from
+        # FourierGrating (plan L4, O3) one eigenproblem per direction instead of two solves
+        points = [
+            (b, c, float(sx), float(sy))
+            for b, sx in enumerate(sigma_x)
+            for c, sy in enumerate(sigma_y)
+        ]
+        incidents = [
+            inc for _, _, sx, sy in points for inc in _unit_incidents(handle, float(lam), sx, sy)
+        ]
+        results = fga.apply_many(handle, incidents)
+        for j, (b, c, sx, sy) in enumerate(points):
+            d = _jones_of(handle, float(lam), sx, sy, side, results[2 * j : 2 * j + 2])
+            for o, m in enumerate(orders):
+                if m in d:
+                    jones[o, a, b, c] = d[m]
     cfg = handle.structure.config
     n_out = (handle.back_index if side == "transmitted" else handle.front_index).real
     return JonesTable(

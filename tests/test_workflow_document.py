@@ -64,3 +64,14 @@ def test_w66_block_states_per_model_block() -> None:
     assert block_states(raw, {"a", "g", "b"}) == {"a": False, "g": True, "b": True}
     assert block_states(raw, None) == raw
     assert model_id("g/x@3") == "g"
+
+
+def test_w66_glass_catalogues_are_a_parameter_of_the_source() -> None:
+    from rtt_fusion.graph import validate
+
+    reg, _ = registry()
+    m = _linnik()
+    m.nodes["source"].params["rtt_catalogs"] = ["/somewhere/patent.agf"]
+    from rtt_fusion.graph import unroll
+
+    assert not [d for d in validate(unroll(m, reg), reg) if d.code == "graph.param_unknown"]

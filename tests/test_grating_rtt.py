@@ -149,3 +149,45 @@ def test_w23_phase_grating_imaged_by_the_linnik(tmp_path: Path) -> None:
     assert peak == pytest.approx(2 * k, rel=1e-2)
     first = spectrum[np.abs(freq - k) < 0.3 * k].max()
     assert first < 0.02 * spectrum[near].max()
+
+
+def test_w73_linnik_with_a_grating_from_another_process(tmp_path: Path) -> None:
+    """CAD ADR 0010, W4: the grating sample of the Linnik evaluated by a provider behind a JSON
+    channel (as the FourierGrating plugin of Raytatouille Fusion does) gives the camera image of
+    the grating computed in the engine's process."""
+    from typing import Any
+
+    from rtt_fusion.graph import backend_rtt
+    from rtt_fusion.graph.remote import BlockProvider, register_remote
+
+    amplitudes = {m: -float(jv(m, PHI0)) for m in (-1, 0, 1)}
+    table = write_table(tmp_path / "phase.json", amplitudes, PERIOD_UM)
+    d = load_system()
+    local = image(d, table, pixels=128)
+    provider = BlockProvider([grating.TYPE], dict(grating.EVALUATORS))
+    requests: list[str] = []
+
+    def call(name: str, request: dict[str, Any]) -> dict[str, Any]:
+        assert name == "fg"
+        wire = json.loads(json.dumps(request, allow_nan=False))  # through CAD's channel
+        requests.append(str(wire["node"]["type"]))
+        answer: dict[str, Any] = json.loads(json.dumps(provider.handle(wire), allow_nan=False))
+        return answer
+
+    system = rt.System.from_json(json.dumps(d))
+    g: Graph = graph_from_raytatouille(d)
+    reg = builtin_registry()
+    ev = dict(backend_rtt.EVALUATORS)
+    ev.update(grating.register(reg))
+    catalogue = [{"provider": "fg", "type": e} for e in provider.catalogue()]
+    ev.update(register_remote(reg, catalogue, call, tmp_path / "portdata"))
+    replace_block(g, reg, "sample", Node("sample", "fg.grating", params={"table": table}))
+    ex = Executor(
+        g, reg, ev, {"system": system, "rings": 15, "pixels": [128, 8]}, available=WITH_FIELDS
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        remote: Image = ex.evaluate("camera", "image")
+    assert requests and set(requests) == {"fg.grating"}
+    assert local.values.max() > 0
+    np.testing.assert_allclose(remote.values, local.values, rtol=0, atol=1e-12 * local.values.max())

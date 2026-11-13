@@ -13,6 +13,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Abnahme W73 (CAD ADR 0010, W4): der Linnik mit einem Phasengitter als Probe, das Gitter bei
+  einem Lieferanten hinter einem JSON-Kanal ausgewertet, gibt das Kamerabild des Gitters im
+  Prozess der Engine (1e−12).
+
 - Vorbereitete Läufe für fremde Blöcke (CAD ADR 0010, D6, Stufe W3): Blöcke, die mehr als ihre
   Eingänge brauchen – Raytatouille-Blöcke bauen ein System aus den Daten aller `rtt.*`-Blöcke und
   folgen den Ästen des ganzen Graphen –, bekommen vor ihrer ersten Auswertung den abgerollten Graphen

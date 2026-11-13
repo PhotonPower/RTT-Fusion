@@ -224,17 +224,7 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
                 )
             if not np.any(ok):
                 continue
-            f_out = np.einsum("nij,nj->ni", p_glob, e_in)
-            # scalar amplitude along a real polarisation direction (for the ray image R), the rest
-            # in prt so that a·prt·jones is the full field E_m (for fields H)
-            big = np.argmax(np.abs(f_out), axis=1)
-            alpha = np.angle(f_out[np.arange(moved.size), big])
-            e_ref = np.real(f_out * np.exp(-1j * alpha)[:, None])
-            norm = np.linalg.norm(e_ref, axis=1)
-            e_ref = e_ref / np.where(norm > 0, norm, 1.0)[:, None]
-            c = np.sum(f_out * e_ref, axis=1)
-            safe = np.where(np.abs(c) > 1e-300, c, 1.0)
-            prt_out = np.einsum("nij,njk->nik", p_glob, prt_in) / safe[:, None, None]
+            c, prt_out = split_prt(p_glob, e_in, prt_in)
             opl = np.asarray(moved.opl) + m * (lam * 1e-3) * uv[:, 0] / (table.period_um * 1e-3)
             out.append(
                 moved.evolve(
@@ -248,6 +238,22 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
                 )
             )
     return out
+
+
+def split_prt(p: Any, e_in: Any, prt_in: Any) -> tuple[Any, Any]:
+    """A ray's new field P·E as a complex scalar amplitude along a real polarisation direction
+    (for the ray image R) and the rest in prt, so that a·prt·jones is the full field (for fields
+    H): (c, prt_out) with the new amplitude a·c."""
+    f_out = np.einsum("nij,nj->ni", p, e_in)
+    big = np.argmax(np.abs(f_out), axis=1)
+    alpha = np.angle(f_out[np.arange(len(f_out)), big])
+    e_ref = np.real(f_out * np.exp(-1j * alpha)[:, None])
+    norm = np.linalg.norm(e_ref, axis=1)
+    e_ref = e_ref / np.where(norm > 0, norm, 1.0)[:, None]
+    c = np.sum(f_out * e_ref, axis=1)
+    safe = np.where(np.abs(c) > 1e-300, c, 1.0)
+    prt_out = np.einsum("nij,njk->nik", p, prt_in) / safe[:, None, None]
+    return c, prt_out
 
 
 def _carry(frame: Any, a: Any, b: Any) -> Any:

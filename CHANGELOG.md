@@ -13,6 +13,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Block `fg.stack` (ADR Gitter als Feldoperator und Schichtstapel, Stufe F4a): lateral invarianter
+  Stapel homogener Schichten (Beschichtung, Filter, Spiegelschichten) zwischen zwei Medien,
+  exakt je Strahlrichtung von FourierGrating gerechnet (N = 0, keine Tabelle); Sockets wie
+  `optics.interface`, Licht von beiden Seiten. Die Schichten stehen wie bei FourierGrating vom
+  Substrat (hinten) nach oben. Abnahme ST0–ST2 gegen Transfermatrix, Airy-Rekursion und
+  `optics.interface`.
+
 - Abnahme W73 (CAD ADR 0010, W4): der Linnik mit einem Phasengitter als Probe, das Gitter bei
   einem Lieferanten hinter einem JSON-Kanal ausgewertet, gibt das Kamerabild des Gitters im
   Prozess der Engine (1e−12).

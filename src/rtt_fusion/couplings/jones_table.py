@@ -111,6 +111,22 @@ def _jones_of(
     return {m: np.column_stack(c) for m, c in columns.items() if len(c) == 2}
 
 
+def jones_many(
+    handle: fga.Handle,
+    wavelength_um: float,
+    sigmas: list[tuple[float, float]],
+    side: str = "transmitted",
+) -> list[dict[int, ComplexArray]]:
+    """J_m of every propagating order at many points (σ_x, σ_y) of one wavelength, directly from
+    FourierGrating in one `apply_many` (two unit incidences per point)."""
+    incidents = [inc for sx, sy in sigmas for inc in _unit_incidents(handle, wavelength_um, sx, sy)]
+    results = fga.apply_many(handle, incidents)
+    return [
+        _jones_of(handle, wavelength_um, sx, sy, side, results[2 * j : 2 * j + 2])
+        for j, (sx, sy) in enumerate(sigmas)
+    ]
+
+
 def build_table(
     handle: fga.Handle,
     wavelengths_um: FloatArray,

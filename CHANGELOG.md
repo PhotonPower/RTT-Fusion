@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Ein Raytatouille-System lässt sich ohne Import im Workflow anlegen (`new_system`): eine Quelle mit
+  Standard-Einstellungen (mm/µm, d-Linie, Eintrittspupille 4 mm, ein Feldpunkt auf der Achse),
+  bearbeitbar wie die eines importierten Systems, ein leerer Baum, eine Blende und ein Detektor aus
+  der Bibliothek und der Ast „main“. Neues Bauteil `rtt.part.stop` (Raytatouille braucht eine
+  Blende im Pfad). Abnahme W64.
+
 - `section_to_group` (ADR Nachtrag 1): ein Raytatouille-Abschnitt (mehrere Elemente einer Baugruppe
   in einem Block) wird eine Gruppe mit einem Block je Element. Jeder Block hält die Daten seines
   Elements und seinen Teil jedes Durchgangs; die Durchgänge des Abschnitts werden innere Äste, die

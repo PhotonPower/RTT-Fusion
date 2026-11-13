@@ -45,6 +45,16 @@ def _port_sockets(names: tuple[str, ...]) -> tuple[tuple[SocketSpec, ...], tuple
 
 #: kind -> (ports, element template, category)
 PARTS: dict[str, tuple[tuple[str, ...], dict[str, Any], Category]] = {
+    "stop": (
+        ("front", "back"),
+        {
+            "type": "stop",
+            "name": "Stop",
+            "pose": _POSE,
+            "surfaces": [{"id": "STO", "aperture": {"type": "circular", "radius": 5.0}}],
+        },
+        Category.DOMAIN,
+    ),
     "mirror": (
         ("front",),
         {
@@ -151,7 +161,7 @@ def part_events(kind: str, surfaces: list[str], port_in: str, port_out: str) -> 
         return [{"surface": surfaces[0], "kind": "transmit"}] if port_out == "" else None
     if kind == "mirror":
         return [{"surface": surfaces[0], "kind": "reflect"}] if port_in == port_out else None
-    if kind == "lens":
+    if kind in ("lens", "stop"):
         if {port_in, port_out} != {"front", "back"}:
             return None
         order = surfaces if port_in == "front" else list(reversed(surfaces))

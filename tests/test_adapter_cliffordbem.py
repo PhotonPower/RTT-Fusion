@@ -151,7 +151,9 @@ def test_l4_apply_many_equals_apply() -> None:
     for a, b, c in zip(one_by_one, exact, recycled, strict=True):
         for key in a:
             scale = np.abs(a[key].field).max()
-            assert np.array_equal(a[key].field, b[key].field)  # the same solves
+            # the same solves; CliffordBem's H-matrix sums in an unspecified order with several
+            # threads (its docs: bitwise only with OMP_NUM_THREADS=1), so to the solver tolerance
+            assert np.abs(a[key].field - b[key].field).max() < 1e-6 * scale
             assert np.abs(a[key].field - c[key].field).max() < 1e-6 * scale  # solver tolerance
 
 

@@ -273,6 +273,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Die Prüfung warnte bei jedem Bauteil aus der Bibliothek vor den Parametern, die `prepare_parts`
+  ihm gibt (`rtt`, `runs`, `surfaces`, `location`, `element_type`; `graph.param_unknown`). Diese
+  abgeleiteten Parameter gelten jetzt als bekannt; ein wirklich unbekannter warnt weiter (W64).
 - Raytatouille-Backend: Ein Strahl galt als angekommen, wenn er alle Plätze des aufgezeichneten
   Pfads füllte. Raytatouille gibt aber auch einem Strahl, der am letzten Ereignis verloren geht,
   alle Plätze (`count = j + 2`). Knotenweise liefen so z. B. an der letzten Fläche eines Laufs

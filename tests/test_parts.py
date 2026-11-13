@@ -310,3 +310,17 @@ def test_w64_a_lens_inserted_equals_the_saved_file() -> None:
     (camera,) = [n.id for n in imported.nodes.values() if n.type_id == "rtt.detector"]
     _same(_from_file(d, camera), from_model)
     assert from_model.power > 0
+
+
+def test_w64_derived_parameters_of_parts_are_no_warning() -> None:
+    from rtt_fusion.graph import new_system, validate
+    from rtt_fusion.graph.parts import prepare_parts
+
+    m = new_system()
+    m.nodes.update(prepare_parts(m.nodes))  # as the workflow holds them after a computation
+    assert "runs" in m.nodes["stop"].params
+    reg = builtin_registry()
+    assert not [d for d in validate(unroll(m, reg), reg) if d.code == "graph.param_unknown"]
+    m.nodes["stop"].params["typo"] = 1  # a real unknown parameter still warns
+    found = [d for d in validate(unroll(m, reg), reg) if d.code == "graph.param_unknown"]
+    assert [d.location for d in found] == ["stop"] and "typo" in found[0].message

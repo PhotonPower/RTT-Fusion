@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- `graph.remote` (CAD ADR 0010, D2/D3, Stufe W2b): Blöcke in einem anderen Prozess. Lieferant:
+  `BlockProvider` beschreibt seine Blocktypen (`catalogue`, mit den nativen Darstellungen) und
+  rechnet eine Anfrage mit Port-Daten (`evaluate`). Engine: `register_remote` übernimmt die Kataloge
+  in die Registry, `RemoteEvaluator` rechnet über eine Anfrage. `NodeType.to_dict`/`from_dict` für
+  den statischen Teil (ohne Port-Rahmen). Ein fremder Block bekommt seine Eingänge, Parameter und die
+  JSON-fähigen Einstellungen des Laufs. Abnahme W69.
+
 - `rtt_fusion.portdata` (CAD ADR 0010, D4, Stufe W2a): die Werte auf den Links des Workflows als
   Dateien – ein JSON-Baum (Datenklassen, Listen, Zahlen; Gleitkommazahlen bitgenau als Hex, auch NaN
   und ±∞) und je Array eine `.npy`-Datei. Damit rechnet ein Block im Prozess eines anderen Plugins.

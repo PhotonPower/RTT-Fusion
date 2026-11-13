@@ -293,6 +293,40 @@ class NodeType:
     def socket(self, name: str) -> SocketSpec | None:
         return next((s for s in self.sockets if s.name == name), None)
 
+    def to_dict(self) -> dict[str, Any]:
+        """The static description (CAD ADR 0010, D2): all but `port_frames`, which is code."""
+        return {
+            "type": self.type_id,
+            "category": self.category.value,
+            "sockets": [x.to_dict() for x in self.sockets],
+            "params": [x.to_dict() for x in self.params],
+            "through": {o: list(ins) for o, ins in self.through},
+            "dynamic_sockets": self.dynamic_sockets,
+            "description": self.description,
+            "extra_sockets": [x.to_dict() for x in self.extra_sockets],
+            "ports": [x.to_dict() for x in self.ports],
+            "scatter": [[a, b, kind, list(ch)] for a, b, kind, ch in self.scatter],
+        }
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> NodeType:
+        """A type from `to_dict` (without port frames)."""
+        return NodeType(
+            str(d["type"]),
+            Category(d["category"]),
+            tuple(SocketSpec.from_dict(x) for x in d.get("sockets", [])),
+            tuple(ParamSpec.from_dict(x) for x in d.get("params", [])),
+            tuple((str(o), tuple(str(i) for i in ins)) for o, ins in d.get("through", {}).items()),
+            bool(d.get("dynamic_sockets", False)),
+            str(d.get("description", "")),
+            tuple(SocketSpec.from_dict(x) for x in d.get("extra_sockets", [])),
+            tuple(PortSpec.from_dict(x) for x in d.get("ports", [])),
+            tuple(
+                (str(a), str(b), str(k), tuple(str(c) for c in ch))
+                for a, b, k, ch in d.get("scatter", [])
+            ),
+        )
+
 
 @dataclass
 class Node:

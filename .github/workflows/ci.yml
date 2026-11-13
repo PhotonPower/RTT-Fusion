@@ -65,7 +65,7 @@ jobs:
         run: pip wheel --no-deps -w wheelhouse "bwpm @ git+https://github.com/PhotonPower/BWPM.git@ef2de941d226d364db000a977963b0eba24aea44"
       - name: build fouriergrating
         if: steps.wheels.outputs.cache-hit != 'true'
-        run: pip wheel --no-deps -w wheelhouse "fouriergrating @ git+https://github.com/PhotonPower/FourierGrating.git@174ef93d4e3b41ece7bb2f9a70055909e247ee25"
+        run: pip wheel --no-deps -w wheelhouse "fouriergrating @ git+https://github.com/PhotonPower/FourierGrating.git@b3e2c314f592c30007b9bd51b2e9857103189814"
       - name: build fieldtracing
         if: steps.wheels.outputs.cache-hit != 'true'
         run: pip wheel --no-deps -w wheelhouse "fieldtracing @ git+https://github.com/PhotonPower/Fieldtracing.git@6da9983387b8872d3241851d04d2012df5baaf48"

@@ -237,11 +237,127 @@ def apply(handle: Handle, incident: PlaneWaves) -> dict[str, PlaneWaves]:
     return result
 
 
-def apply_many(handle: Handle, incidents: list[PlaneWaves]) -> list[dict[str, PlaneWaves]]:
-    """`apply` for many incidences (L4). The Simulation of each wavelength is kept in the handle;
-    each direction is still one solve per polarisation until FourierGrating gives its S-matrix
-    (plan L4, stage O3)."""
-    return [apply(handle, inc) for inc in incidents]
+def apply_many(
+    handle: Handle, incidents: list[PlaneWaves], bloch: bool = False
+) -> list[dict[str, PlaneWaves]]:
+    """`apply` for many incidences (L4, stage O3). With FourierGrating's S-matrix in the s/p basis
+    of the orders (`Simulation.smatrix`, FG Plan eq:Ssp) one eigen-solve per wavelength and
+    direction serves both polarisations (`apply`: one solve each); results equal `apply` to
+    rounding.
+
+    `bloch`: one eigen-solve per Bloch family (α₀ + n λ/Λ) – a wave of the family is the column of
+    its order. FourierGrating truncates the orders around the incident one, so an off-centre column
+    sees a shifted truncation: the result differs from `apply` by the truncation error (about 7e−3
+    at N = 6 in the tests), not by rounding. Without `smatrix` (an older FourierGrating) or for an
+    order outside the truncation: `apply`."""
+    families: dict[tuple[int, float, float], Any] = {}
+    return [_apply_by_smatrix(handle, inc, families, bloch) for inc in incidents]
+
+
+def _apply_by_smatrix(
+    handle: Handle,
+    incident: PlaneWaves,
+    families: dict[tuple[int, float, float], Any],
+    bloch: bool,
+) -> dict[str, PlaneWaves]:
+    p = incident.port
+    if p.direction != 1 or p.z != 0.0 or complex(p.index) != handle.front_index:
+        raise ValueError("incident waves must be on the front port with direction +1")
+    sim = _simulation(handle, p.wavelength_um)
+    if not hasattr(sim, "smatrix"):
+        return apply(handle, incident)
+    cfg = handle.structure.config
+    lam = p.wavelength_um
+    nu = handle.front_index.real
+    n_sub = handle.back_index
+    period_x = float(cfg["period_um"]["x"])
+    period_z = float(cfg["period_um"].get("z", 0.0) or 0.0)
+    step_x, step_z = lam / period_x, (lam / period_z if period_z > 0 else 0.0)
+    k0 = p.k0
+    wl_key = int(np.argmin([abs(w - lam) for w in handle.wavelengths_um]))
+    outputs: dict[str, dict[tuple[float, float], ComplexArray]] = {"front": {}, "back": {}}
+    order_of: dict[str, dict[tuple[float, float], tuple[int, int]]] = {"front": {}, "back": {}}
+    ez = incident.ez()
+    for j in range(len(incident.kx)):
+        kx, ky = float(incident.kx[j]), float(incident.ky[j])
+        sin_phi = np.hypot(kx, ky) / (nu * k0)
+        if sin_phi >= 1.0:
+            raise ValueError("incident wave must propagate in the superstrate")
+        phi = float(np.arcsin(sin_phi))
+        psi = float(np.arctan2(ky, kx)) if sin_phi > 0 else 0.0
+        alpha0, gamma0 = nu * np.sin(phi) * np.cos(psi), nu * np.sin(phi) * np.sin(psi)
+        if bloch:  # the Bloch family: α₀ modulo λ/Λx (and γ₀ modulo λ/Λz for 2D gratings)
+            fx = (alpha0 / step_x) % 1.0
+            fz = (gamma0 / step_z) % 1.0 if step_z > 0 else gamma0
+            key = (wl_key, round(fx % (1.0 - 1e-10), 9), round(fz, 9))
+        else:  # the direction itself: the incident order is the centre of the truncation
+            key = (wl_key, round(alpha0, 12), round(gamma0, 12))
+        if key not in families:
+            families[key] = (
+                sim.smatrix(lambda_um=lam, phi_deg=np.degrees(phi), psi_deg=np.degrees(psi)),
+                alpha0,
+                gamma0,
+            )
+        smat, alpha_r, gamma_r = families[key]
+        n = round((alpha0 - alpha_r) / step_x)
+        m = round((gamma0 - gamma_r) / step_z) if step_z > 0 else 0
+        try:
+            r = smat.index(n, m)
+        except KeyError:
+            r = -1
+        if (
+            r < 0
+            or abs(complex(smat.alpha[r]) - alpha0) > 1e-9
+            or abs(complex(smat.gamma[r]) - gamma0) > 1e-9
+        ):
+            single = PlaneWaves(
+                p, incident.kx[j : j + 1], incident.ky[j : j + 1], incident.field[j : j + 1]
+            )
+            for side, waves in apply(handle, single).items():
+                assert waves.orders is not None
+                for i in range(len(waves.kx)):
+                    e3 = np.array([waves.field[i, 0], waves.field[i, 1], 0.0], dtype=complex)
+                    kxy = (float(waves.kx[i]), float(waves.ky[i]))
+                    outputs[side][kxy] = outputs[side].get(kxy, np.zeros(3, complex)) + e3
+                    order_of[side][kxy] = (int(waves.orders[i][0]), int(waves.orders[i][1]))
+            continue
+        nf = len(smat.orders)
+        e_rtt = np.array([incident.field[j, 0], incident.field[j, 1], ez[j]])
+        e_fg = np.array([e_rtt[0], -e_rtt[2], e_rtt[1]])  # inverse of _to_rtt
+        beta0 = float(np.sqrt(max(nu * nu - alpha0 * alpha0 - gamma0 * gamma0, 0.0)))
+        s_in, p_in = _order_basis(alpha0, beta0, gamma0, False)
+        a = np.zeros(2 * nf, dtype=complex)
+        a[r], a[nf + r] = complex(e_fg @ s_in), complex(e_fg @ p_in)
+        lossless_sub = abs(complex(n_sub).imag) < 1e-14
+        for side, amps, betas, up in (
+            ("front", smat.R_top @ a, smat.beta_sup, True),
+            ("back", smat.T_down @ a, smat.beta_sub, False),
+        ):
+            if side == "back" and not lossless_sub:
+                continue  # FourierGrating lists no transmitted orders then (as apply)
+            for q in range(nf):
+                beta = complex(betas[q])
+                if abs(beta.imag) >= 1e-12 or beta.real <= 0:
+                    continue  # evanescent
+                alpha, gamma = (
+                    float(complex(smat.alpha[q]).real),
+                    float(complex(smat.gamma[q]).real),
+                )
+                s_vec, p_vec = _order_basis(alpha, beta.real, gamma, up)
+                e = _to_rtt(amps[q] * s_vec + amps[nf + q] * p_vec)
+                kxy = (round(alpha * k0, 9), round(gamma * k0, 9))
+                outputs[side][kxy] = outputs[side].get(kxy, np.zeros(3, complex)) + e
+                # orders counted from the wave's own incidence, as apply does
+                order_of[side][kxy] = (int(smat.orders[q][0]) - n, int(smat.orders[q][1]) - m)
+    result: dict[str, PlaneWaves] = {}
+    for side, port in (("front", front_port(handle, lam, -1)), ("back", back_port(handle, lam))):
+        keys = sorted(outputs[side])
+        kxs = np.array([k[0] for k in keys])
+        kys = np.array([k[1] for k in keys])
+        fields = np.array([outputs[side][k][:2] for k in keys]).reshape(len(keys), 2)
+        orders = np.array([order_of[side][k] for k in keys], dtype=np.int64).reshape(len(keys), 2)
+        result[side] = PlaneWaves(port, kxs, kys, fields.astype(np.complex128), orders)
+    return result
 
 
 def estimate(handle: Handle) -> dict[str, float]:

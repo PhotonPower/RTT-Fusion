@@ -167,3 +167,35 @@ def test_w31_plane_wave_backscatter_against_mie() -> None:
     assert p2 == pytest.approx(mie, rel=5e-2)  # finer mesh within the flat-triangle error
     assert abs(p2 / mie - 1) < abs(p1 / mie - 1)  # and converging
     assert extrapolated == pytest.approx(mie, rel=1.5e-2)
+
+
+def test_w62_bundles_of_one_particle_in_one_apply_many() -> None:
+    """L4 O2: the bundles reaching one particle share its operator in one apply_many (with
+    recycling); each equals its result alone to the solver tolerance."""
+    pytest.importorskip("cliffordbem")
+    from dataclasses import replace
+
+    g, ex = focused(rings=8)
+    node = Node(
+        "p",
+        "fusion.particle",
+        params={
+            "point": [0, 0, F],
+            "radius_um": R,
+            "index": N_P,
+            "refinement": 3,
+            "n_theta": 12,
+            "n_phi": 24,
+        },
+    )
+    g.add(node)
+    rays: RayBundle = ex.evaluate("lens", "out")[0]
+    other = replace(rays, amplitude=np.asarray(rays.amplitude) * (0.3 - 0.2j))
+    together = particle.particle(ex.context, node, "out", {"in": [rays, other]})
+    assert any("apply_many, 2 incidence(s)" in line for line in ex.context.log)
+    for bundle, joint in zip((rays, other), together, strict=True):
+        _, alone_ex = focused(rings=8)
+        alone = particle.particle(alone_ex.context, node, "out", {"in": [bundle]})[0]
+        a, b = np.asarray(alone.amplitude), np.asarray(joint.amplitude)
+        assert np.array_equal(np.asarray(alone.direction), np.asarray(joint.direction))
+        assert np.abs(a - b).max() < 1e-6 * np.abs(a).max()

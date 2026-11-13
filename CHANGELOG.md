@@ -15,6 +15,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Adaptern. CliffordBem nutzt dabei Krylov-Recycling (`use_recycling`, je Wellenlänge), SpeckleBem
   den einmal assemblierten Operator; FourierGrating, hp-FEM und BWPM schleifen, bis die Löser
   Operatoren anbieten (O3). Abnahme W62.
+- L4, Stufe O2: Die Aufrufer nutzen `apply_many`. Der Partikel-Block gibt alle Bündel mit demselben
+  CliffordBem-Operator in einem Aufruf weiter (Recycling ab zwei Bündeln), die Jones-Tabellen alle
+  Punkte einer Wellenlänge (bitgleich, bis FourierGrating einen Operator hat). Abnahme W62b.
 - L5: CliffordBem und SpeckleBem nehmen Licht auch am hinteren Port (Richtung −1) an; Ausgänge
   `"back"` (reflektiert), `"front"` (durchgelassen) und `"front_scattered"`. Abnahme W63.
 

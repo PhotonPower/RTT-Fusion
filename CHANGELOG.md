@@ -10,6 +10,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Dateien – ein JSON-Baum (Datenklassen, Listen, Zahlen; Gleitkommazahlen bitgenau als Hex, auch NaN
   und ±∞) und je Array eine `.npy`-Datei. Damit rechnet ein Block im Prozess eines anderen Plugins.
   Beim Lesen entstehen nur Klassen aus `rtt_fusion` und `fieldtracing`. Abnahme W68.
+- L4, Stufe O3 für FourierGrating: `apply_many` nutzt die S-Matrix in der s/p-Basis der Ordnungen
+  (FourierGrating `Simulation.smatrix`, FG #4): ein Eigenproblem je Richtung für beide
+  Polarisationen statt zweier Lösungen, gleich `apply`. Mit `bloch=True` ein Eigenproblem je
+  Bloch-Familie; dann weicht eine Welle außerhalb der Mitte um den Trunkierungsfehler ab (das
+  Ordnungsfenster liegt um die Einfallsordnung, etwa 7e−3 bei N = 6). Ohne `smatrix` (älteres
+  FourierGrating) wie bisher. Die CI baut FourierGrating auf dem Stand b3e2c31. Abnahme W67.
+- `graph.workflow` (CAD ADR 0010, Stufe W1a): das Workflow-Dokument, das der Node-Editor zeigt –
+  Modell mit Sockets und Ports, Blockbibliothek, Diagnosen von Modell und abgerolltem Graphen, Plan
+  je Link und je Verbindung – samt Blockzuständen je Block des Modells. Bisher im Raytracer-Plugin
+  des CAD; jetzt in der Bibliothek, damit Workflow-Engine und Plugins es gemeinsam nutzen. Die
+  bearbeitbaren Felder liefert der Lieferant über einen Rückruf; die Engine übernimmt sie. Abnahme
+  W66.
 
 - Bilder warnen, wenn das Licht zu wenige Pixelmitten bedeckt (`Image.note`): Das Feld wird an den
   Pixelmitten abgetastet, ein Fleck kleiner als wenige Pixel fehlt dann ganz oder teilweise, ohne

@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- `rtt_fusion.portdata` (CAD ADR 0010, D4, Stufe W2a): die Werte auf den Links des Workflows als
+  Dateien – ein JSON-Baum (Datenklassen, Listen, Zahlen; Gleitkommazahlen bitgenau als Hex, auch NaN
+  und ±∞) und je Array eine `.npy`-Datei. Damit rechnet ein Block im Prozess eines anderen Plugins.
+  Beim Lesen entstehen nur Klassen aus `rtt_fusion` und `fieldtracing`. Abnahme W68.
 - L4, Stufe O3 für FourierGrating: `apply_many` nutzt die S-Matrix in der s/p-Basis der Ordnungen
   (FourierGrating `Simulation.smatrix`, FG #4): ein Eigenproblem je Richtung für beide
   Polarisationen statt zweier Lösungen, gleich `apply`. Mit `bloch=True` ein Eigenproblem je

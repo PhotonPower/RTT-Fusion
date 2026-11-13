@@ -130,6 +130,34 @@ def test_w43_linnik_node_wise(transport: str) -> None:
     _same(images[0], images[1])
 
 
+def test_w43_rays_lost_at_the_last_event_of_a_run() -> None:
+    """Rays vignetted at the objective – a run of one event – are lost node-wise as along the
+    whole path (Raytatouille: a ray lost at event j has count = j + 2; for the last event of a
+    run that is count = slots, so "all slots" alone does not mean "passed")."""
+    d = json.loads((DATA / "linnik_mini.rtt.json").read_text(encoding="utf-8"))
+    objective = next(c for c in d["root"]["children"] if c["name"] == "objective")
+    objective["surfaces"][0]["aperture"]["radius"] = 0.05  # cuts most of the beam
+    system = rt.System.from_json(json.dumps(d))
+    images = [
+        _image(
+            graph_from_raytatouille(d), system, "camera", mode, "auto", rings=12, pixels=[48, 48]
+        )[0]
+        for mode in ("paths", "nodes")
+    ]
+    full = json.loads((DATA / "linnik_mini.rtt.json").read_text(encoding="utf-8"))
+    open_ = _image(
+        graph_from_raytatouille(full),
+        rt.System.from_json(json.dumps(full)),
+        "camera",
+        "paths",
+        "auto",
+        rings=12,
+        pixels=[48, 48],
+    )[0]
+    assert images[0].values.sum() < 0.9 * open_.values.sum()  # the aperture does cut
+    _same(images[0], images[1])
+
+
 def test_w43_grating_sample_node_wise(tmp_path: Path) -> None:
     """W22/W23's Linnik with a phase grating as the sample (R19b split path) node-wise."""
     sys.path.insert(0, str(Path(__file__).parent))

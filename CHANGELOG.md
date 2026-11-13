@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Bilder warnen, wenn das Licht zu wenige Pixelmitten bedeckt (`Image.note`): Das Feld wird an den
+  Pixelmitten abgetastet, ein Fleck kleiner als wenige Pixel fehlt dann ganz oder teilweise, ohne
+  dass etwas falsch ist. Die Warnung nennt Pixelgröße, Fleckgröße und ein passendes Fenster. Sie
+  prüft geometrisch, nicht über die Leistung, damit Dunkelheit durch Interferenz nicht warnt.
+  Abnahme W65.
+
 - Ein Raytatouille-System lässt sich ohne Import im Workflow anlegen (`new_system`): eine Quelle mit
   Standard-Einstellungen (mm/µm, d-Linie, Eintrittspupille 4 mm, ein Feldpunkt auf der Achse),
   bearbeitbar wie die eines importierten Systems, ein leerer Baum, eine Blende und ein Detektor aus

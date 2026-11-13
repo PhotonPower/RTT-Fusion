@@ -36,6 +36,9 @@ class Image:
     extent: tuple[float, float, float, float]
     ray_power: float = 0.0  # Σ of the power carried by the rays that reached the plane (W)
     groups: list[CoherenceKey] = field(default_factory=list)
+    #: a warning for the user, empty if none: the light covers too few pixel centres – the field
+    #: is sampled there, so a spot smaller than a few pixels is missed (partly or wholly)
+    note: str = ""
 
     @property
     def pixel_area(self) -> float:
@@ -89,6 +92,8 @@ def coherent_image(
     uu, vv = np.meshgrid(u, v)
     fields: dict[CoherenceKey, ComplexArray] = {}
     ray_power = 0.0
+    covered: list[int] = []  # pixel centres inside the footprint of each bundle
+    spot = [np.inf, -np.inf, np.inf, -np.inf]  # extent of all hits (u0, u1, v0, v1)
     for b in bundles:
         moved, uv = plane.intersect(b)
         alive = np.asarray(moved.alive)
@@ -109,6 +114,13 @@ def coherent_image(
         interp_opl = LinearNDInterpolator(det, opl, fill_value=np.nan)
         a_px = interp_a(uu, vv)
         opl_px = interp_opl(uu, vv)
+        covered.append(int(np.isfinite(opl_px).sum()))
+        spot = [
+            min(spot[0], float(det[:, 0].min())),
+            max(spot[1], float(det[:, 0].max())),
+            min(spot[2], float(det[:, 1].min())),
+            max(spot[3], float(det[:, 1].max())),
+        ]
         e = np.where(
             np.isfinite(opl_px), a_px * np.exp(1j * (b.k0 * np.nan_to_num(opl_px) + phi0)), 0.0
         )
@@ -117,4 +129,37 @@ def coherent_image(
     values = np.zeros((ny, nx))
     for e in fields.values():
         values = values + np.abs(e) ** 2
-    return Image(values, (-half_u, half_u, -half_v, half_v), ray_power, list(fields))
+    note = _undersampled(covered, spot, half_u, half_v, nx, ny)
+    return Image(values, (-half_u, half_u, -half_v, half_v), ray_power, list(fields), note)
+
+
+#: fewer pixel centres than this inside a bundle's footprint: the image misses it (partly)
+MIN_COVERED_PIXELS = 4
+
+
+def _undersampled(
+    covered: list[int], spot: list[float], half_u: float, half_v: float, nx: int, ny: int
+) -> str:
+    """The warning for light that covers too few pixel centres, with a window that fits it.
+    Geometric on purpose: the power in the image may differ from the arriving power by
+    interference (a dark port), which is no reason to warn."""
+    if not covered or min(covered) >= MIN_COVERED_PIXELS:
+        return ""
+    width, height = spot[1] - spot[0], spot[3] - spot[2]
+    reach = max(abs(spot[0]), abs(spot[1]), abs(spot[2]), abs(spot[3]))
+    pixel = max(2 * half_u / nx, 2 * half_v / ny)
+    window = 1.2 * reach  # centred on the detector, as the image is
+    message = (
+        f"the light covers only {min(covered)} pixel centre(s) of the {nx}×{ny} image "
+        f"({pixel:.3g} mm per pixel; the spot is {width:.3g} × {height:.3g} mm), so the image "
+        "misses (part of) it"
+    )
+    if reach > max(half_u, half_v):
+        return (
+            message
+            + " – it lies (partly) outside the window: set the detector's half size to about "
+            + f"{window:.2g} mm"
+        )
+    if window < max(half_u, half_v):
+        return message + f" – set the detector's half size to about {window:.2g} mm"
+    return message + " – use more pixels"

@@ -13,6 +13,7 @@ References, independent of the code under test:
 from __future__ import annotations
 
 import warnings
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -229,3 +230,69 @@ def test_field_errors() -> None:
     g.connect(("src", "out"), ("cam", "in"), "H")
     with pytest.raises(ExecutionError, match="exec.transport_unsupported"):
         Executor(g, reg, ev).evaluate("cam", "image")
+
+
+# ---------------------------------------------------------------------------- W65
+
+
+def _spot_image(half: float, pixels: int = 32, behind: float = 0.05) -> Image:
+    """A ray image (R) of a focus: aplanatic lens f = 2 mm, NA 0.5, detector `behind` the focus
+    (the spot is then about 2·0.5·behind wide)."""
+    f, a = 2.0, 1.0
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    g.add(
+        Node(
+            "src",
+            "optics.collimated_source",
+            params={"radius": a, "rings": 12, "center": [0, 0, -1]},
+        )
+    )
+    g.add(Node("lens", "optics.aplanatic_lens", params={"focal_length": f, "aperture_radius": a}))
+    g.add(
+        Node(
+            "cam",
+            "optics.detector",
+            params={
+                "point": [0, 0, f + behind],
+                "normal": [0, 0, -1],
+                "half_size": [half, half],
+                "pixels": [pixels, pixels],
+            },
+        )
+    )
+    g.connect(("src", "out"), ("lens", "in"))
+    g.connect(("lens", "out"), ("cam", "in"), "R")
+    im: Image = Executor(g, reg, ev).evaluate("cam", "image")
+    return im
+
+
+def test_w65_a_spot_smaller_than_a_pixel_is_noted() -> None:
+    big = _spot_image(5.0)  # 0.31 mm pixels, a spot of about 0.05 mm
+    assert big.ray_power > 0 and big.power < 0.5 * big.ray_power
+    assert "pixel centre" in big.note and "half size to about" in big.note
+    suggested = float(big.note.split("half size to about ")[1].split(" mm")[0])
+    fitted = _spot_image(suggested)  # the window the note suggests
+    assert fitted.note == ""
+    assert fitted.power == pytest.approx(fitted.ray_power, rel=0.1)
+
+
+def test_w65_a_fitting_window_and_interference_are_no_reason() -> None:
+    assert _spot_image(0.05).note == ""
+    # two coherent copies in antiphase: the image is dark by interference, well sampled
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    g.add(
+        Node(
+            "src",
+            "optics.collimated_source",
+            params={"radius": 1.0, "rings": 12, "center": [0, 0, -1]},
+        )
+    )
+    rays = Executor(g, reg, ev).evaluate("src", "out")[0]
+    opposite = replace(rays, amplitude=-np.asarray(rays.amplitude))
+    dark = coherent_image([rays, opposite], Plane.make([0, 0, 0], [0, 0, -1]), 1.5, 1.5, 32, 32)
+    assert dark.ray_power > 0 and dark.power < 1e-9 * dark.ray_power
+    assert dark.note == ""

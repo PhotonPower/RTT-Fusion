@@ -14,7 +14,15 @@ that occur several times are computed once), applied with its PRT matrix
 plane `point`/`normal`; amplitude and phase are exact (FourierGrating refers the reflected wave to
 the entry plane and the transmitted one to the exit plane), the lateral shift inside the stack
 (at most its thickness · tan θ, µm) is left out. Fields (H) reach the block as rays through the
-executor's conversion; the spectral field path follows in stage F4b.
+executor's conversion if a link carries R.
+
+Representation H (stage F4b): the field is propagated into the stack's plane, turned into the
+stack's frame (x = the plane's u, so that anisotropic layers see their axes), sampled on a grid
+with its carrier removed and decomposed into plane waves (`graph.spectral`); every significant,
+propagating plane wave goes through FourierGrating (`apply_many`, exact per direction), and the
+outgoing spectrum is put back on the field's own samples with its phase ψ (the stack keeps k∥).
+Plane waves below `field_threshold` (relative amplitude) and evanescent ones are left out; their
+share of the power is logged.
 
 The stack: a FourierGrating configuration (`fouriergrating`, a JSON file) with homogeneous layers
 only, listed as FourierGrating lists them – from the substrate (back) upwards to the superstrate
@@ -31,7 +39,15 @@ from typing import Any
 import numpy as np
 
 from rtt_fusion.couplings import jones_table as jt
+from rtt_fusion.graph import spectral
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
+from rtt_fusion.graph.field import (
+    FieldBundle,
+    FieldError,
+    field_to_rays,
+    propagate_to,
+    rays_to_field,
+)
 from rtt_fusion.graph.grating import split_prt
 from rtt_fusion.graph.light import Plane, RayBundle
 from rtt_fusion.graph.model import (
@@ -92,6 +108,17 @@ def _handle(ctx: Context, node: Node, wavelength_um: float, from_back: bool) -> 
                 "exec.solver", f"FourierGrating is not installed: {e}", node.id
             ) from e
     return cache[key]
+
+
+def _isotropic(ctx: Context, node: Node) -> bool:
+    """True if every material of the stack is given by an index (no tensor)."""
+    path = str(node.params.get("fouriergrating", ""))
+    try:
+        with open(path, encoding="utf-8") as f:
+            materials = json.load(f).get("materials", {})
+    except (OSError, ValueError):
+        return False
+    return all(set(m) == {"n"} for m in materials.values())
 
 
 def _plane(node: Node) -> Plane:
@@ -169,20 +196,171 @@ def _apply(
     )
 
 
-def stack(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
-    """Light in through one side leaves reflected through it and transmitted through the other."""
+def _in_frame(field: Any, q: Any) -> Any:
+    """A field with its in-plane coordinates turned by the 2x2 rotation q (new = q·old); a gridded
+    field only by a multiple of 90° (its grid stays axis-parallel), else FieldError."""
+    from fieldtracing.field import GridlessField
+
+    if np.allclose(q, np.eye(2), atol=1e-12):
+        return field
+    if not isinstance(field, GridlessField):
+        raise FieldError(
+            "a gridded field whose axes are not those of the stack (anisotropic layers need "
+            "the stack's frame): turn the stack's plane axes onto the field's"
+        )
+    u = np.asarray(field.amplitude)
+    u = np.concatenate([u[:, :2] @ q.T, u[:, 2:]], axis=1)
+    return GridlessField(
+        np.asarray(field.points) @ q.T,
+        np.asarray(field.phase),
+        np.asarray(field.gradient) @ q.T,
+        np.einsum("ij,njk,lk->nil", q, np.asarray(field.hessian), q),
+        np.asarray(u, dtype=np.complex128),
+        float(field.wavelength_um),
+        float(field.refractive_index),
+    )
+
+
+def _to_plane(
+    ctx: Context, node: Node, fb: FieldBundle, plane: Plane, from_back: bool
+) -> FieldBundle:
+    """The field in the stack's plane: geometrically (field -> rays -> field on the plane, as the
+    ray path, keeping ψ) unless the rays have a caustic there – a focus on the stack –, then by
+    Fieldtracing's wave propagation (`field.propagate_to`, possibly a gridded field)."""
+    from fieldtracing.field import GridlessField
+
+    light = np.asarray(plane.normal) * (1.0 if from_back else -1.0)
+    ahead = float((np.asarray(plane.origin) - np.asarray(fb.plane.origin)) @ light)
+    if float(np.asarray(fb.plane.normal) @ light) <= 0 or ahead < -1e-12:
+        raise ExecutionError(
+            "exec.field", "the field does not run into the stack (wrong side or direction)", node.id
+        )
+    if isinstance(fb.field, GridlessField):
+        on = Plane.make(plane.origin, light, plane.v)
+        try:
+            return rays_to_field(field_to_rays(fb), on)
+        except FieldError as e:
+            ctx.log.append(f"{node.id}: {e} – wave propagation onto the stack instead")
+    target, notes = propagate_to(fb, Plane.make(plane.origin, light, plane.v))
+    ctx.log.extend(f"{node.id}: {n}" for n in notes)
+    return target
+
+
+def _apply_field(
+    ctx: Context, node: Node, fb: FieldBundle, plane: Plane, from_back: bool, reflect: bool
+) -> FieldBundle:
+    from fieldtracing.field import GridlessField
+
+    from rtt_fusion.adapters import fouriergrating as fga
+    from rtt_fusion.ports import PlaneWaves
+
+    target = _to_plane(ctx, node, fb, plane, from_back)
+    z = np.asarray(target.plane.normal, dtype=float)
+    light = np.asarray(plane.normal) * (1.0 if from_back else -1.0)
+    if float(z @ light) <= 0:
+        raise ExecutionError("exec.field", "the field does not run into the stack", node.id)
+    x = np.asarray(plane.u) - z * float(np.asarray(plane.u) @ z)
+    x = x / np.linalg.norm(x)
+    y = np.cross(z, x)
+    q = np.array(
+        [[x @ target.plane.u, x @ target.plane.v], [y @ target.plane.u, y @ target.plane.v]]
+    )
+    if not isinstance(target.field, GridlessField) and _isotropic(ctx, node):
+        q = np.eye(2)  # isotropic layers: the frame's orientation in the plane does not matter
+        x, y = np.asarray(target.plane.u), np.asarray(target.plane.v)
+    field = _in_frame(target.field, q)
+    lam = float(field.wavelength_um)
+    handle = _handle(ctx, node, lam, from_back)
+    n_in = handle.front_index.real
+    n_out = n_in if reflect else handle.back_index.real
+    if abs(float(field.refractive_index) - n_in) > 1e-9:
+        ctx.log.append(
+            f"{node.id}: field in index {field.refractive_index}, the stack expects {n_in}"
+        )
+    try:
+        sampled = spectral.sample(field, int(node.params.get("field_grid_max", 1024)))
+    except spectral.SpectralError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
+    grid = sampled.grid
+    spec = spectral.spectrum(sampled.residual)
+    kxx, kyy = grid.frequencies()
+    kx, ky = kxx + grid.carrier[0], kyy + grid.carrier[1]
+    port = fga.front_port(handle, lam)
+    propagating = np.hypot(kx, ky) < n_in * port.k0 * (1.0 - 1e-12)
+    keep = propagating & spectral.significant(
+        spec[..., :2], float(node.params.get("field_threshold", 1e-10))
+    )
+    total = float(np.sum(np.abs(spec[..., :2]) ** 2)) or 1.0
+    dropped = float(np.sum(np.abs(spec[..., :2][~keep]) ** 2)) / total
+    if dropped > 1e-12:
+        ctx.log.append(
+            f"{node.id}: {dropped:.2e} of the field's spectrum left out (evanescent or below "
+            "the threshold)"
+        )
+    rows, cols = np.nonzero(keep)
+    # reflection and transmission come from one solve per field (the two outputs are asked for
+    # separately): the results are kept for the run
+    store = ctx.shared.setdefault("fg_stack_field_results", {})
+    run_key = (node.id, id(fb), from_back)
+    if run_key not in store:
+        c = grid.carrier
+        units = [
+            PlaneWaves(port, np.array([c[0]]), np.array([c[1]]), np.array([u], dtype=complex))
+            for u in ((1.0, 0.0), (0.0, 1.0))
+        ]
+        incident = PlaneWaves(port, kx[rows, cols], ky[rows, cols], spec[rows, cols, :2])
+        try:
+            store[run_key] = (fb, fga.apply_many(handle, [incident, *units]))
+        except (ValueError, RuntimeError) as e:
+            raise ExecutionError("exec.solver", f"FourierGrating: {e}", node.id) from e
+    results = store[run_key][1]
+    side = "front" if reflect else "back"
+    waves = results[0][side]
+    # the carrier wave's transfer (3 x 2): columns for unit x and y input
+    t0 = np.zeros((3, 2), dtype=complex)
+    for j, r in enumerate(results[1:]):
+        w = r[side]
+        if len(w.kx):
+            t0[:2, j] = np.asarray(w.field)[0]
+            t0[2, j] = w.ez()[0]
+    out_spec = np.zeros_like(spec)
+    dk_x = 2.0 * np.pi / (grid.nx * grid.step)
+    dk_y = 2.0 * np.pi / (grid.ny * grid.step)
+    ix = np.rint((np.asarray(waves.kx) - grid.carrier[0]) / dk_x).astype(int) % grid.nx
+    iy = np.rint((np.asarray(waves.ky) - grid.carrier[1]) / dk_y).astype(int) % grid.ny
+    out_spec[iy, ix, :2] = np.asarray(waves.field)
+    out_spec[iy, ix, 2] = waves.ez()
+    new = sampled.back(spectral.inverse(out_spec), n_out, reflect, t0)
+    origin = np.asarray(target.plane.origin)
+    out_plane = Plane(origin, -z, x, -y) if reflect else Plane(origin, z, x, y)
+    return FieldBundle(fb.key, out_plane, new, (*fb.path, f"{node.id}[{'r' if reflect else 't'}]"))
+
+
+def stack(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:
+    """Light in through one side leaves reflected through it and transmitted through the other;
+    rays as rays (R), fields as fields (H)."""
     plane = _plane(node)
     out_side = socket.split("_")[0]
-    out: list[RayBundle] = []
+    out: list[Any] = []
     for in_socket, bundles in inputs.items():
         in_side = in_socket.split("_")[0]
         for b in bundles or []:
+            reflect = in_side == out_side
+            if isinstance(b, FieldBundle):
+                try:
+                    out.append(_apply_field(ctx, node, b, plane, in_side == "back", reflect))
+                except FieldError as e:
+                    raise ExecutionError("exec.field", str(e), node.id) from e
+                continue
             if not isinstance(b, RayBundle):
                 continue
-            result = _apply(ctx, node, b, plane, in_side == "back", in_side == out_side)
+            result = _apply(ctx, node, b, plane, in_side == "back", reflect)
             if result is not None:
                 out.append(result)
     return out
+
+
+stack.representations = frozenset("RH")  # type: ignore[attr-defined]
 
 
 def _frames(node: Node) -> dict[str, PortFrame]:
@@ -215,6 +393,20 @@ TYPE = NodeType(
         ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
         ParamSpec(
             "normal", "point", [0.0, 0.0, 1.0], description="towards the front (superstrate)"
+        ),
+        ParamSpec(
+            "field_threshold",
+            "number",
+            1e-10,
+            group="Field path",
+            description="plane waves below this share of the largest amplitude are left out (H)",
+        ),
+        ParamSpec(
+            "field_grid_max",
+            "integer",
+            1024,
+            group="Field path",
+            description="at most this many grid points per axis for a field (H)",
         ),
     ),
     (

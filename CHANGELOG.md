@@ -6,12 +6,21 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Geändert
 
+- Eine Verbindung mit Transport R liefert Strahlen, auch wenn der Block davor ein Feld ausgibt
+  (vorher kam das Feld bei einem Empfänger, der Felder nimmt, als Feld an).
+
 - Der Gitterblock heißt jetzt `fg.grating` (vorher `fusion.grating`; CAD ADR 0010, Entscheidung 3:
   Typkennungen tragen das Präfix ihres Plugins). In Raytatouille Fusion liefert ihn das
   FourierGrating-Plugin (W4). Ältere Dateien laden weiter: `io.TYPE_ALIASES` bildet alte
   Kennungen beim Laden auf die neuen ab, gespeichert wird die neue. Abnahme W72.
 
 ### Hinzugefügt
+
+- `fg.stack` nimmt Felder (H, Stufe F4b): das Feld wird in die Ebene des Stapels gebracht
+  (geometrisch, bei einem Fokus auf dem Stapel durch Wellenausbreitung), ohne seinen Träger auf
+  ein Gitter gelegt, in ebene Wellen zerlegt, jede signifikante Welle exakt von FourierGrating
+  durchgerechnet und auf die eigenen Stützstellen des Feldes zurückgelegt (ψ bleibt).
+  `graph.spectral` hält das für den Feldoperator des Gitters (F1) bereit. Abnahme ST3, GF6.
 
 - Block `fg.stack` (ADR Gitter als Feldoperator und Schichtstapel, Stufe F4a): lateral invarianter
   Stapel homogener Schichten (Beschichtung, Filter, Spiegelschichten) zwischen zwei Medien,

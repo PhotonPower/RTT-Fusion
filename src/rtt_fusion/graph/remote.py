@@ -146,12 +146,14 @@ class RemoteEvaluator:
             }
             try:
                 response = self.call(self.provider, request)
-            except Exception as e:  # noqa: BLE001 - the channel: the provider stopped, …
+            except Exception as e:
                 raise ExecutionError("exec.remote", f"{self.provider}: {e}", node.id) from e
             ctx.log.extend(str(x) for x in response.get("log", []))
             if not response.get("ok"):
                 raise ExecutionError(
-                    "exec.remote", f"{self.provider}: {response.get('error', 'evaluation failed')}", node.id
+                    "exec.remote",
+                    f"{self.provider}: {response.get('error', 'evaluation failed')}",
+                    node.id,
                 )
             return portdata.read(response["outputs"], folder / "out")
         finally:

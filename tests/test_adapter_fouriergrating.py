@@ -8,6 +8,7 @@ grating equation, energy conservation, reciprocity, and the BWPM adapter as a se
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import numpy as np
 import pytest
@@ -279,3 +280,52 @@ def test_l4_apply_many_equals_apply() -> None:
             assert (
                 np.abs(a[side].field - b[side].field).max() <= 1e-12 * np.abs(a[side].field).max()
             )
+
+
+def test_l4_o3_one_eigen_solve_per_direction() -> None:
+    """L4 O3: with FourierGrating's S-matrix (FG Plan eq:Ssp) both polarisations of a direction take
+    one eigen-solve and no solve; the result equals apply to rounding. With `bloch` the waves of one
+    Bloch family (α₀ + n λ/Λ) share one eigen-solve; an off-centre column sees a shifted truncation,
+    so it equals apply only to the truncation error, with the orders counted from its own
+    incidence."""
+    handle = fga.prepare(fga.Structure(_config(GRATING, nx=6)), [LAM])
+    sim = fga._simulation(handle, LAM)
+    if not hasattr(sim, "smatrix"):
+        pytest.skip("FourierGrating without Simulation.smatrix")
+    calls = {"smatrix": 0, "solve": 0}
+    smatrix, solve = sim.smatrix, sim.solve
+
+    def count_smatrix(*args: Any, **kwargs: Any) -> Any:
+        calls["smatrix"] += 1
+        return smatrix(*args, **kwargs)
+
+    def count_solve(*args: Any, **kwargs: Any) -> Any:
+        calls["solve"] += 1
+        return solve(*args, **kwargs)
+
+    base = _incident(handle, 0.2, 0.0, (1.0, 0.0))
+    step = 2 * np.pi / 0.7e-3  # reciprocal lattice vector (1/mm)
+    incidents = [
+        PlaneWaves(
+            base.port,
+            np.array([base.kx[0] + n * step]),
+            base.ky.copy(),
+            np.array([e], dtype=np.complex128),
+        )
+        for n, e in ((0, (1.0, 0.0)), (-1, (0.3, 0.7j)), (0, (0.0, 1.0)))
+    ]
+    reference = [fga.apply(handle, inc) for inc in incidents]
+    for bloch, eigen_solves, tol in ((False, 2, 1e-12), (True, 1, 2e-2)):
+        calls.update(smatrix=0, solve=0)
+        sim.smatrix, sim.solve = count_smatrix, count_solve
+        many = fga.apply_many(handle, incidents, bloch=bloch)
+        sim.smatrix, sim.solve = smatrix, solve
+        assert calls == {"smatrix": eigen_solves, "solve": 0}
+        for a, b in zip(reference, many, strict=True):
+            for side in ("front", "back"):
+                assert np.array_equal(a[side].kx, b[side].kx)
+                orders_a, orders_b = a[side].orders, b[side].orders
+                assert orders_a is not None and orders_b is not None
+                assert np.array_equal(orders_a, orders_b)
+                scale = np.abs(a[side].field).max()
+                assert np.abs(a[side].field - b[side].field).max() <= tol * scale

@@ -31,7 +31,8 @@ a system path that starts in the same block), the detector images what arrives. 
 their branch and position in it (`RayBundle.branch`), so a block passed twice takes the right run
 and a block that replaced a Raytatouille block (R19b) acts in between, placed where the replaced
 surface was. Rays lost on the way stay in the bundle, marked dead (the image triangulates over the
-start grid); a ray that starts on or behind a run's first surface is lost, as along a whole path.
+start grid); a ray that starts on or behind a run's first surface misses it (Raytatouille), as
+along a whole path.
 On an H link the bundle gets the medium behind its last surface. Chosen with
 shared["rtt_execution"] = "nodes", or automatically when a branch of the model is no path of the
 system; "paths" (and "auto" otherwise) keeps whole paths. Node-wise equals whole paths to rounding
@@ -60,6 +61,13 @@ from rtt_fusion.graph.optics import hexapolar
 from rtt_fusion.graph.planner import link_key
 from rtt_fusion.graph.pose import angles_xyz, offset_of, rotation_xyz
 from rtt_fusion.graph.validate import node_sockets
+
+
+def _passed(rec: Any) -> Any:
+    """Rays that passed every event of a recorded path. Raytatouille gives a ray lost at event j
+    count = j + 2 slots and lost_at = j – for the last event that is count = slots too, so the
+    loss index decides."""
+    return (np.asarray(rec.count) == rec.slots) & (np.asarray(rec.lost_at) == -1)
 
 
 def _offsets(ctx: Context) -> dict[str, list[float]]:
@@ -446,7 +454,7 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
                 count = np.asarray(rec.count)
                 idx = np.asarray(rec.ray_indices)
                 last = count - 1
-                reached = count == rec.slots
+                reached = _passed(rec)
                 rows = np.arange(len(idx))
                 weight = np.asarray(rec.weight)[rows, last]
                 bundles.append(
@@ -622,7 +630,7 @@ def _split_path(
         max_recorded_rays=max(rays.size, 1),
         polarization=True,
     )
-    rows = np.flatnonzero(np.asarray(rec_a.count) == rec_a.slots)
+    rows = np.flatnonzero(_passed(rec_a))
     if rows.size < 3:
         return []
     idx = np.asarray(rec_a.ray_indices)
@@ -731,14 +739,7 @@ def _trace_run(
         max_recorded_rays=max(rays.size, 1),
         polarization=True,
     )
-    reached = np.asarray(rec.count) == rec.slots
-    if keep_all and rec.slots > 1:
-        # a ray that starts on or behind the run's first surface "hits" it at distance zero;
-        # along a whole path Raytatouille drops it – so does the run (node-wise = whole path)
-        step = np.linalg.norm(
-            np.asarray(rec.position)[:, 1] - np.asarray(rec.position)[:, 0], axis=1
-        )
-        reached &= ~(step < 1e-9)
+    reached = _passed(rec)  # also a ray that starts on or behind the run's first surface: missed
     rows = np.flatnonzero(reached)
     if rows.size < 3:
         return []
@@ -909,9 +910,8 @@ def _fields(
     apod: Any,
 ) -> list[FieldBundle]:
     """Fields right after the last surface before the detector, one per input polarisation."""
-    count = np.asarray(rec.count)
     idx = np.asarray(rec.ray_indices)
-    reached = count == rec.slots
+    reached = _passed(rec)
     if reached.sum() < 6 or rec.slots < 3:
         return []
     rows = np.flatnonzero(reached)

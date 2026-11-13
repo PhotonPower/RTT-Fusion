@@ -267,6 +267,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Raytatouille-Backend: Ein Strahl galt als angekommen, wenn er alle Plätze des aufgezeichneten
+  Pfads füllte. Raytatouille gibt aber auch einem Strahl, der am letzten Ereignis verloren geht,
+  alle Plätze (`count = j + 2`). Knotenweise liefen so z. B. an der letzten Fläche eines Laufs
+  abgeschattete Strahlen weiter (Linnik mit kleiner Objektivapertur: 289 statt 79). Jetzt zählt
+  zusätzlich `lost_at == -1`, an allen vier Stellen. Die Sonderregel für Strahlen, die auf oder
+  hinter der ersten Fläche eines Laufs starten, entfällt: Raytatouille meldet sie als verfehlt;
+  sie war kein Unterschied zwischen ganzem Pfad und Teilpfad, sondern dieser Lesefehler (W43b).
 - `system_from_model` las nur die oberste Ebene: Raytatouille-Blöcke in Gruppen fehlten im erzeugten
   System (das Zeichnen im CAD verlor sie). Gruppen zählen jetzt mit ihrer aktiven Variante, aufgelöst
   wie zum Rechnen (W61).

@@ -146,13 +146,14 @@ def apply(
     transfer: str = "exact",
     tolerance: float = 1e-8,
     log: list[str] | None = None,
+    cache: dict[tuple[float, float], Any] | None = None,
 ) -> Applied:
     """Every significant, propagating plane wave of `field` (in the block's frame, light along +z)
     through FourierGrating; per side ("front": reflected, "back": transmitted) and order (n, m) an
     outgoing field object (GridlessField or GriddedField) in the frame of its side. `orders`
-    selects orders (default: all). SpectralError, ValueError from FourierGrating pass through."""
+    selects orders (default: all); `cache` keeps the transfer per direction across calls with the
+    same handle and order selection. SpectralError, ValueError from FourierGrating pass through."""
     from rtt_fusion.adapters import fouriergrating as fga
-    from rtt_fusion.ports import PlaneWaves
 
     lam = float(field.wavelength_um)
     sampled = spectral.sample(field, grid_max)
@@ -174,38 +175,34 @@ def apply(
         )
         if done is not None:
             return Applied(_back(handle, sampled, done[0], done[1], n_in), dropped)
-    incidents = [
-        PlaneWaves(port, kx[r : r + 1, k], ky[r : r + 1, k], spec[r, k : k + 1, :2])
+    # exact: the transfer T (3 × 2 per side and order) of every bin from FourierGrating – one
+    # S-matrix per direction serves both polarisations – applied to the spectrum; T depends on the
+    # direction only, so `cache` keeps it for further fields of the same geometry (the other
+    # polarisation, the next run)
+    cache = cache if cache is not None else {}
+    keys = [
+        (round(float(kx[r, k]), 9), round(float(ky[r, k]), 9))
         for r, k in zip(rows, cols, strict=True)
     ]
-    units = [
-        PlaneWaves(port, np.array([c[0]]), np.array([c[1]]), np.array([u], dtype=complex))
-        for u in ((1.0, 0.0), (0.0, 1.0))
-    ]
-    results = fga.apply_many(handle, [*incidents, *units])
+    carrier_key = (round(float(c[0]), 9), round(float(c[1]), 9))
+    missing = sorted({*keys, carrier_key} - set(cache))
+    if missing:
+        found = _transfer_at(
+            handle,
+            port,
+            np.array([m[0] for m in missing]),
+            np.array([m[1] for m in missing]),
+            orders,
+        )
+        cache.update(zip(missing, found, strict=True))
+    elif log is not None:
+        log.append("transfer of every plane wave from the cache")
     specs: dict[tuple[str, tuple[int, int]], ComplexArray] = {}
-    for j, (r, k) in enumerate(zip(rows, cols, strict=True)):
-        for side, waves in results[j].items():
-            if waves.orders is None:
-                continue
-            ez = waves.ez()
-            for i, o in enumerate(waves.orders):
-                order = (int(o[0]), int(o[1]))
-                if orders is not None and not orders(*order):
-                    continue
-                s = specs.setdefault((side, order), np.zeros_like(spec))
-                s[r, k, :2] = np.asarray(waves.field)[i]
-                s[r, k, 2] = ez[i]
-    t0: dict[tuple[str, tuple[int, int]], ComplexArray] = {}
-    for j, unit_result in enumerate(results[len(incidents) :]):
-        for side, waves in unit_result.items():
-            if waves.orders is None:
-                continue
-            ez = waves.ez()
-            for i, o in enumerate(waves.orders):
-                m = t0.setdefault((side, (int(o[0]), int(o[1]))), np.zeros((3, 2), dtype=complex))
-                m[:2, j] = np.asarray(waves.field)[i]
-                m[2, j] = ez[i]
+    for key, r, k in zip(keys, rows, cols, strict=True):
+        for so, t in cache[key].items():
+            s_ = specs.setdefault(so, np.zeros_like(spec))
+            s_[r, k] = t @ spec[r, k, :2]
+    t0 = cache[carrier_key]
     return Applied(_back(handle, sampled, specs, t0, n_in), dropped)
 
 
@@ -284,6 +281,7 @@ def _interpolated(
     ay = np.fft.fftshift(ky[:, 0])
     rng = np.random.default_rng(0)
     t0 = _transfer_at(handle, port, np.array([carrier[0]]), np.array([carrier[1]]), orders)[0]
+    previous = None
     for stride in (16, 8, 4, 2):
         ix = np.unique(np.r_[np.arange(0, nx, stride), nx - 1])
         iy = np.unique(np.r_[np.arange(0, ny, stride), ny - 1])
@@ -330,5 +328,15 @@ def _interpolated(
                 s[rows, cols] = np.einsum("nij,nj->ni", t, spec[rows, cols, :2])
                 specs[key] = s
             return specs, t0
+        if previous is not None and error > previous / 2:
+            # a smooth T loses ~16× per halving (cubic, h⁴), a kink ~1–2× (random check points:
+            # give up below 2×): a kink – an order appearing or a Wood
+            # anomaly inside the spectrum – does not converge; the exact path at once
+            log.append(
+                f"interpolated transfer: no convergence ({previous:.1e} → {error:.1e}), T has a "
+                "kink inside the spectrum (Rayleigh/Wood anomaly) – exact"
+            )
+            return None
+        previous = error
     log.append("interpolated transfer: not within the tolerance on a stride-2 sub-grid – exact")
     return None

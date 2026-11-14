@@ -388,3 +388,86 @@ def test_gf3_orders_superpose_with_the_right_phases(tmp_path: Any) -> None:
     assert len(x) > 20 and float(np.max(np.abs(near - ref))) < 3e-3 * scale
     intensity = np.sum(np.abs(ref) ** 2, axis=1)
     assert float(intensity.max() - intensity.min()) > 0.05 * float(intensity.max())  # a pattern
+
+
+# ------------------------------------------------------------------ the Linnik (stage F3, GF5)
+def test_gf5_linnik_with_a_grating_sample_in_the_field_path(tmp_path: Any) -> None:
+    """GF5: the Linnik (`linnik_mini`) with a dielectric phase grating as its sample (Λ = 10 µm,
+    orders −1, 0, 1), node-wise, once with rays through the grating (Jones table built around them)
+    and once with fields on both of its links (the grating's field operator; rays → field before it,
+    field → rays after it, the branch kept). Small NA: the camera images agree inside the lit area
+    (1 %; the field's support ends at its outermost samples, so the rim of the lit area – one
+    pixel – is left out) and in power (8 %, the rim); the image shows the grating (content
+    guard)."""
+    import json
+    import warnings
+
+    from scipy.ndimage import binary_erosion
+
+    from rtt_fusion.graph import backend_rtt, graph_from_raytatouille, grating, replace_block
+    from rtt_fusion.graph.execute import WITH_FIELDS
+
+    rt = pytest.importorskip("raytatouille")
+    d = json.loads((Path(__file__).parent / "data" / "linnik_mini.rtt.json").read_text("utf-8"))
+    cfg = {
+        "dimension": "1D",
+        "solver": "rcwa",
+        "truncation": {"Nx": 20},
+        "period_um": {"x": 10.0},
+        "materials": {"air": {"n": 1.0}, "glass": {"n": 1.5}},
+        "superstrate": "air",
+        "substrate": "glass",
+        "layers": [
+            {
+                "type": "lamellar1d",
+                "thickness_um": 0.15,
+                "breakpoints_um": [0, 5.0, 10.0],
+                "materials": ["glass", "air"],
+            }
+        ],
+    }
+    path = tmp_path / "grating.json"
+    path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    def camera(fields: bool) -> Any:
+        g = graph_from_raytatouille(d)
+        reg = builtin_registry()
+        ev = dict(backend_rtt.EVALUATORS)
+        ev.update(grating.register(reg))
+        params = {
+            "fouriergrating": str(path),
+            "side": "reflected",
+            "orders": [-1, 0, 1],
+            "field_transfer": "interpolated",
+        }
+        replace_block(g, reg, "sample", Node("sample", "fg.grating", params=params))
+        if fields:
+            for lk in list(g.links):
+                if "sample" in (lk.source[0], lk.target[0]):
+                    g.set_transport(lk, "H")
+        shared = {
+            "system": rt.System.from_json(json.dumps(d)),
+            "rings": 6,
+            "pixels": [256, 8],
+            "rtt_execution": "nodes",
+        }
+        ex = Executor(g, reg, ev, shared, available=WITH_FIELDS)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return ex.evaluate("camera", "image")
+
+    by_rays, by_fields = camera(False), camera(True)
+    a, b = np.asarray(by_rays.values), np.asarray(by_fields.values)
+    top = float(a.max())
+    lit = (a > 0.05 * top) & (b > 0.05 * top)
+    core = binary_erosion(lit, iterations=1)
+    assert int(core.sum()) > 200
+    assert float(np.abs(b - a)[core].max()) < 0.01 * top
+    # the power differs by the rim the field leaves out (it ends at its outermost samples; how many
+    # rays survive right at the aperture's edge varies a little between platforms: 2.6 % on macOS,
+    # 5.5 % on Linux) – the edge refinement of the start rays (#69) does not reach a field made on a
+    # link of a node-wise run
+    assert by_fields.power == pytest.approx(by_rays.power, rel=0.08)
+    row = a[a.shape[0] // 2]
+    inside = row > 0.05 * top
+    assert float(row[inside].max() - row[inside].min()) > 0.2 * top  # the grating's fringes

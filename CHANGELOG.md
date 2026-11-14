@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Leistung eines Felds hängt nicht mehr von der Ringzahl ab, wenn eine Blende die abgetastete
+  Pupille beschneidet (Nebenbefund in #69): Ein Feld reicht nur bis zu seinen äußersten
+  Stützstellen, mit dem Ringraster allein also bis zu einem Ringabstand vor der wahren Kante. Für
+  Felder (H) bekommen die Startstrahlen jetzt Punkte an der Kante (Bisektion zwischen benachbarten
+  Strahlen, von denen einer durchkommt und einer verloren geht, `PointListPupil`). Beispiel: eine
+  Blende, die 0,7² der Pupille freigibt, gab vorher 4/9 (Raster), jetzt 0,490 bei 6 und 12 Ringen.
+
 - Meta-Blöcke wirken auf Blöcke anderer Prozesse (#70): Ein `meta.sweep`, `meta.replicates` oder
   `meta.optimise`, der einen Parameter eines `rtt.*`-Blocks ändert (Antrieb, Pose, Parameter),
   blieb wirkungslos, wenn die Blöcke ein anderer Prozess rechnet (in Raytatouille Fusion der

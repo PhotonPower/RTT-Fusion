@@ -309,15 +309,27 @@ def _compiled(ctx: Context) -> Any:
 
 
 def _start_rays(
-    ctx: Context, compiled: Any, path: str, rings: int, field: int, wavelength: int
+    ctx: Context,
+    compiled: Any,
+    path: str,
+    rings: int,
+    field: int,
+    wavelength: int,
+    points: tuple[Any, Any] | None = None,
 ) -> Any:
-    """Rays of one field point and wavelength: make_rays, or start rays over the stop / EPD."""
+    """Rays of one field point and wavelength: make_rays, or start rays over the stop / EPD; on the
+    hexapolar grid of `rings`, or at the normalised pupil `points` (px, py) if given."""
     import raytatouille as rt
 
+    sampling = (
+        rt.trace.HexapolarPupil(rings=rings)
+        if points is None
+        else rt.trace.PointListPupil([float(v) for v in points[0]], [float(v) for v in points[1]])
+    )
     try:
         return rt.trace.make_rays(
             compiled,
-            rt.trace.HexapolarPupil(rings=rings),
+            sampling,
             path=path,
             fields=[field],
             wavelength=wavelength,
@@ -357,7 +369,7 @@ def _start_rays(
         ]
     )
     direction /= np.linalg.norm(direction)
-    px, py = hexapolar(rings)
+    px, py = hexapolar(rings) if points is None else (np.asarray(points[0]), np.asarray(points[1]))
     on_plane = np.stack([px * radius, py * radius, np.zeros_like(px)], -1) @ rot.T + centre
     start = on_plane - direction * (1.0 if first.kind != "stop" else 1.0 + radius)
     rays = rt.trace.RayBatch(len(px))
@@ -375,6 +387,62 @@ def _start_rays(
     np.asarray(rays.field)[:] = field
     np.asarray(rays.wl)[:] = wavelength
     return rays
+
+
+#: bisection steps that put the start rays at a clipping edge (the edge then lies within 1/64 of a
+#: ring spacing)
+EDGE_STEPS = 6
+
+
+def _edge_refined(
+    ctx: Context, compiled: Any, path: str, rings: int, field: int, wavelength: int
+) -> Any:
+    """Start rays on the hexapolar grid plus rays at the edges where an aperture clips the sampled
+    pupil (#69): a field (H) reaches only as far as its outermost samples, so with the grid alone
+    its lit area – and its power – ends up to a ring spacing inside the true edge, depending on how
+    the grid falls on it. For every pair of neighbouring start rays (Delaunay in the pupil) of which
+    one passes and one is lost, `EDGE_STEPS` bisections find the edge; the innermost passing point
+    of each pair joins the start rays."""
+    import raytatouille as rt
+    from scipy.spatial import Delaunay, QhullError
+
+    rays = _start_rays(ctx, compiled, path, rings, field, wavelength)
+    pts = np.stack([np.asarray(rays.pupil_x), np.asarray(rays.pupil_y)], -1).copy()
+
+    def passing(q: Any) -> Any:
+        probe = _start_rays(ctx, compiled, path, rings, field, wavelength, (q[:, 0], q[:, 1]))
+        _, rec = rt.trace.trace(
+            compiled, probe, path=path, record_path=True, max_recorded_rays=max(probe.size, 1)
+        )
+        ok = np.zeros(len(q), dtype=bool)
+        ok[np.asarray(rec.ray_indices)] = _passed(rec)
+        return ok
+
+    alive = passing(pts)
+    if alive.all() or not alive.any():
+        return rays
+    try:
+        tri = Delaunay(pts).simplices
+    except QhullError:
+        return rays
+    edges = np.unique(
+        np.sort(np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [0, 2]]]), axis=1), axis=0
+    )
+    edges = edges[alive[edges[:, 0]] != alive[edges[:, 1]]]
+    inside = np.where(alive[edges[:, 0]], edges[:, 0], edges[:, 1])
+    outside = np.where(alive[edges[:, 0]], edges[:, 1], edges[:, 0])
+    a, b = pts[inside], pts[outside]
+    for _ in range(EDGE_STEPS):
+        m = 0.5 * (a + b)
+        ok = passing(m)
+        a = np.where(ok[:, None], m, a)
+        b = np.where(ok[:, None], b, m)
+    moved = np.any(np.abs(a - pts[inside]) > 0, axis=1)
+    extra = np.unique(np.round(a[moved], 12), axis=0)
+    if len(extra) == 0:
+        return rays
+    both = np.concatenate([pts, extra])
+    return _start_rays(ctx, compiled, path, rings, field, wavelength, (both[:, 0], both[:, 1]))
 
 
 def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
@@ -430,7 +498,11 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
         for field in range(compiled.field_count):
             for wl in range(len(compiled.wavelengths_um)):
                 tick(path, field, wl)
-                rays = _start_rays(ctx, compiled, path, rings, field, wl)
+                rays = (
+                    _edge_refined(ctx, compiled, path, rings, field, wl)
+                    if fields_wanted
+                    else _start_rays(ctx, compiled, path, rings, field, wl)
+                )
                 pupil = np.stack([np.asarray(rays.pupil_x), np.asarray(rays.pupil_y)], -1).copy()
                 apod = (
                     np.exp(-np.sum(pupil * pupil, axis=1) / waist**2)

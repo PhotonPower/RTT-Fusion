@@ -14,6 +14,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   abweichen; der Lieferant setzt seine Kopie vor dem Auswerten auf vorbereitete Parameter plus
   diese Änderungen. Abnahme W74.
 
+- Felder (H) außeraxialer Feldpunkte fokussieren richtig (#69): Raytatouille startet die Strahlen
+  eines Feldpunkts im Unendlichen mit OPL 0 auf ihrer Startebene, die nur auf der Achse ihre
+  Wellenfront ist. Der Raytatouille-Backend gibt den parallelen Startstrahlen jetzt die Phase der
+  ebenen Welle mit, n·d̂·(p − p_ref) mit dem Index des Objektraums; vorher widersprach ψ = k₀·OPL
+  den Strahlrichtungen um etwa 90 rad über die Pupille, und Kamerabilder im Feldpfad lagen bis zu
+  0,2 mm daneben mit 5- bis 25-fach zu niedriger Spitze. Die Quelle im knotenweisen Lauf trägt
+  zudem den Brechungsindex des Objektraums.
+
 ### Geändert
 
 - Felder werden bikubisch mit FITPACK (`spectral.bicubic`) auf ihre Stützstellen zurückgelegt;

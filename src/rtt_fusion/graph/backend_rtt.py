@@ -463,7 +463,8 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
                         wavelength_um=float(compiled.wavelengths_um[wl]),
                         position=np.asarray(rec.position)[rows, last],
                         direction=np.asarray(rec.direction)[rows, last],
-                        opl=np.asarray(rec.opl)[rows, last],
+                        opl=np.asarray(rec.opl)[rows, last]
+                        + _start_opl(rec, rows, _object_index(compiled, wl)),
                         amplitude=(np.sqrt(np.clip(weight, 0.0, None)) * apod[idx]).astype(complex),
                         source_xy=pupil[idx],
                         alive=reached,
@@ -654,7 +655,8 @@ def _split_path(
         wavelength_um=float(compiled.wavelengths_um[wl]),
         position=np.asarray(rec_a.position)[rows, last],
         direction=k_a,
-        opl=np.asarray(rec_a.opl)[rows, last],
+        opl=np.asarray(rec_a.opl)[rows, last]
+        + _start_opl(rec_a, rows, _object_index(compiled, wl)),
         # the field is amplitude·prt·jones; the splitter's factors are in prt (power-normalised
         # P), the polarisation-independent ones (s) in the amplitude; the block that follows
         # splits the field again into scalar and prt
@@ -859,6 +861,37 @@ def _input_representation(ctx: Context, node: Node) -> str:
     return ctx.plan.representations.get(link_key(links[0]), "R")
 
 
+def _object_index(compiled: Any, wl: int) -> float:
+    """Refractive index of object space (the system's ambient medium, the first of
+    `compiled.media`) at wavelength `wl`; 1 without media."""
+    media = list(getattr(compiled, "media", []) or [])
+    if not media:
+        return 1.0
+    index = media[0].index
+    return float(np.real(index[min(int(wl), len(index) - 1)]))
+
+
+def _start_opl(rec: Any, rows: Any, n: float) -> Any:
+    """The optical path the start rays carry already (issue #69): Raytatouille starts every ray with
+    OPL 0 on its start plane; for a field point at infinity the start rays are parallel and that
+    plane is not their wavefront unless the field point is on the axis. The plane wave's own phase
+    is n·d̂·(p − p_ref) with the start positions p, the common direction d̂ and the index n of object
+    space (not estimated from the first segment: an ideal lens as first surface adds its phase
+    there); without it ψ = k₀·OPL contradicts the rays' directions (∇ψ = k n d̂⊥) and a field (H)
+    focuses wrongly. The reference p_ref = (0, 0, z̄₀) – the axis at the mean start height of all
+    recorded rays – depends on the start rays only, not on which of them survive, so that every
+    path (e.g. both arms of an interferometer) has the same phase reference; on the axis (d̂ = ẑ,
+    start rays on one plane) the term vanishes. Rays that do not start parallel (a point source)
+    keep 0."""
+    start = np.asarray(rec.position)[:, 0]
+    pos = start[rows]
+    d = np.asarray(rec.direction)[rows, 0]
+    if len(rows) == 0 or float(np.max(np.linalg.norm(d - d[0], axis=1))) > 1e-12:
+        return np.zeros(len(rows))
+    ref = np.array([0.0, 0.0, float(np.mean(start[:, 2]))])
+    return np.asarray(n * ((pos - ref) @ d[0]))
+
+
 def _segment_index(rec: Any, rows: Any, a: Any, b: Any) -> float:
     """Refractive index of the segment between slots a and b: ΔOPL / length (median)."""
     pos = np.asarray(rec.position)
@@ -936,7 +969,7 @@ def _fields(
         wavelength_um=float(compiled.wavelengths_um[wl]),
         position=np.asarray(rec.position)[rows, port],
         direction=k_out,
-        opl=np.asarray(rec.opl)[rows, port],
+        opl=np.asarray(rec.opl)[rows, port] + _start_opl(rec, rows, _object_index(compiled, wl)),
         amplitude=(np.sqrt(np.clip(s / 2.0, 0.0, None)) * np.asarray(apod)[idx[rows]]).astype(
             complex
         ),
@@ -1276,6 +1309,8 @@ def _source_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any])
     """Start bundles of every branch leaving through `socket`: two input polarisations
     (unpolarised source) per field point and wavelength, aimed along a system path. Places the
     replaced blocks first (they are evaluated after the source)."""
+    import raytatouille as rt
+
     if not _nodewise(ctx):
         return []
     _place_foreign(ctx)
@@ -1311,6 +1346,16 @@ def _source_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any])
                 direction = np.stack(
                     [np.asarray(rays.dir_x), np.asarray(rays.dir_y), np.asarray(rays.dir_z)], -1
                 ).copy()
+                # the start rays' own optical path (#69), with the index of the first segment; the
+                # trace moves the rays along, so it comes after their start is copied
+                _, rec0 = rt.trace.trace(
+                    compiled, rays, path=aim, record_path=True, max_recorded_rays=max(rays.size, 1)
+                )
+                start_opl = np.zeros(len(pupil))
+                n_obj = _object_index(compiled, wl)
+                start_opl[np.asarray(rec0.ray_indices)] = _start_opl(
+                    rec0, np.arange(len(np.asarray(rec0.ray_indices))), n_obj
+                )
                 k0 = direction.mean(axis=0)
                 k0 = k0 / np.linalg.norm(k0)
                 seed = np.eye(3)[int(np.argmin(np.abs(k0)))]
@@ -1323,7 +1368,9 @@ def _source_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any])
                     wavelength_um=float(compiled.wavelengths_um[wl]),
                     position=position,
                     direction=direction,
-                    opl=np.zeros(n),
+                    opl=start_opl,
+                    index=n_obj,
+                    source_index=n_obj,
                     amplitude=(np.sqrt(0.5) * apod).astype(complex),
                     source_xy=pupil,
                     alive=np.ones(n, dtype=bool),

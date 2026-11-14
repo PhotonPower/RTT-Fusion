@@ -226,3 +226,20 @@ Bei der Umsetzung zeigten sich drei Punkte, die den Abschnitt 2 genauer fassen:
    Stützstellen ohne Interpolation, gleich der Überlagerung der Ordnungen einer ebenen Welle
    (3·10⁻³, die Winkelbreite des Gauß-Strahls). Ein falscher Phasenbezug gäbe Abweichungen der
    Größenordnung 1.
+
+## Nachtrag 3 (Umsetzung F3, 2026-11-14)
+
+1. **Linnik im Feldpfad.** Mit Transport H auf beiden Verbindungen der Probe wird das Licht im
+   knotenweisen Lauf vor dem Gitter zum Feld (in der Austrittsebene des Objektivs) und danach
+   wieder zu Strahlen; dafür trägt `FieldBundle` den Ast der Strahlen. GF5 (kleine NA): das
+   Kamerabild gleicht dem des Strahlpfads im Inneren auf 1 %, die Leistung auf 3 %.
+2. **Rand des Felds.** Ein Feld reicht bis zur Hülle seiner Stützstellen; wo eine Blende die
+   abgetastete Pupille beschneidet, liegt diese Hülle bis zu einem Ringabstand innerhalb der
+   wahren Kante. Am Rand des beleuchteten Bereichs fehlen dann Pixel, und die Leistung hängt von
+   der Ringzahl ab (Nebenbefund in #69). Abhilfe folgt eigens: Kantenverfeinerung der Startstrahlen
+   (Bisektion zwischen überlebenden und verlorenen Nachbarn, `PointListPupil`).
+3. **Kosten.** Ein Gitter mit Λ = 10 µm unter ±2,5° Beleuchtung hat Rayleigh-/Wood-Anomalien hoher
+   Ordnungen im Spektrum; der Übertrag lässt sich dort nicht interpolieren und wird je Richtung
+   exakt gerechnet (15 ms bei 41 Ordnungen). Der Übertrag wird je Richtung zwischengespeichert,
+   die Interpolation gibt bei fehlender Konvergenz früh auf. linnik_mini mit 6 Ringen: 95 s, mit
+   15 Ringen etwa 10 min.

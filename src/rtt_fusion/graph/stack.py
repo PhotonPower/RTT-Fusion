@@ -238,6 +238,9 @@ def _apply_field(
                 grid_max=int(node.params.get("field_grid_max", 1024)),
                 transfer=str(node.params.get("field_transfer", "exact")),
                 log=log_lines,
+                cache=ctx.shared.setdefault("fg_stack_transfers", {}).setdefault(
+                    handle.content_hash, {}
+                ),
             )
         except spectral.SpectralError as e:
             raise ExecutionError("exec.field", str(e), node.id) from e
@@ -256,7 +259,8 @@ def _apply_field(
         raise ExecutionError("exec.field", "no light leaves on this side", node.id)
     origin = np.asarray(target.plane.origin)
     out_plane = Plane(origin, -fr.z, fr.x, -fr.y) if reflect else Plane(origin, fr.z, fr.x, fr.y)
-    return FieldBundle(fb.key, out_plane, new, (*fb.path, f"{node.id}[{'r' if reflect else 't'}]"))
+    label = f"{node.id}[{'r' if reflect else 't'}]"
+    return FieldBundle(fb.key, out_plane, new, (*fb.path, label), fb.branch)
 
 
 def stack(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:

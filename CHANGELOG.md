@@ -37,6 +37,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Linnik im Feldpfad (ADR Gitter/Stapel, Stufe F3, Abnahme GF5): Strahlen werden vor einer
+  Gitterprobe zum Feld und danach wieder zu Strahlen, im knotenweisen Lauf; `FieldBundle` trägt
+  dafür den Ast der Strahlen (`branch`). Der Feldoperator rechnet die Übertragung je Richtung
+  einmal und hält sie für den Lauf (die zweite Polarisation kostet nichts); der interpolierte
+  Übertrag gibt bei einem Knick im Spektrum (Rayleigh-/Wood-Anomalie) früh auf.
+
 - `fg.grating` nimmt Felder (ADR Gitter/Stapel, Stufe F2): mit einer FourierGrating-Konfiguration
   rechnet der Block jede ebene Welle des Feldes und gibt jede Ordnung der gewählten Seite als
   eigenes Feld aus (Kanal `[m]` wie bei Strahlen); mit nur einer Jones-Tabelle wird ein Feld wie

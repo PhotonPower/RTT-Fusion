@@ -192,6 +192,11 @@ def grating_fields(ctx: Context, node: Node, fb: FieldBundle) -> list[FieldBundl
     handle = _field_handle(ctx, node, float(field.wavelength_um))
     side = "front" if str(node.params.get("side", "reflected")) == "reflected" else "back"
     wanted = {int(m) for m in node.params.get("orders", []) or []}
+    # the transfer per direction for this configuration and order choice, kept for the run (the
+    # other polarisation group, other fields of the same geometry)
+    transfers = ctx.shared.setdefault("fg_grating_transfers", {}).setdefault(
+        (handle.content_hash, tuple(sorted(wanted))), {}
+    )
     log = []
     try:
         applied = gf.apply(
@@ -202,6 +207,7 @@ def grating_fields(ctx: Context, node: Node, fb: FieldBundle) -> list[FieldBundl
             grid_max=int(node.params.get("field_grid_max", 1024)),
             transfer=str(node.params.get("field_transfer", "exact")),
             log=log,
+            cache=transfers,
         )
     except SpectralError as e:
         raise ExecutionError("exec.field", str(e), node.id) from e
@@ -222,7 +228,7 @@ def grating_fields(ctx: Context, node: Node, fb: FieldBundle) -> list[FieldBundl
         if s != side:
             continue
         label = f"{n}" if m == 0 else f"{n},{m}"
-        out.append(FieldBundle(fb.key, out_plane, f, (*fb.path, f"{node.id}[{label}]")))
+        out.append(FieldBundle(fb.key, out_plane, f, (*fb.path, f"{node.id}[{label}]"), fb.branch))
     return out
 
 

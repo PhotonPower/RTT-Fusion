@@ -56,6 +56,9 @@ class FieldBundle:
     plane: Plane
     field: GridlessField | GriddedField
     path: tuple[str, ...] = ()
+    #: the branch of the light and the position of its last Raytatouille block in it, as for rays
+    #: (`RayBundle.branch`, node-wise execution): kept from rays to field and back
+    branch: tuple[str, int] | None = None
 
     @property
     def wavelength_um(self) -> float:
@@ -137,7 +140,7 @@ def rays_to_field(bundle: RayBundle, plane: Plane | None = None) -> FieldBundle:
         bundle.wavelength_um,
         n,
     )
-    return FieldBundle(bundle.key, plane, f, bundle.path)
+    return FieldBundle(bundle.key, plane, f, bundle.path, bundle.branch)
 
 
 def field_to_rays(fb: FieldBundle) -> RayBundle:
@@ -185,6 +188,7 @@ def field_to_rays(fb: FieldBundle) -> RayBundle:
         source_frame=np.stack([fb.plane.u, fb.plane.v]),
         index=float(f.refractive_index),
         source_index=float(f.refractive_index),
+        branch=fb.branch,
     )
 
 
@@ -254,7 +258,7 @@ def propagate_to(
     result, log = plan.run(fb.field)
     notes.append(f"{fb.key.source}: H propagation {distance:g} mm by {plan.method} ({plan.reason})")
     notes += [f"  {e.operator}: {w}" for e in log for w in e.warnings]
-    return FieldBundle(fb.key, fb.plane, result, fb.path), notes
+    return FieldBundle(fb.key, fb.plane, result, fb.path, fb.branch), notes
 
 
 def field_image(

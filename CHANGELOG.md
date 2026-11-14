@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Außeraxiale Bildleistung im Feldpfad lag bis zu 4,7 % über dem physikalischen Maximum, wenn
+  eine Blende die Pupille beschneidet (Rest aus #69): Der Debye-Schritt von Fieldtracing füllte
+  jede Pupille zur vollen Kreisscheibe auf. Behoben in Fieldtracing #79/#80; der Pin steht jetzt
+  auf `ea6da7b`.
 - Leistung eines Felds hängt nicht mehr von der Ringzahl ab, wenn eine Blende die abgetastete
   Pupille beschneidet (Nebenbefund in #69): Ein Feld reicht nur bis zu seinen äußersten
   Stützstellen, mit dem Ringraster allein also bis zu einem Ringabstand vor der wahren Kante. Für

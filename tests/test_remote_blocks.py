@@ -161,3 +161,106 @@ def test_w71_raytatouille_blocks_in_another_process(tmp_path: Path, execution: s
     np.testing.assert_allclose(again.values, local.values, rtol=0, atol=1e-12 * local.values.max())
     n = kinds.count("evaluate")
     print(f"W71 {execution}: local {t_local:.3f} s, remote {t_remote:.3f} s, {n} requests")
+
+
+# ---------------------------------------------------------------------------- W74 (issue #70)
+
+
+def _michelson_sweep(remote_blocks: bool, link: str, tmp_path: Path) -> list[float]:
+    """A meta.sweep over the reference mirror of the Michelson – through its drive input or a
+    parameter address – with the rtt.* blocks in the engine or behind a provider (as in CAD)."""
+    import warnings
+
+    from rtt_fusion.graph import backend_rtt, graph_from_raytatouille, meta
+    from rtt_fusion.graph.execute import EXECUTABLE
+
+    rt = pytest.importorskip("raytatouille")
+    d = json.loads((Path(__file__).parent / "data" / "michelson.rtt.json").read_text("utf-8"))
+    d["aperture"] = {"type": "epd", "value": 1.0}
+    values = [k * 0.6328e-3 / 16 for k in range(9)]  # λ/8 path difference per step
+    g = graph_from_raytatouille(d)
+    g.nodes["camera"].params["half_size"] = [0.3, 0.3]
+    reg = builtin_registry()
+    ev = dict(backend_rtt.EVALUATORS)
+    ev.update(meta.register(reg))
+    if remote_blocks:
+        types = [t for t in reg.types() if t.type_id in backend_rtt.EVALUATORS]
+        provider = BlockProvider(
+            types,
+            dict(backend_rtt.EVALUATORS),
+            lambda graph, plain: {"system": rt.System.from_json(json.dumps(d))},
+        )
+        catalogue = [{"provider": "raytracer", "type": t} for t in provider.catalogue()]
+
+        def call(name: str, request: dict[str, Any]) -> dict[str, Any]:
+            wire = json.loads(json.dumps(request, allow_nan=False))
+            answer: dict[str, Any] = json.loads(json.dumps(provider.handle(wire), allow_nan=False))
+            return answer
+
+        ev.update(register_remote(reg, catalogue, call, tmp_path / "portdata"))
+    if link == "drive":
+        g.add(Node("ps", "meta.sweep", params={"measure": "centre", "values": values}))
+        g.connect(("ps", "drive"), ("reference_mirror", "drive"))
+        g.connect(("camera", "image"), ("ps", "observe"))
+    else:
+        g.add(
+            Node(
+                "ps",
+                "meta.sweep",
+                params={
+                    "measure": "centre",
+                    "values": values,
+                    "parameter": link,
+                    "collect": "camera.image",
+                },
+            )
+        )
+    ex = Executor(
+        g,
+        reg,
+        ev,
+        {"system": rt.System.from_json(json.dumps(d)), "rings": 10, "pixels": [16, 16]},
+        available=EXECUTABLE,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        measures: list[float] = ex.evaluate("ps", "results").measures
+    return measures
+
+
+@pytest.mark.parametrize("link", ["drive", "reference_mirror.pose_offset[2]"])
+def test_w74_meta_blocks_reach_blocks_of_another_process(tmp_path: Path, link: str) -> None:
+    """Issue #70: a sweep that moves an rtt.* block – by its drive input or a pose parameter –
+    gives the same values when the rtt.* blocks run in another process (the provider gets the
+    changed parameters with every evaluation); the values change (content guard)."""
+    local = _michelson_sweep(False, link, tmp_path)
+    remote = _michelson_sweep(True, link, tmp_path)
+    np.testing.assert_allclose(remote, local, rtol=0, atol=1e-12 * max(local))
+    assert max(local) - min(local) > 0.5 * max(local)
+
+
+def test_w74_provider_resets_changes_of_a_run(tmp_path: Path) -> None:
+    """Within one prepared run the provider sets its copy of the graph to the prepared parameters
+    plus the request's changes: a change reaches it, and a value set back is back there too."""
+    from rtt_fusion.graph.execute import Context
+
+    reg, local = _types_and_evaluators()
+    seen: list[float] = []
+
+    def lens(ctx: Any, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
+        seen.append(float(ctx.graph.nodes["lens"].params["focal_length"]))
+        return local["optics.thin_lens"](ctx, node, socket, inputs)
+
+    provider = BlockProvider(
+        [reg.get("optics.thin_lens")], {"optics.thin_lens": lens}, prepare=lambda g, s: {}
+    )
+    remote = RemoteEvaluator(
+        "lenses", lambda p, r: provider.handle(r), frozenset("R"), tmp_path, prepare=True
+    )
+    g = _graph()
+    ctx = Context(g, shared={"rings": 8})
+    beam = Executor(g, reg, local).evaluate("src", "out")
+    for focal in (40.0, 20.0, 40.0):
+        g.nodes["lens"].params["focal_length"] = focal  # as a meta block sets it
+        remote(ctx, g.nodes["lens"], "out", {"in": beam})
+    assert seen == [40.0, 20.0, 40.0]

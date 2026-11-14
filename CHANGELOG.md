@@ -6,6 +6,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Meta-Blöcke wirken auf Blöcke anderer Prozesse (#70): Ein `meta.sweep`, `meta.replicates` oder
+  `meta.optimise`, der einen Parameter eines `rtt.*`-Blocks ändert (Antrieb, Pose, Parameter),
+  blieb wirkungslos, wenn die Blöcke ein anderer Prozess rechnet (in Raytatouille Fusion der
+  Normalfall: der Raytracer-Plugin-Prozess) – der Lieferant rechnete mit dem einmal vorbereiteten
+  Graphen. Jede Auswertung nennt jetzt die Blöcke, deren Parameter vom vorbereiteten Graphen
+  abweichen; der Lieferant setzt seine Kopie vor dem Auswerten auf vorbereitete Parameter plus
+  diese Änderungen. Abnahme W74.
+
 - Felder (H) außeraxialer Feldpunkte fokussieren richtig (#69): Raytatouille startet die Strahlen
   eines Feldpunkts im Unendlichen mit OPL 0 auf ihrer Startebene, die nur auf der Achse ihre
   Wellenfront ist. Der Raytatouille-Backend gibt den parallelen Startstrahlen jetzt die Phase der

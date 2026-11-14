@@ -397,7 +397,8 @@ def test_gf5_linnik_with_a_grating_sample_in_the_field_path(tmp_path: Any) -> No
     and once with fields on both of its links (the grating's field operator; rays → field before it,
     field → rays after it, the branch kept). Small NA: the camera images agree inside the lit area
     (1 %; the field's support ends at its outermost samples, so the rim of the lit area – one
-    pixel – is left out) and in power (8 %, the rim); the image shows the grating (content guard)."""
+    pixel – is left out) and in power (8 %, the rim); the image shows the grating (content
+    guard)."""
     import json
     import warnings
 

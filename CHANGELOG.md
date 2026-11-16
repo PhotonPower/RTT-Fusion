@@ -6,6 +6,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Ein Workflow-Dokument rechnet ohne weitere Dateien (W75): `fg.grating` und `fg.stack` nannten
+  ihre FourierGrating-Konfiguration bzw. Jones-Tabelle nur über einen Pfad; auf einem anderen
+  Rechner (oder ohne Zugriff auf den Ordner) brachen alle Anzeigen hinter dem Block mit „cannot
+  read …“ ab. Die Blöcke halten den Inhalt jetzt selbst (`config`, `table_data`;
+  `rtt_fusion.graph.embedded`) und lesen eine Datei nur noch, wenn sie keine Kopie haben.
+  `workflow.embed_files` übernimmt lesbare Dateien einmalig in die Blöcke (auch in Gruppen) und
+  leert die Pfade; unlesbare meldet es als `graph.file_unreadable`, STEP-Dateien von CAD-Schichten
+  bleiben außen (`graph.file_external`). Fehlt beides, nennt der Fehler den Weg zur Abhilfe.
+
 - Außeraxiale Bildleistung im Feldpfad lag bis zu 4,7 % über dem physikalischen Maximum, wenn
   eine Blende die Pupille beschneidet (Rest aus #69): Der Debye-Schritt von Fieldtracing füllte
   jede Pupille zur vollen Kreisscheibe auf. Behoben in Fieldtracing #79/#80; der Pin steht jetzt

@@ -16,7 +16,7 @@ from collections.abc import Callable
 from importlib import import_module
 from typing import Any
 
-from rtt_fusion.graph import io
+from rtt_fusion.graph import embedded, io
 from rtt_fusion.graph.execute import EXECUTABLE
 from rtt_fusion.graph.model import Graph, Node
 from rtt_fusion.graph.planner import Requirements, plan
@@ -198,6 +198,16 @@ def model_document(
     }
 
 
+def embed_files(model: Model | Graph) -> embedded.Embedded:
+    """Stores the content of the files that blocks name (a grating's FourierGrating configuration
+    or Jones table, a stack's configuration) in the blocks and clears the paths, so the workflow
+    document computes without further files (`graph.embedded`); for a model also inside its
+    groups. What could not be read comes back as diagnostics (`graph.file_unreadable`)."""
+    if isinstance(model, Model):
+        return embedded.embed_files(model)
+    return embedded.embed_nodes(model.nodes.values())
+
+
 def kept_fields(document: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     """The fields a document holds, by node id (also inside groups)."""
     out: dict[str, list[dict[str, Any]]] = {}
@@ -234,6 +244,7 @@ __all__ = [
     "catalogue",
     "checked",
     "connection_plan",
+    "embed_files",
     "kept_fields",
     "model_document",
     "model_id",

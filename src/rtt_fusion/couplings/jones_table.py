@@ -170,6 +170,41 @@ def build_table(
     )
 
 
+def point_table(
+    handle: fga.Handle,
+    wavelength_um: float,
+    sigma_x: float,
+    sigma_y: float,
+    orders: tuple[int, ...],
+    side: str = "transmitted",
+    half_width: float = 1e-7,
+) -> JonesTable:
+    """J_m exactly at one incidence (λ, σ) – a plane wave, e.g. one field point of a Köhler
+    illumination – as a table: every node of a tiny 4×4×4 grid (± `half_width`) holds the direct
+    solution, so the interpolation returns it unchanged (4 solves instead of a table's 4·n² nodes,
+    and no stencil that reaches over a nearby Rayleigh anomaly). `handle` must be prepared for
+    `wavelength_um`."""
+    d = direct_jones(handle, wavelength_um, sigma_x, sigma_y, side)
+    offsets = np.array([-1.0, -1.0 / 3.0, 1.0 / 3.0, 1.0]) * half_width
+    jones = np.full((len(orders), 4, 4, 4, 2, 2), np.nan + 0j, dtype=np.complex128)
+    for o, m in enumerate(orders):
+        if m in d:
+            jones[o] = d[m]
+    cfg = handle.structure.config
+    n_out = (handle.back_index if side == "transmitted" else handle.front_index).real
+    return JonesTable(
+        tuple(orders),
+        side,
+        wavelength_um + offsets,
+        sigma_x + offsets,
+        sigma_y + offsets,
+        float(cfg["period_um"]["x"]),
+        handle.front_index.real,
+        n_out,
+        jones,
+    )
+
+
 def _cubic_weights(axis: FloatArray, x: float) -> tuple[np.ndarray, np.ndarray]:  # type: ignore[type-arg]
     """Indices and weights of 4-point Lagrange (cubic) interpolation on a uniform axis."""
     h = float(axis[1] - axis[0])

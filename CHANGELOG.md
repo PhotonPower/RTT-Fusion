@@ -13,6 +13,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- `fg.grating` mit Konfiguration, Strahlenweg: Ein Bündel mit nur einer Einfallsrichtung (eine
+  ebene Welle, z. B. ein Feldpunkt einer Köhler-Beleuchtung) bekommt seine Jones-Matrizen jetzt
+  direkt an seinem σ (`jones_table.point_table`, 4 Lösungen) statt aus einer 4×4×4-Tabelle (128).
+  Liegt eine Rayleigh-Anomalie näher als der Tabellenrand, wurde vorher das ganze Bündel verworfen
+  („rays outside the table or near a Rayleigh anomaly“). Beim Auflichtmikroskop mit Si-Gitter
+  (Λ = 1 µm, λ = 546 nm, σ = 0,447 neben der Anomalie bei 0,454) war das Kamerabild fast dunkel
+  und brauchte 6 Minuten; jetzt 3 Sekunden.
+- Gebaute Jones-Tabellen liegen im Operator-Speicher statt in `shared`. Im Prozess eines
+  Plugins (entfernte Blöcke) ging der Cache nach jeder Anfrage verloren; Bild- und Pupillenast
+  bauten dieselbe Tabelle zweimal.
+- Die Meldung über verworfene Strahlen nennt die Abhilfe (σ-Rand und σ-Schritt im Dialog).
+
 - `system_from_model` (die Zeichnung des Raytracers nach jeder Bearbeitung im Node-Editor) brach
   mit „branch …: no events for Probe front>front|“ ab, wenn ein Fremdblock (z. B. ein Gitter statt
   des Probenspiegels) für seine Ports keine Ereignisse hält. Ein solcher Schritt beendet jetzt den

@@ -79,6 +79,10 @@ def table_from_document(doc: dict[str, Any]) -> jt.JonesTable:
     )
 
 
+#: rays whose directions differ by at most this in σ are one plane wave (no table)
+PLANE_WAVE = 1e-9
+
+
 def _grid(values: FloatArray, margin: float, step: float) -> FloatArray:
     """At least 4 equidistant nodes around the values (cubic stencils inside)."""
     lo, hi = float(np.min(values)) - margin, float(np.max(values)) + margin
@@ -109,25 +113,45 @@ def _built_table(
         raise ExecutionError(
             "exec.param", "the table's σ step must be > 0 and its margin ≥ 0", node.id
         )
-    sx = _grid(sigma[:, 0], margin, step)
-    sy = _grid(sigma[:, 1], margin, step)
-    lam = np.linspace(wavelength_um - 1.5e-3, wavelength_um + 1.5e-3, 4)
-    key = json.dumps([config, side, orders, lam.tolist(), sx.tolist(), sy.tolist()], sort_keys=True)
-    cache = ctx.shared.setdefault("built_jones_tables", {})
+    # one incidence direction (a plane wave, e.g. a field point of a Köhler illumination): the
+    # Jones matrices exactly there, no table to interpolate
+    plane = bool(np.ptp(sigma[:, 0]) <= PLANE_WAVE and np.ptp(sigma[:, 1]) <= PLANE_WAVE)
+    if plane:
+        s0 = (float(np.mean(sigma[:, 0])), float(np.mean(sigma[:, 1])))
+        lam = np.array([wavelength_um])
+        grid: list[Any] = ["plane", round(s0[0], 12), round(s0[1], 12)]
+    else:
+        sx = _grid(sigma[:, 0], margin, step)
+        sy = _grid(sigma[:, 1], margin, step)
+        lam = np.linspace(wavelength_um - 1.5e-3, wavelength_um + 1.5e-3, 4)
+        grid = [sx.tolist(), sy.tolist()]
+    key = "jones|" + json.dumps([config, side, orders, lam.tolist(), grid], sort_keys=True)
+    # the operator store outlives the request (a provider's run, the engine's runs): the bild and
+    # the pupil branch, a second run, use the same table
+    cache = ctx.operators if ctx.operators is not None else ctx.shared.setdefault("operators", {})
     if key not in cache:
         try:
             handle = fga.prepare(fga.Structure(config), tuple(float(v) for v in lam))
-            cache[key] = jt.build_table(handle, lam, sx, sy, orders, side)
+            if plane:
+                cache[key] = jt.point_table(handle, wavelength_um, *s0, orders, side)
+            else:
+                cache[key] = jt.build_table(handle, lam, sx, sy, orders, side)
         except ImportError as e:
             raise ExecutionError(
                 "exec.solver", f"FourierGrating is not installed: {e}", node.id
             ) from e
         except (ValueError, RuntimeError, KeyError) as e:
             raise ExecutionError("exec.solver", f"FourierGrating: {e}", node.id) from e
-        ctx.log.append(
-            f"{node.id}: Jones table from FourierGrating, {len(lam)}×{len(sx)}×{len(sy)} nodes, "
-            f"orders {list(orders)}, {side}"
-        )
+        if plane:
+            ctx.log.append(
+                f"{node.id}: Jones matrices from FourierGrating at one incidence "
+                f"(σ = {s0[0]:.6g}, {s0[1]:.6g}), orders {list(orders)}, {side}"
+            )
+        else:
+            ctx.log.append(
+                f"{node.id}: Jones table from FourierGrating, {len(lam)}×{len(sx)}×{len(sy)} "
+                f"nodes, orders {list(orders)}, {side}"
+            )
     table: jt.JonesTable = cache[key]
     return table
 
@@ -347,6 +371,12 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
                 ctx.log.append(
                     f"{node.id}: order {m}: {dropped} rays outside the table or near a Rayleigh "
                     "anomaly"
+                    + (
+                        " – a smaller σ margin and σ step (the block's Ray path settings) keep the "
+                        "table off an anomaly the rays themselves do not cross"
+                        if built
+                        else ""
+                    )
                 )
             if not np.any(ok):
                 continue

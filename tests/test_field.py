@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
-from rtt_fusion._types import FloatArray
+from rtt_fusion._types import ComplexArray, FloatArray
 from rtt_fusion.graph import Graph, Node, builtin_registry, optics
 from rtt_fusion.graph.execute import WITH_FIELDS, ExecutionError, Executor
 from rtt_fusion.graph.field import field_to_rays, rays_to_field
@@ -349,7 +349,7 @@ def test_sampling_a_grid_equals_the_cubic_interpolation_of_the_whole_grid() -> N
 
     from rtt_fusion.graph.field import _sample
 
-    def field(u: FloatArray, v: FloatArray) -> np.ndarray:
+    def field(u: FloatArray, v: FloatArray) -> ComplexArray:
         phase = np.exp(1j * (5.0 * u - 2.0 * v)) * np.exp(-(u**2 + 2 * v**2) / 2)
         return np.stack([phase, 0.5 * phase.conj(), 0.1j * phase], axis=-1)
 
@@ -359,7 +359,7 @@ def test_sampling_a_grid_equals_the_cubic_interpolation_of_the_whole_grid() -> N
     f = SimpleNamespace(x=x, physical=lambda: values)
     rng = np.random.default_rng(3)
     q = np.concatenate([rng.uniform(-1.0, 0.5, (500, 2)), [[3.5, 0.0], [0.0, -3.2]]])
-    got = _sample(f, q)  # type: ignore[arg-type]
+    got = _sample(cast(Any, f), q)
     want = np.zeros_like(got)
     for c in range(3):
         for part, unit in ((np.real, 1.0), (np.imag, 1j)):

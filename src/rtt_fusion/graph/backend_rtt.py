@@ -53,7 +53,13 @@ from typing import Any
 import numpy as np
 
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
-from rtt_fusion.graph.field import FieldBundle, FieldError, field_image, rays_to_field
+from rtt_fusion.graph.field import (
+    FieldBundle,
+    FieldError,
+    field_image,
+    field_tolerance,
+    rays_to_field,
+)
 from rtt_fusion.graph.imaging import coherent_image
 from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle, rotation_between
 from rtt_fusion.graph.model import Node
@@ -588,6 +594,7 @@ def _image(
                 lambda part, text: ctx.report(
                     trace_part + (1 - trace_part) * part, f"{node.name or node.id}: {text}"
                 ),
+                tolerance=field_tolerance(ctx.shared),
             )
         except FieldError as e:
             raise ExecutionError("exec.field", str(e), node.id) from e

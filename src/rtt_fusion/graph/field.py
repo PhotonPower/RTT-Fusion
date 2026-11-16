@@ -27,10 +27,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import RectBivariateSpline
 from scipy.spatial import Delaunay, QhullError
 
 from rtt_fusion._types import ComplexArray, FloatArray
@@ -223,24 +223,38 @@ def _sample(f: GridlessField | GriddedField, q: FloatArray) -> ComplexArray:
 
     if isinstance(f, GridlessField):
         return np.asarray(f.residual_at(q) * np.exp(1j * f.phase_at(q))[:, None])
-    x = np.asarray(f.x)
+    x = np.asarray(f.x, dtype=np.float64)
     values = np.asarray(f.physical())
     out = np.zeros((len(q), 3), dtype=np.complex128)
+    inside = np.all((q >= x[0]) & (q <= x[-1]), axis=1)
+    if not inside.any():
+        return out
+    # the cubic spline only over the part of the grid the points need (with a margin, where the
+    # spline of the whole grid differs by < 1e-9): the grid of a focus is large (2016² for a
+    # pupil image), the detector small
+    margin = 8
+    lo = max(int(np.searchsorted(x, q[inside].min())) - margin, 0)
+    hi = min(int(np.searchsorted(x, q[inside].max())) + margin, len(x))
+    if hi - lo < 4:
+        lo, hi = max(min(lo, len(x) - 4), 0), min(max(hi, 4), len(x))
+    xc = x[lo:hi]
+    qi = q[inside]
     for c in range(3):
+        block = values[lo:hi, lo:hi, c]  # rows: v (q[:, 1]), columns: u (q[:, 0])
         for part, unit in ((np.real, 1.0), (np.imag, 1j)):
-            interp = RegularGridInterpolator(
-                (x, x), part(values[:, :, c]), method="cubic", bounds_error=False, fill_value=0.0
-            )
-            out[:, c] += unit * interp(np.stack([q[:, 1], q[:, 0]], axis=-1))
+            spline = RectBivariateSpline(xc, xc, part(block), kx=3, ky=3, s=0)
+            out[inside, c] += unit * spline.ev(qi[:, 1], qi[:, 0])
     return out
 
 
 def propagate_to(
-    fb: FieldBundle, plane: Plane, window: float | None = None
+    fb: FieldBundle, plane: Plane, window: float | None = None, tolerance: float | None = None
 ) -> tuple[FieldBundle, list[str]]:
     """The field on `plane` (Fieldtracing's planner) and the log of the steps. The returned
     bundle keeps the coordinates of a plane parallel to `plane` (its `plane` attribute is the
-    frame of the field coordinates, shifted along the normal onto the target)."""
+    frame of the field coordinates, shifted along the normal onto the target). `tolerance`: ε of
+    the planner's selection rules (None: Fieldtracing's default, 0.02); a larger ε lets a cheaper
+    method through, e.g. Debye instead of Rayleigh–Sommerfeld near a focus."""
     from fieldtracing.chain import plan_propagation
 
     n = fb.plane.normal
@@ -254,7 +268,10 @@ def propagate_to(
     distance = float((plane.origin - fb.plane.origin) @ n)
     if abs(distance) < 1e-9:
         return fb, notes
-    plan = plan_propagation(fb.field, distance, focus_window=window)
+    if tolerance is None:
+        plan = plan_propagation(fb.field, distance, focus_window=window)
+    else:
+        plan = plan_propagation(fb.field, distance, tolerance=tolerance, focus_window=window)
     result, log = plan.run(fb.field)
     notes.append(f"{fb.key.source}: H propagation {distance:g} mm by {plan.method} ({plan.reason})")
     notes += [f"  {e.operator}: {w}" for e in log for w in e.warnings]
@@ -270,8 +287,10 @@ def field_image(
     ny: int,
     log: list[str] | None = None,
     progress: Callable[[float, str], None] | None = None,
+    tolerance: float | None = None,
 ) -> Image:
-    """Intensity on the pixel grid of `plane` from fields (amplitudes per coherence group)."""
+    """Intensity on the pixel grid of `plane` from fields (amplitudes per coherence group);
+    `tolerance`: ε of the propagation planner (`propagate_to`)."""
     u = (np.arange(nx) + 0.5) / nx * 2 * half_u - half_u
     v = (np.arange(ny) + 0.5) / ny * 2 * half_v - half_v
     uu, vv = np.meshgrid(u, v)
@@ -282,7 +301,9 @@ def field_image(
         if progress is not None:
             progress(i / max(len(fields), 1), f"field propagation {i + 1}/{len(fields)}")
         power += field_power(fb)
-        target, notes = propagate_to(fb, plane, window=2.0 * max(half_u, half_v))
+        target, notes = propagate_to(
+            fb, plane, window=2.0 * max(half_u, half_v), tolerance=tolerance
+        )
         if log is not None:
             log.extend(notes)
         rot = _frame(target.plane)
@@ -294,3 +315,10 @@ def field_image(
     for total in sums.values():
         values = values + np.sum(np.abs(total) ** 2, axis=1)
     return Image(values.reshape(ny, nx), (-half_u, half_u, -half_v, half_v), power, list(sums))
+
+
+def field_tolerance(shared: dict[str, Any]) -> float | None:
+    """ε of the field propagation from the run's settings (`shared["field_tolerance"]`, e.g. the
+    Workflow panel); None or 0: Fieldtracing's default."""
+    value = shared.get("field_tolerance")
+    return float(value) if value else None

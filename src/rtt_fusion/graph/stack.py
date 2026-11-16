@@ -40,10 +40,10 @@ import numpy as np
 
 from rtt_fusion.couplings import grating_field as gf
 from rtt_fusion.couplings import jones_table as jt
-from rtt_fusion.graph import spectral
+from rtt_fusion.graph import embedded, spectral
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.field import FieldBundle, FieldError
-from rtt_fusion.graph.grating import split_prt
+from rtt_fusion.graph.grating import CONFIG, split_prt
 from rtt_fusion.graph.light import Plane, RayBundle
 from rtt_fusion.graph.model import (
     Category,
@@ -81,23 +81,28 @@ def stack_config(config: dict[str, Any], from_back: bool = False) -> dict[str, A
     return cfg
 
 
-def _handle(ctx: Context, node: Node, wavelength_um: float, from_back: bool) -> Any:
-    path = str(node.params.get("fouriergrating", ""))
-    if not path:
+def _config(node: Node) -> dict[str, Any]:
+    """The stack's FourierGrating configuration: held (`config`) or read from its file."""
+    cfg = embedded.content(node, *CONFIG)
+    if cfg is None:
         raise ExecutionError(
             "exec.param", "the stack needs a FourierGrating configuration", node.id
         )
+    return cfg
+
+
+def _handle(ctx: Context, node: Node, wavelength_um: float, from_back: bool) -> Any:
+    raw = _config(node)
     cache = ctx.shared.setdefault("fg_stack_handles", {})
-    key = (path, round(wavelength_um, 12), from_back)
+    key = (json.dumps(raw, sort_keys=True), round(wavelength_um, 12), from_back)
     if key not in cache:
         try:
             from rtt_fusion.adapters import fouriergrating as fga
 
-            with open(path, encoding="utf-8") as f:
-                cfg = stack_config(json.load(f), from_back)
+            cfg = stack_config(raw, from_back)
             cache[key] = fga.prepare(fga.Structure(cfg), (wavelength_um,))
-        except (OSError, ValueError, KeyError) as e:
-            raise ExecutionError("exec.param", f"stack {path}: {e}", node.id) from e
+        except (ValueError, KeyError) as e:
+            raise ExecutionError("exec.param", f"stack configuration: {e}", node.id) from e
         except ImportError as e:
             raise ExecutionError(
                 "exec.solver", f"FourierGrating is not installed: {e}", node.id
@@ -107,11 +112,9 @@ def _handle(ctx: Context, node: Node, wavelength_um: float, from_back: bool) -> 
 
 def _isotropic(ctx: Context, node: Node) -> bool:
     """True if every material of the stack is given by an index (no tensor)."""
-    path = str(node.params.get("fouriergrating", ""))
     try:
-        with open(path, encoding="utf-8") as f:
-            materials = json.load(f).get("materials", {})
-    except (OSError, ValueError):
+        materials = _config(node).get("materials", {})
+    except ExecutionError:
         return False
     return all(set(m) == {"n"} for m in materials.values())
 
@@ -315,7 +318,14 @@ TYPE = NodeType(
             "file",
             "",
             description="FourierGrating configuration of the stack: homogeneous layers, listed "
-            "from the substrate (back) upwards to the superstrate (front)",
+            "from the substrate (back) upwards to the superstrate (front); Check workflow stores "
+            "it in the block (config) and clears the path",
+        ),
+        ParamSpec(
+            "config",
+            "data",
+            {},
+            description="the FourierGrating configuration held by the block (before the file)",
         ),
         ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
         ParamSpec(

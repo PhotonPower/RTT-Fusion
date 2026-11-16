@@ -33,6 +33,7 @@ import numpy as np
 
 from rtt_fusion._types import FloatArray
 from rtt_fusion.couplings import jones_table as jt
+from rtt_fusion.graph import embedded
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays
 from rtt_fusion.graph.light import Plane, RayBundle, rotation_between
@@ -49,12 +50,20 @@ from rtt_fusion.graph.model import (
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.results import load_json
 
+#: the files the block may name and the parameters that hold their content (`graph.embedded`)
+CONFIG, TABLE = embedded.FILE_PARAMS["fg.grating"]
+
 
 def load_table(path: str) -> jt.JonesTable:
     """A Jones table from a `raytatouille-result` file (parameters: orders, side, period_um,
     n_in, n_out; inputs: wavelengths_um, sigma_x, sigma_y, jones), as written in stage R7."""
     with open(path, encoding="utf-8") as f:
-        _, d = load_json(f.read())
+        return table_from_document(json.load(f))
+
+
+def table_from_document(doc: dict[str, Any]) -> jt.JonesTable:
+    """A Jones table from the JSON document of a `raytatouille-result` file (`load_table`)."""
+    _, d = load_json(json.dumps(doc))
     p, i = d["parameters"], d["inputs"]
     return jt.JonesTable(
         tuple(int(m) for m in p["orders"]),
@@ -80,16 +89,15 @@ def _built_table(
     ctx: Context, node: Node, wavelength_um: float, sigma: FloatArray
 ) -> jt.JonesTable:
     """A Jones table from FourierGrating around the incident directions (cached)."""
-    path = str(node.params.get("fouriergrating", ""))
     try:
         from rtt_fusion.adapters import fouriergrating as fga
     except ImportError as e:  # pragma: no cover - the adapter itself imports lazily
         raise ExecutionError("exec.solver", f"FourierGrating adapter: {e}", node.id) from e
-    try:
-        with open(path, encoding="utf-8") as f:
-            config = json.load(f)
-    except (OSError, ValueError) as e:
-        raise ExecutionError("exec.param", f"cannot read {path}: {e}", node.id) from e
+    config = embedded.content(node, *CONFIG)
+    if config is None:
+        raise ExecutionError(
+            "exec.param", "the grating needs a table or a FourierGrating configuration", node.id
+        )
     for key in ("incidence", "wavelength_um", "output"):
         config.pop(key, None)  # the block sets the incidence itself
     side = str(node.params.get("side", "reflected"))
@@ -119,18 +127,25 @@ def _built_table(
 
 
 def _table(ctx: Context, node: Node) -> jt.JonesTable:
-    path = str(node.params.get("table", ""))
-    if not path:
+    """The block's Jones table: held (`table_data`) or read from its file (`table`)."""
+    held = node.params.get("table_data")
+    path = str(node.params.get("table", "") or "")
+    if not held and not path:
         raise ExecutionError(
             "exec.param", "the grating needs a table or a FourierGrating configuration", node.id
         )
+    key = "data:" + json.dumps(held, sort_keys=True) if held else path
     cache = ctx.shared.setdefault("jones_tables", {})
-    if path not in cache:
+    if key not in cache:
+        doc = embedded.content(node, *TABLE)
+        assert doc is not None
         try:
-            cache[path] = load_table(path)
-        except (OSError, KeyError, ValueError) as e:
-            raise ExecutionError("exec.param", f"cannot read the table {path}: {e}", node.id) from e
-    table: jt.JonesTable = cache[path]
+            cache[key] = table_from_document(doc)
+        except (KeyError, ValueError) as e:
+            where = "held by the block" if held else path
+            message = f"cannot read the table {where}: {e}"
+            raise ExecutionError("exec.param", message, node.id) from e
+    table: jt.JonesTable = cache[key]
     return table
 
 
@@ -141,26 +156,24 @@ def _inside(axis: Any, x: float) -> bool:
 
 def _field_handle(ctx: Context, node: Node, wavelength_um: float) -> Any:
     """FourierGrating prepared for the block's configuration at one wavelength (cached)."""
-    path = str(node.params.get("fouriergrating", ""))
-    if not path:
+    config = embedded.content(node, *CONFIG)
+    if config is None:
         raise ExecutionError(
             "exec.param",
             "a field (H) needs the grating's FourierGrating configuration (a table is for rays)",
             node.id,
         )
+    for k in ("incidence", "output", "sweep", "nearfield"):
+        config.pop(k, None)
     cache = ctx.shared.setdefault("fg_grating_handles", {})
-    key = (path, round(wavelength_um, 12))
+    key = (json.dumps(config, sort_keys=True), round(wavelength_um, 12))
     if key not in cache:
         try:
             from rtt_fusion.adapters import fouriergrating as fga
 
-            with open(path, encoding="utf-8") as f:
-                config = json.load(f)
-            for k in ("incidence", "output", "sweep", "nearfield"):
-                config.pop(k, None)
             cache[key] = fga.prepare(fga.Structure(config), (wavelength_um,))
-        except (OSError, ValueError, KeyError) as e:
-            raise ExecutionError("exec.param", f"grating {path}: {e}", node.id) from e
+        except (ValueError, KeyError) as e:
+            raise ExecutionError("exec.param", f"grating configuration: {e}", node.id) from e
         except ImportError as e:
             raise ExecutionError(
                 "exec.solver", f"FourierGrating is not installed: {e}", node.id
@@ -236,7 +249,7 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
     fields = [b for b in inputs.get("in", []) if isinstance(b, FieldBundle)]
     if fields:
         rays = [b for b in inputs.get("in", []) if isinstance(b, RayBundle)]
-        if not node.params.get("fouriergrating"):
+        if not embedded.has(node, *CONFIG[:2]):
             # a table describes rays: a field arriving at a table grating becomes rays at its port
             ctx.log.append(f"{node.id}: field converted to rays (the table is for rays)")
             try:
@@ -246,7 +259,7 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
             return grating(ctx, node, socket, {"in": rays})
         from_fields: list[Any] = [o for fb in fields for o in grating_fields(ctx, node, fb)]
         return from_fields + (grating(ctx, node, socket, {"in": rays}) if rays else [])
-    built = bool(node.params.get("fouriergrating")) and not node.params.get("table")
+    built = embedded.has(node, *CONFIG[:2]) and not embedded.has(node, *TABLE[:2])
     table = None if built else _table(ctx, node)
     point = np.asarray(node.params.get("point", [0.0, 0.0, 0.0]), dtype=float)
     normal = np.asarray(node.params.get("normal", [0.0, 0.0, 1.0]), dtype=float)
@@ -382,13 +395,32 @@ TYPE = NodeType(
     Category.SPLITTER,
     (light_in("in", "RH"), light_out("out", "RH", label="orders")),
     (
-        ParamSpec("table", "file", "", description="Jones table (raytatouille-result file)"),
+        ParamSpec(
+            "table",
+            "file",
+            "",
+            description="Jones table (raytatouille-result file); Check workflow stores it in the "
+            "block (table_data) and clears the path",
+        ),
         ParamSpec(
             "fouriergrating",
             "file",
             "",
             description="FourierGrating configuration: the block builds its table around the rays "
-            "(R) or computes every plane wave of a field (H)",
+            "(R) or computes every plane wave of a field (H); Check workflow stores it in the "
+            "block (config) and clears the path",
+        ),
+        ParamSpec(
+            "config",
+            "data",
+            {},
+            description="the FourierGrating configuration held by the block (before the file)",
+        ),
+        ParamSpec(
+            "table_data",
+            "data",
+            {},
+            description="the Jones table held by the block (before the file)",
         ),
         ParamSpec(
             "side",

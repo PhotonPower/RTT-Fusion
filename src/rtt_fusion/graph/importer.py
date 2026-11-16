@@ -418,7 +418,9 @@ def system_from_model(model: Model) -> dict[str, Any]:
     """The Raytatouille system of a model (ADR, Nachtrag 1): the system's settings and the tree
     from the source and the blocks (each node at its location), the paths from the branches
     (the events of each step from its block's `runs`). After an import without edits it is the
-    imported system. Groups count with their active variant (resolved as for computing)."""
+    imported system. A step through a block of another kind (a grating in place of a mirror)
+    without events ends the branch's path as in `system_from_graph`; a Raytatouille block without
+    them is an error. Groups count with their active variant (resolved as for computing)."""
     if model.groups:
         from rtt_fusion.graph.topology import flatten
 
@@ -495,7 +497,8 @@ def _system(
             runs = by_id[node_id].params.get("runs", {}) if node_id in by_id else {}
             key = f"{port_in}>{port_out or ''}|{channel}"
             if key not in runs:
-                if strict:
+                block = by_id.get(node_id)
+                if strict and (block is None or block.type_id.startswith("rtt.")):
                     raise ValueError(f"branch {name!r}: no events for {node_id} {key}")
                 # a ghost or a block of another kind: no path of this name; the beginning of
                 # the branch aims its rays (the backend passes the branch block by block)

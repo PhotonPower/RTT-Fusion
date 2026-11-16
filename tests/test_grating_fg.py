@@ -106,3 +106,52 @@ def test_w27_lossless_grating_conserves_energy(
     reflected, _ = order_powers(path, "reflected", alpha_deg)
     transmitted, _ = order_powers(path, "transmitted", alpha_deg)
     assert sum(reflected.values()) + sum(transmitted.values()) == pytest.approx(1.0, abs=1e-5)
+
+
+def test_sigma_step_sets_the_table_grid(config: tuple[dict[str, object], str]) -> None:
+    """The ray path's table resolution is a block parameter: a finer σ step gives more nodes and
+    the same orders (the interpolation is already exact to 1e-4 at the default step)."""
+    _, path = config
+
+    def nodes(step: float) -> tuple[int, dict[int, float]]:
+        reg = builtin_registry()
+        ev = optics.register(reg)
+        ev.update(grating.register(reg))
+        g = Graph()
+        g.add(
+            Node(
+                "src",
+                "optics.collimated_source",
+                params={
+                    "radius": 0.01,
+                    "rings": 3,
+                    "center": [0, 0, -0.1],
+                    "wavelengths_um": [LAMBDA_UM],
+                    "field_angles_deg": [[2.0, 0.0]],
+                    "polarisation": [0, 1, 0],
+                },
+            )
+        )
+        params = {
+            "fouriergrating": path,
+            "side": "reflected",
+            "orders": [-1, 0, 1],
+            "sigma_step": step,
+        }
+        g.add(Node("gr", "fg.grating", params=params))
+        g.connect(("src", "out"), ("gr", "in"))
+        ex = Executor(g, reg, ev)
+        out = ex.evaluate("gr", "out")
+        line = next(x for x in ex.context.log if "Jones table from FourierGrating" in x)
+        n = int(line.split(", ")[1].split()[0].split("×")[1])  # 4×nx×ny nodes
+        return n, {
+            int(b.path[-1].split("[")[1].rstrip("]")): float(np.mean(np.abs(b.amplitude)))
+            for b in out
+        }
+
+    coarse, a = nodes(0.01)
+    fine, b = nodes(0.004)
+    assert fine > coarse
+    assert a.keys() == b.keys()
+    for m in a:
+        assert b[m] == pytest.approx(a[m], rel=1e-4)

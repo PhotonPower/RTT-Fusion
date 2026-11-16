@@ -439,3 +439,26 @@ def test_w61_refusals() -> None:
         section_to_group(m, "objective")
     with pytest.raises(ValueError, match="no Raytatouille section"):
         section_to_group(m, "camera")
+
+
+def test_a_foreign_block_without_events_ends_the_path() -> None:
+    """The system of a model drawn by the Raytracer (`system_from_model`, strict): a grating that
+    replaced the Linnik's sample mirror and holds no events for its new ports ends the branch's
+    path as in `system_from_graph`; a Raytatouille block without events is still an error."""
+    import dataclasses
+
+    from rtt_fusion.graph import model_from_raytatouille
+    from rtt_fusion.graph.importer import system_from_model
+
+    d = json.loads((Path(__file__).parent / "data" / "linnik_mini.rtt.json").read_text("utf-8"))
+    m = model_from_raytatouille(d)
+    sample = m.nodes["sample"]
+    lost = {"elsewhere>elsewhere|": sample.params["runs"]["objective>objective|"]}
+    m.nodes["sample"] = dataclasses.replace(sample, params={**sample.params, "runs": lost})
+    with pytest.raises(ValueError, match="no events for sample"):
+        system_from_model(m)
+    m.nodes["sample"] = dataclasses.replace(m.nodes["sample"], type_id="fg.grating")
+    paths = system_from_model(m)["paths"]
+    assert [p["name"] for p in paths] == ["measurement (aim)"]
+    surfaces = [e["surface"] for e in paths[0]["events"]]
+    assert surfaces and "SPM" not in surfaces  # up to the grating, not through it

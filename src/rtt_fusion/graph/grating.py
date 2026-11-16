@@ -8,8 +8,9 @@ requested diffraction order on: a splitter whose channels are the orders (concep
 Jones matrices J_m over (λ, σ) from FourierGrating – either read from a stored table
 (`raytatouille-result` file, runs without the solver) or, with `fouriergrating` (a FourierGrating
 configuration file, as in `docs/konventionen.md`), built by the block itself around the incident
-rays: λ ± 1 nm and the σ range of the rays plus a margin, 4 nodes per axis at least (cubic
-interpolation), cached per configuration and grid. Building needs the solver in the environment.
+rays: λ ± 1.5 nm and the σ range of the rays plus a margin (`sigma_margin`), nodes every
+`sigma_step` in σ, 4 per axis at least (cubic interpolation), cached per configuration and grid.
+Building needs the solver in the environment.
 
 Per ray and order m (local frame: x = grating vector, y = grooves, z = surface normal towards the
 light's side of exit for "transmitted", towards the incident side for "reflected"):
@@ -103,8 +104,13 @@ def _built_table(
     side = str(node.params.get("side", "reflected"))
     orders = tuple(int(m) for m in node.params.get("orders", []) or (-1, 0, 1))
     margin = float(node.params.get("sigma_margin", 0.01))
-    sx = _grid(sigma[:, 0], margin, 0.01)
-    sy = _grid(sigma[:, 1], margin, 0.01)
+    step = float(node.params.get("sigma_step", 0.01))
+    if not step > 0.0 or margin < 0.0:
+        raise ExecutionError(
+            "exec.param", "the table's σ step must be > 0 and its margin ≥ 0", node.id
+        )
+    sx = _grid(sigma[:, 0], margin, step)
+    sy = _grid(sigma[:, 1], margin, step)
     lam = np.linspace(wavelength_um - 1.5e-3, wavelength_um + 1.5e-3, 4)
     key = json.dumps([config, side, orders, lam.tolist(), sx.tolist(), sy.tolist()], sort_keys=True)
     cache = ctx.shared.setdefault("built_jones_tables", {})
@@ -433,6 +439,26 @@ TYPE = NodeType(
             "orders", "numbers", [], description="orders to pass on; empty: all of the table"
         ),
         ParamSpec("n_in", "number", 1.0, description="index of the incident medium (R, built)"),
+        ParamSpec(
+            "sigma_step",
+            "number",
+            0.01,
+            minimum=1e-5,
+            group="Ray path",
+            label="σ step of the table",
+            description="spacing of the Jones table's nodes in the direction cosines σ = n·sin θ "
+            "of the incident rays (cubic interpolation between them): smaller is more exact and "
+            "needs more FourierGrating solves",
+        ),
+        ParamSpec(
+            "sigma_margin",
+            "number",
+            0.01,
+            minimum=0.0,
+            group="Ray path",
+            label="σ margin of the table",
+            description="how far the table reaches beyond the σ range of the incident rays",
+        ),
         ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
         ParamSpec("normal", "point", [0.0, 0.0, 1.0]),
         ParamSpec("grating_vector", "point", [1.0, 0.0, 0.0], description="local x, ⟂ grooves"),

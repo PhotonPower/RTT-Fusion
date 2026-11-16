@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 
 from rtt_fusion.graph import Graph, Node, builtin_registry, grating, optics
-from rtt_fusion.graph.execute import Executor
+from rtt_fusion.graph.execute import Context, Executor
 from rtt_fusion.results import load_json
 
 pytest.importorskip("fouriergrating")
@@ -79,7 +80,9 @@ def order_powers(path: str, side: str, alpha_deg: float) -> tuple[dict[int, floa
     return powers, ex.context.log
 
 
-@pytest.mark.parametrize("alpha_deg", [0.0, 3.0])
+# 7.87°: σ = 0.137, 0.006 below the Rayleigh anomaly of order +1 (σ = 1 − λ/Λ = 0.143), closer
+# than a table's margin – a plane wave is computed at its own σ (no table), so nothing is dropped
+@pytest.mark.parametrize("alpha_deg", [0.0, 3.0, 7.874])
 def test_w26_block_equals_direct_fouriergrating(
     config: tuple[dict[str, object], str], alpha_deg: float
 ) -> None:
@@ -88,7 +91,8 @@ def test_w26_block_equals_direct_fouriergrating(
     sx = float(np.sin(np.radians(alpha_deg)))
     for side in ("reflected", "transmitted"):
         powers, log = order_powers(path, side, alpha_deg)
-        assert any("Jones table from FourierGrating" in line for line in log)
+        assert any("from FourierGrating at one incidence" in line for line in log), log
+        assert not any("outside the table" in line for line in log), log
         direct = jt.direct_jones(handle, LAMBDA_UM, sx, 0.0, side)
         for m, jones in direct.items():
             p = jt.prt_matrix(
@@ -108,50 +112,67 @@ def test_w27_lossless_grating_conserves_energy(
     assert sum(reflected.values()) + sum(transmitted.values()) == pytest.approx(1.0, abs=1e-5)
 
 
+def _fanned(path: str, step: float, spread: float, ctx: Context | None = None) -> tuple[int, Any]:
+    """The grating with a bundle whose directions fan out by ±spread in σ_x around 2°: a table
+    is built around them; (its σ_x nodes, the outgoing bundles)."""
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    g.add(
+        Node(
+            "src",
+            "optics.collimated_source",
+            params={
+                "radius": 0.01,
+                "rings": 3,
+                "center": [0, 0, -0.1],
+                "wavelengths_um": [LAMBDA_UM],
+                "field_angles_deg": [[2.0, 0.0]],
+                "polarisation": [0, 1, 0],
+            },
+        )
+    )
+    b = Executor(g, reg, ev).evaluate("src", "out")[0]
+    d = np.asarray(b.direction, dtype=float).copy()
+    d[:, 0] += np.linspace(-spread, spread, len(d))
+    d[:, 2] = np.sqrt(1.0 - d[:, 0] ** 2 - d[:, 1] ** 2)
+    params = {"fouriergrating": path, "side": "reflected", "orders": [-1, 0, 1], "sigma_step": step}
+    ctx = ctx if ctx is not None else Context(Graph())
+    out = grating.grating(
+        ctx, Node("gr", "fg.grating", params=params), "out", {"in": [b.evolve(direction=d)]}
+    )
+    line = next(x for x in ctx.log if "Jones table from FourierGrating" in x)
+    return int(line.split(", ")[1].split()[0].split("×")[1]), out  # 4×nx×ny nodes
+
+
 def test_sigma_step_sets_the_table_grid(config: tuple[dict[str, object], str]) -> None:
     """The ray path's table resolution is a block parameter: a finer σ step gives more nodes and
     the same orders (the interpolation is already exact to 1e-4 at the default step)."""
     _, path = config
-
-    def nodes(step: float) -> tuple[int, dict[int, float]]:
-        reg = builtin_registry()
-        ev = optics.register(reg)
-        ev.update(grating.register(reg))
-        g = Graph()
-        g.add(
-            Node(
-                "src",
-                "optics.collimated_source",
-                params={
-                    "radius": 0.01,
-                    "rings": 3,
-                    "center": [0, 0, -0.1],
-                    "wavelengths_um": [LAMBDA_UM],
-                    "field_angles_deg": [[2.0, 0.0]],
-                    "polarisation": [0, 1, 0],
-                },
-            )
-        )
-        params = {
-            "fouriergrating": path,
-            "side": "reflected",
-            "orders": [-1, 0, 1],
-            "sigma_step": step,
-        }
-        g.add(Node("gr", "fg.grating", params=params))
-        g.connect(("src", "out"), ("gr", "in"))
-        ex = Executor(g, reg, ev)
-        out = ex.evaluate("gr", "out")
-        line = next(x for x in ex.context.log if "Jones table from FourierGrating" in x)
-        n = int(line.split(", ")[1].split()[0].split("×")[1])  # 4×nx×ny nodes
-        return n, {
-            int(b.path[-1].split("[")[1].rstrip("]")): float(np.mean(np.abs(b.amplitude)))
-            for b in out
-        }
-
-    coarse, a = nodes(0.01)
-    fine, b = nodes(0.004)
+    coarse, a = _fanned(path, 0.01, 0.005)
+    fine, b = _fanned(path, 0.004, 0.005)
     assert fine > coarse
-    assert a.keys() == b.keys()
-    for m in a:
-        assert b[m] == pytest.approx(a[m], rel=1e-4)
+    for x, y in zip(a, b, strict=True):
+        assert np.allclose(np.asarray(x.amplitude), np.asarray(y.amplitude), rtol=1e-4, atol=1e-8)
+
+
+def test_tables_outlive_a_request(config: tuple[dict[str, object], str]) -> None:
+    """A built table is kept in the operator store, which outlives a provider's request (the bild
+    and the pupil branch of a microscope, a second run): the second request builds nothing."""
+    _, path = config
+    store: dict[str, Any] = {}
+    _fanned(path, 0.01, 0.005, Context(Graph(), operators=store))
+    assert any(k.startswith("jones|") for k in store)
+    again = Context(Graph(), operators=store)
+    with pytest.raises(StopIteration):  # no "Jones table from FourierGrating" this time
+        _fanned(path, 0.01, 0.005, again)
+
+
+def test_point_table_is_the_direct_solution(config: tuple[dict[str, object], str]) -> None:
+    cfg, _ = config
+    handle = fga.prepare(fga.Structure(cfg), (LAMBDA_UM,))
+    t = jt.point_table(handle, LAMBDA_UM, 0.137, 0.02, (-1, 0, 1), "reflected")
+    direct = jt.direct_jones(handle, LAMBDA_UM, 0.137, 0.02, "reflected")
+    for m in (-1, 0, 1):
+        assert np.allclose(jt.interpolate(t, m, LAMBDA_UM, 0.137, 0.02), direct[m], rtol=1e-12)
+    assert not jt.near_rayleigh_anomaly(t, LAMBDA_UM, 0.137, 0.02)

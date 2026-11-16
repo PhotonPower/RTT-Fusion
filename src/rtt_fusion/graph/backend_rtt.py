@@ -1545,3 +1545,27 @@ EVALUATORS: dict[str, Evaluator] = {
 }
 # node-wise, light on an H link into the detector arrives as fields (R25)
 detector.representations = frozenset("RH")  # type: ignore[attr-defined]
+
+
+def foreign_blocks(ctx: Context, node: Node) -> list[str]:
+    """The blocks of other types a detector evaluates itself (R19b: a grating as the sample on one
+    of its paths, through `ctx.evaluators`). A provider of the `rtt.*` blocks alone cannot do
+    that; the engine then computes the detector in its own process (CAD ADR 0010)."""
+    if _nodewise(ctx):  # node-wise the executor evaluates every block itself
+        return []
+    muted = {n.id for n in ctx.graph.nodes.values() if n.muted}
+    out: list[str] = []
+    for blocks in ctx.graph.meta.get("paths", {}).values():
+        if not blocks or blocks[-1] != node.id or muted & set(blocks):
+            continue
+        out += [
+            b
+            for b in blocks
+            if b in ctx.graph.nodes
+            and not ctx.graph.nodes[b].type_id.startswith("rtt.")
+            and b not in out
+        ]
+    return out
+
+
+detector.calls = foreign_blocks  # type: ignore[attr-defined]

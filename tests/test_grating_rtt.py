@@ -191,3 +191,53 @@ def test_w73_linnik_with_a_grating_from_another_process(tmp_path: Path) -> None:
     assert requests and set(requests) == {"fg.grating"}
     assert local.values.max() > 0
     np.testing.assert_allclose(remote.values, local.values, rtol=0, atol=1e-12 * local.values.max())
+
+
+def _remote_image(system_json: dict[str, object], table: str, local: bool, root: Path) -> Image:
+    """W22's split path with the `rtt.*` blocks from a provider (another plugin, CAD ADR 0010)
+    and the grating in the engine."""
+    from rtt_fusion.graph import backend_rtt
+    from rtt_fusion.graph.remote import BlockProvider, register_remote
+
+    g: Graph = graph_from_raytatouille(system_json)
+    reg = builtin_registry()
+    ev = dict(backend_rtt.EVALUATORS)
+    ev.update(grating.register(reg))
+    replace_block(g, reg, "sample", Node("sample", "fg.grating", params={"table": table}))
+    types = [t for t in reg.types() if t.type_id in backend_rtt.EVALUATORS]
+    provider = BlockProvider(
+        types,
+        dict(backend_rtt.EVALUATORS),
+        lambda graph, plain: {"system": rt.System.from_json(json.dumps(system_json))},
+    )
+    catalogue = [{"provider": "raytracer", "type": t} for t in provider.catalogue()]
+
+    def call(name: str, request: dict[str, object]) -> dict[str, object]:
+        answer: dict[str, object] = provider.handle(json.loads(json.dumps(request)))
+        return answer
+
+    ev.update(
+        register_remote(
+            reg, catalogue, call, root, local=dict(backend_rtt.EVALUATORS) if local else None
+        )
+    )
+    system = rt.System.from_json(json.dumps(system_json))
+    ex = Executor(g, reg, ev, {"system": system, "rings": 15, "pixels": [512, 8]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result: Image = ex.evaluate("camera", "image")
+    return result
+
+
+def test_a_remote_detector_with_a_grating_runs_in_the_engine(tmp_path: Path) -> None:
+    """The provider of the `rtt.*` blocks has no grating: a detector with the grating on its path
+    is computed by the engine with its own evaluator – the image of the local run."""
+    from rtt_fusion.graph.execute import ExecutionError
+
+    table = write_table(tmp_path / "mirror.json", {0: -1.0}, PERIOD_UM)
+    d = load_system()
+    with pytest.raises(ExecutionError, match="no evaluator for fg.grating"):
+        _remote_image(d, table, False, tmp_path / "a")
+    remote = _remote_image(d, table, True, tmp_path / "b")
+    here = image(d, table)
+    assert np.abs(remote.values - here.values).max() < 1e-12 * here.values.max()

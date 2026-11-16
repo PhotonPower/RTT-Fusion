@@ -6,6 +6,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Feldpropagation: Die Fehlergrenze ε des Planers von Fieldtracing ist jetzt eine Einstellung des
+  Laufs (`shared["field_tolerance"]`, im CAD das Workflow-Panel). Ohne Angabe gilt weiter der
+  Standard 0,02. Nahe einem Fokus lässt ε = 0,05 Debye statt Rayleigh–Sommerfeld zu.
 - `fg.grating`: Die Auflösung der Jones-Tabelle für den Strahlenweg ist jetzt ein Parameter des
   Blocks (Gruppe „Ray path“): `sigma_step` (Knotenabstand in den Richtungskosinus σ = n·sin θ der
   einfallenden Strahlen, bisher fest 0,01) und `sigma_margin` (wie weit die Tabelle über die
@@ -13,6 +16,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Abtasten eines Feldes auf die Pixel (`field._sample`): Der kubische Spline wird nur noch über
+  den Teil des Gitters gelegt, den die Pixel brauchen (`RectBivariateSpline` statt
+  `RegularGridInterpolator`). Bei einem Fokusgitter von 2016² dauerte das vorher 26–38 s pro Feld,
+  jetzt unter 1 s. Die Genauigkeit liegt in derselben Größenordnung. Beim Auflichtmikroskop
+  mit Si-Gitter rechnet die Pupillenkamera (Link H, ε = 0,05) damit in gut 3 Minuten statt gar nicht.
 - Entfernte Blöcke (CAD ADR 0010): Ein Detektor mit einem Block eines anderen Plugins auf seinem
   Pfad (R19b, z. B. `fg.grating` als Probe) brach im Prozess des Raytracer-Plugins mit „no
   evaluator for fg.grating“ ab, weil dieser Prozess das Gitter nicht kennt. `register_remote`

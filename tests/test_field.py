@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import replace
+from typing import Any
 
 import numpy as np
 import pytest
@@ -78,6 +79,46 @@ def test_w13_focus_against_richards_wolf() -> None:
     ref = np.sum(np.abs(richards_wolf(pts, f, K, a / f)) ** 2, axis=1).reshape(n, n)
     assert im.values.max() == pytest.approx(ref.max(), rel=2e-3)
     assert np.abs(im.values - ref).max() / ref.max() < 5e-3
+
+
+@pytest.mark.parametrize("given", [None, 0.05])
+def test_field_tolerance_reaches_the_planner(given: float | None, monkeypatch: Any) -> None:
+    """ε of the run (`shared["field_tolerance"]`, the Workflow panel) is the planner's tolerance;
+    without it Fieldtracing's default holds."""
+    import fieldtracing.chain as chain
+
+    seen: list[float] = []
+    real = chain.plan_propagation
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs.get("tolerance", 0.02))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(chain, "plan_propagation", spy)
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    g.add(Node("src", "optics.collimated_source", params={"radius": 1.0, "rings": 10}))
+    g.add(
+        Node("lens", "optics.aplanatic_lens", params={"focal_length": 2.0, "aperture_radius": 1.0})
+    )
+    g.add(
+        Node(
+            "cam",
+            "optics.detector",
+            params={
+                "point": [0, 0, 2.0],
+                "normal": [0, 0, -1],
+                "half_size": [2e-3, 2e-3],
+                "pixels": [9, 9],
+            },
+        )
+    )
+    g.connect(("src", "out"), ("lens", "in"))
+    g.connect(("lens", "out"), ("cam", "in"), "H")
+    shared = {} if given is None else {"field_tolerance": given}
+    Executor(g, reg, ev, shared, available=WITH_FIELDS).evaluate("cam", "image")
+    assert seen and set(seen) == {0.02 if given is None else given}
 
 
 # ------------------------------------------------------------------------------ W14 Gaussian beam
@@ -296,3 +337,39 @@ def test_w65_a_fitting_window_and_interference_are_no_reason() -> None:
     dark = coherent_image([rays, opposite], Plane.make([0, 0, 0], [0, 0, -1]), 1.5, 1.5, 32, 32)
     assert dark.ray_power > 0 and dark.power < 1e-9 * dark.ray_power
     assert dark.note == ""
+
+
+def test_sampling_a_grid_equals_the_cubic_interpolation_of_the_whole_grid() -> None:
+    """`_sample` fits the spline only where the pixels lie: as close to the sampled function as
+    scipy's cubic interpolation over the whole grid (which took 26 s per field on a 2016² grid),
+    0 outside the grid."""
+    from types import SimpleNamespace
+
+    from scipy.interpolate import RegularGridInterpolator
+
+    from rtt_fusion.graph.field import _sample
+
+    def field(u: FloatArray, v: FloatArray) -> np.ndarray:
+        phase = np.exp(1j * (5.0 * u - 2.0 * v)) * np.exp(-(u**2 + 2 * v**2) / 2)
+        return np.stack([phase, 0.5 * phase.conj(), 0.1j * phase], axis=-1)
+
+    x = np.linspace(-3.0, 3.0, 301)
+    xx, yy = np.meshgrid(x, x)
+    values = field(xx, yy)
+    f = SimpleNamespace(x=x, physical=lambda: values)
+    rng = np.random.default_rng(3)
+    q = np.concatenate([rng.uniform(-1.0, 0.5, (500, 2)), [[3.5, 0.0], [0.0, -3.2]]])
+    got = _sample(f, q)  # type: ignore[arg-type]
+    want = np.zeros_like(got)
+    for c in range(3):
+        for part, unit in ((np.real, 1.0), (np.imag, 1j)):
+            interp = RegularGridInterpolator(
+                (x, x), part(values[:, :, c]), method="cubic", bounds_error=False, fill_value=0.0
+            )
+            want[:, c] += unit * interp(np.stack([q[:, 1], q[:, 0]], axis=-1))
+    exact = field(q[:-2, 0], q[:-2, 1])
+    error = np.abs(got[:-2] - exact).max()
+    assert error < 1e-6
+    assert error <= 1.5 * np.abs(want[:-2] - exact).max()  # the same order (other end conditions)
+    assert np.abs(got - want).max() < 1e-6
+    assert np.all(got[-2:] == 0)

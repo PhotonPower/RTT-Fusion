@@ -20,7 +20,7 @@ import numpy as np
 
 from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
-from rtt_fusion.graph.field import FieldBundle, FieldError, field_image
+from rtt_fusion.graph.field import FieldBundle, FieldError, field_image, field_tolerance
 from rtt_fusion.graph.imaging import coherent_image
 from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
 from rtt_fusion.graph.model import (
@@ -259,7 +259,9 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
             "exec.mixed_representations", "rays and fields on one detector input", node.id
         )
     try:
-        return field_image(fields, plane, hu, hv, nx, ny, ctx.log)
+        return field_image(
+            fields, plane, hu, hv, nx, ny, ctx.log, tolerance=field_tolerance(ctx.shared)
+        )
     except FieldError as e:
         raise ExecutionError("exec.field", str(e), node.id) from e
 

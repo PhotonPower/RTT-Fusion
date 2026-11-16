@@ -146,7 +146,7 @@ def _plane_of(bundles: list[RayBundle]) -> Any:
 
 
 def beam_view(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> View:
-    from rtt_fusion.graph.field import FieldBundle, FieldError, field_image
+    from rtt_fusion.graph.field import FieldBundle, FieldError, field_image, field_tolerance
 
     items = list(inputs.get("in") or [])
     if not items:
@@ -163,7 +163,16 @@ def beam_view(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> 
         )
         half = float(np.max(np.abs(pts))) * (1 + margin) if len(pts) else 1.0
         try:
-            image = field_image(fields, plane, half, half, pixels, pixels, ctx.log)
+            image = field_image(
+                fields,
+                plane,
+                half,
+                half,
+                pixels,
+                pixels,
+                ctx.log,
+                tolerance=field_tolerance(ctx.shared),
+            )
         except FieldError as e:
             raise ExecutionError("exec.field", str(e), node.id) from e
         return View(

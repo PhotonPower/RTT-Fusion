@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- „Check workflow“ warnte bei jedem Block, der einen Raytatouille-Block ersetzt hat (z. B. ein
+  `fg.grating` als Probe statt des Spiegels), mit `graph.param_unknown` vor `rtt` und `runs`.
+  Diese Daten übernimmt `replace_block` absichtlich; das erzeugte System hält das Element weiter.
+  Sie gelten jetzt bei jedem Block als bekannt, andere unbekannte Parameter werden weiter gemeldet.
+
 - Ein Workflow-Dokument rechnet ohne weitere Dateien (W75): `fg.grating` und `fg.stack` nannten
   ihre FourierGrating-Konfiguration bzw. Jones-Tabelle nur über einen Pfad; auf einem anderen
   Rechner (oder ohne Zugriff auf den Ordner) brachen alle Anzeigen hinter dem Block mit „cannot

@@ -4,7 +4,19 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- `fg.grating`: Die Auflösung der Jones-Tabelle für den Strahlenweg ist jetzt ein Parameter des
+  Blocks (Gruppe „Ray path“): `sigma_step` (Knotenabstand in den Richtungskosinus σ = n·sin θ der
+  einfallenden Strahlen, bisher fest 0,01) und `sigma_margin` (wie weit die Tabelle über die
+  σ-Spanne hinausreicht; war schon lesbar, aber nicht deklariert).
+
 ### Behoben
+
+- `system_from_model` (die Zeichnung des Raytracers nach jeder Bearbeitung im Node-Editor) brach
+  mit „branch …: no events for Probe front>front|“ ab, wenn ein Fremdblock (z. B. ein Gitter statt
+  des Probenspiegels) für seine Ports keine Ereignisse hält. Ein solcher Schritt beendet jetzt den
+  Pfad des Astes wie in `system_from_graph`; bei Raytatouille-Blöcken bleibt es ein Fehler.
 
 - „Check workflow“ warnte bei jedem Block, der einen Raytatouille-Block ersetzt hat (z. B. ein
   `fg.grating` als Probe statt des Spiegels), mit `graph.param_unknown` vor `rtt` und `runs`.

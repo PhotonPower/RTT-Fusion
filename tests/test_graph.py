@@ -187,6 +187,22 @@ def test_unknown_type_and_parameter() -> None:
     assert sorted(codes(g)) == ["graph.node_type_unknown", "graph.param_unknown"]
 
 
+def test_carried_raytatouille_data_are_known() -> None:
+    """A block that replaced a Raytatouille block keeps its `rtt` and `runs` (replace_block, the
+    generated system still holds the element): no warning for them, still for anything else."""
+    from rtt_fusion.graph import grating
+
+    reg = builtin_registry()
+    grating.register(reg)
+    g = Graph()
+    rtt = {"/root/children/4": {"type": "mirror", "name": "Probe"}}
+    g.add(Node("p", "fg.grating", params={"rtt": rtt, "runs": {"a>b|": []}}))
+    assert not [d for d in validate(g, reg) if d.code == "graph.param_unknown"]
+    g.nodes["p"].params["colour"] = "red"
+    found = [d for d in validate(g, reg) if d.code == "graph.param_unknown"]
+    assert [d.message for d in found] == ["parameter 'colour' is not one of fg.grating"]
+
+
 # ---------------------------------------------------------------------------- editing
 
 

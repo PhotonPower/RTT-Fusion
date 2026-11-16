@@ -54,6 +54,9 @@ POSE_INPUT = SocketSpec("pose", Direction.IN, SocketKind.DATA, frozenset({"drive
 _POSED = (Category.SOURCE, Category.DOMAIN, Category.SPLITTER, Category.DETECTOR)
 #: parameters prepare_parts gives a library part (its place in the system), not set by the user
 PART_DERIVED = ("rtt", "runs", "surfaces", "location", "element_type")
+#: the Raytatouille data a block keeps when it replaced a Raytatouille block (`replace_block`, ADR
+#: Nachtrag 1): the generated system still holds the element; known on every block
+CARRIED = ("rtt", "runs")
 
 
 def node_through(node: Node, registry: NodeTypeRegistry) -> dict[str, tuple[str, ...]]:
@@ -120,6 +123,8 @@ def validate(graph: Graph, registry: NodeTypeRegistry) -> list[Diagnostic]:
         known = {p.name for p in t.params}
         if node.type_id.startswith("rtt.part."):  # placed in the system by prepare_parts (S4)
             known |= set(PART_DERIVED)
+        if known:
+            known |= set(CARRIED)
         if known and not t.dynamic_sockets:
             for name in node.params:
                 if (

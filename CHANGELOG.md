@@ -13,6 +13,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Entfernte Blöcke (CAD ADR 0010): Ein Detektor mit einem Block eines anderen Plugins auf seinem
+  Pfad (R19b, z. B. `fg.grating` als Probe) brach im Prozess des Raytracer-Plugins mit „no
+  evaluator for fg.grating“ ab, weil dieser Prozess das Gitter nicht kennt. `register_remote`
+  nimmt jetzt die eigenen Evaluatoren der Engine (`local=`); ein Block, dessen Evaluator mit
+  `calls(ctx, node)` Blöcke eines anderen Anbieters nennt (`backend_rtt.foreign_blocks` für den
+  Detektor), wird damit in der Engine gerechnet, die beide Plugins erreicht.
 - `fg.grating` mit Konfiguration, Strahlenweg: Ein Bündel mit nur einer Einfallsrichtung (eine
   ebene Welle, z. B. ein Feldpunkt einer Köhler-Beleuchtung) bekommt seine Jones-Matrizen jetzt
   direkt an seinem σ (`jones_table.point_table`, 4 Lösungen) statt aus einer 4×4×4-Tabelle (128).

@@ -209,8 +209,14 @@ class RemoteEvaluator:
         root: str | Path,
         prepare: bool = False,
         runs: dict[tuple[str, int], tuple[str, dict[str, str]]] | None = None,
+        local: Evaluator | None = None,
+        provided: frozenset[str] = frozenset(),
     ) -> None:
         self.provider = provider
+        #: the engine's own evaluator of the type, for a block that evaluates blocks the provider
+        #: does not have (`local.calls(ctx, node)`: their ids); `provided`: the provider's types
+        self.local = local
+        self.provided = provided
         self.call = call
         self.representations = representations
         self.root = Path(root)
@@ -250,7 +256,21 @@ class RemoteEvaluator:
             self.runs[key] = (run, _snapshot(ctx.graph))
         return self.runs[key][0]
 
+    def _needs_engine(self, ctx: Context, node: Node) -> bool:
+        """Whether the block evaluates blocks of another provider (a detector with a grating of
+        FourierGrating on its path): the provider cannot reach them, the engine can."""
+        calls = getattr(self.local, "calls", None)
+        if calls is None:
+            return False
+        return any(
+            ctx.graph.nodes[b].type_id not in self.provided
+            for b in calls(ctx, node)
+            if b in ctx.graph.nodes
+        )
+
     def __call__(self, ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
+        if self.local is not None and self._needs_engine(ctx, node):
+            return self.local(ctx, node, socket, inputs)
         run = self._run(ctx, node)
         self.root.mkdir(parents=True, exist_ok=True)
         folder = Path(tempfile.mkdtemp(prefix=f"{next(self._count)}-", dir=self.root))
@@ -294,17 +314,33 @@ def register_remote(
     catalogues: list[dict[str, Any]],
     call: Call,
     root: str | Path,
+    local: dict[str, Evaluator] | None = None,
 ) -> dict[str, Evaluator]:
     """Adds the providers' block types to `registry`; their evaluators (by type id). A type the
     registry has already (e.g. `rtt.*`, built in) keeps its description and is evaluated by the
-    provider. A catalogue entry with "prepare": true gets the run's graph first (D6)."""
+    provider. A catalogue entry with "prepare": true gets the run's graph first (D6). `local`:
+    the engine's own evaluators; a block that evaluates blocks of another provider (a detector
+    with a FourierGrating sample on its path) is computed with them in the engine."""
     evaluators: dict[str, Evaluator] = {}
     runs: dict[tuple[str, int], tuple[str, dict[str, str]]] = {}
-    for entry, (provider, t, reps) in zip(catalogues, remote_types(catalogues), strict=True):
+    typed = remote_types(catalogues)
+    provided: dict[str, set[str]] = {}
+    for provider, t, _ in typed:
+        provided.setdefault(provider, set()).add(t.type_id)
+    for entry, (provider, t, reps) in zip(catalogues, typed, strict=True):
         if registry.get(t.type_id) is None:
             registry.add(t)
         prepare = bool(entry["type"].get("prepare", False))
-        evaluators[t.type_id] = RemoteEvaluator(provider, call, reps, root, prepare, runs)
+        evaluators[t.type_id] = RemoteEvaluator(
+            provider,
+            call,
+            reps,
+            root,
+            prepare,
+            runs,
+            local=(local or {}).get(t.type_id),
+            provided=frozenset(provided[provider]),
+        )
     return evaluators
 
 

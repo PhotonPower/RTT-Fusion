@@ -6,6 +6,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Wheels und PyPI: `.github/workflows/wheels.yml` baut das Wheel (reines Python) und die sdist und
+  testet das installierte Wheel unter Linux, Windows und macOS. Ein Tag `v<Version>` hängt sie an
+  ein GitHub-Release; *Run workflow* auf dem Tag mit `pypi` lädt sie auf PyPI (Trusted
+  Publishing, Projekt `rtt-fusion`, Umgebung `pypi`).
+
+### Geändert
+
+- Die Löser-Module mit festen Commits stehen jetzt in `requirements-modules.txt` statt im Extra
+  `modules` (PyPI nimmt keine Git-Verweise in den Metadaten an): `pip install -r
+  requirements-modules.txt` statt `pip install -e ".[modules]"`. Die Lizenzangabe ist jetzt ein
+  SPDX-Ausdruck (setuptools ≥ 77).
+
 - Was ein Block zur Laufzeit auf einem Link „auto“ benutzt hat, steht jetzt in `Context.used`
   (Link-Schlüssel → Darstellung und Grund), z. B. „H“, wenn ein Detektor nahe einem Fokus mit
   Feldern rechnet, sonst „R“. Entfernte Blöcke schicken es mit ihrer Antwort zurück.

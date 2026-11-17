@@ -13,13 +13,13 @@ bevor sie in Raytatouille portiert wird (Plan: `docs/fusionsplan.md`, aus Fieldt
 ## Bauen und testen
 
 ```bash
-pip install -r requirements-dev.txt && pip install -e ".[modules]"
+pip install -r requirements-dev.txt -r requirements-modules.txt && pip install -e .
 pytest
 ruff check . && ruff format --check . && mypy
 ```
 
 Die CI baut die Löser einmal in einen zwischengespeicherten Wheelhouse (Schlüssel: Commits in
-`pyproject.toml`, `constraints-modules.txt`, Python-Version und eine Version `v1` im Schlüssel,
+`requirements-modules.txt`, `constraints-modules.txt`, Python-Version und eine Version `v1` im Schlüssel,
 die bei Änderungen der Bauschritte von Hand erhöht wird).
 
 C++-Prototyp (`cpp/`): `cmake -S cpp -B build/cpp -G Ninja && cmake --build build/cpp &&

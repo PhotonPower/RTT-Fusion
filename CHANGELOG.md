@@ -38,6 +38,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Ein System, das Raytatouille nicht übersetzen kann, bricht den Lauf nicht mehr mit einem
+  `CompileError`-Traceback ab. Es meldet `exec.compile` mit dem, was fehlt. Fehlen Gläser, weil ein
+  Glaskatalog nicht geladen ist, nennt die Meldung den Katalog, die betroffenen Gläser und wo man
+  ihn nachträgt.
 - Feldpropagation mit Rayleigh–Sommerfeld rechnet in Fieldtracing auf 64² Punkte im Abstand
   λ/(8 sin θ) um die Achse. Ein größeres Bildfenster wurde deshalb stillschweigend auf diesen
   Bereich beschnitten (Pupillenkamera: 218 µm von 11 mm). Deckt das RS-Gitter das Fenster nicht

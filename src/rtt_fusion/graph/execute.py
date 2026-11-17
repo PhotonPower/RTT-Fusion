@@ -76,6 +76,9 @@ class Context:
     #: operator store (R26): the expensive, pose-independent parts of solver blocks in their
     #: local frame (a BEM factorisation, a built table), kept across runs; keys without the pose
     operators: Any = None
+    #: what blocks decided at run time for links on "auto" (link key -> {"representation",
+    #: "reason"}), e.g. a detector that computes fields near a focus; the GUI shows it at the link
+    used: dict[str, dict[str, str]] = field(default_factory=dict)
     _span: tuple[float, float] = (0.0, 1.0)
 
     def report(self, part: float, text: str = "") -> None:

@@ -193,7 +193,7 @@ def embed_catalogs(node: Node) -> Embedded:
         }
         done.stored.append(f"{node.id}: glass catalogue {file} stored in the workflow")
     left: list[str] = []
-    for path, e in unread:
+    for path, err in unread:
         if catalog_name(path) in held:  # the document holds it: the path goes
             continue
         left.append(path)
@@ -201,7 +201,7 @@ def embed_catalogs(node: Node) -> Embedded:
             Diagnostic(
                 "graph.file_unreadable",
                 "warning",
-                f"glass catalogue {path}: cannot read it ({e.strerror or e}) and the workflow "
+                f"glass catalogue {path}: cannot read it ({err.strerror or err}) and the workflow "
                 f"holds no copy – the glasses from it are missing; {CATALOG_HINT}",
                 node.id,
             )

@@ -48,6 +48,7 @@ The detector block's `half_size` ([hu, hv] mm) overrides the detector aperture a
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import numpy as np
@@ -180,7 +181,7 @@ def _normal_in_parent(ctx: Context, node: Node) -> Any:
         materials = ctx.shared.get("materials", rt.MaterialLibrary())
 
         def surface_pose(d: dict[str, Any]) -> tuple[Any, Any]:
-            compiled = rt.compile(rt.System.from_json(json.dumps(d)), materials)
+            compiled = _compile(rt.System.from_json(json.dumps(d)), materials)
             layout = next((x for x in rt.layout.surfaces(compiled) if x.id == key), None)
             if layout is None:
                 raise ExecutionError("exec.param", f"drive: no surface {key!r}", node.id)
@@ -284,6 +285,45 @@ def _apply_rigid(d: dict[str, Any], location: str, offset: list[float], ctx: Con
     store("rotation_deg", np.degrees(angles_xyz(r @ rotation_xyz(offset[3:]))))
 
 
+def _compile(system: Any, materials: Any) -> Any:
+    """`raytatouille.compile`; its errors become `exec.compile` with what the system lacks: an
+    unknown glass names the catalogue to add (Workflow panel: Glass catalogues)."""
+    import raytatouille as rt
+
+    try:
+        return rt.compile(system, materials)
+    except rt.errors.CompileError as e:
+        diagnostics = list(getattr(e, "diagnostics", []) or [])
+        catalogues = sorted(
+            {
+                m.group(1)
+                for d in diagnostics
+                if (m := re.search(r"catalog (\S+) not loaded", str(d.message)))
+            }
+        )
+        if catalogues:
+            glasses = sorted(
+                {
+                    m.group(1)
+                    for d in diagnostics
+                    if (m := re.search(r"reference '([^']+)'", str(d.message)))
+                }
+            )
+            named = ", ".join(glasses[:6]) + (" …" if len(glasses) > 6 else "")
+            raise ExecutionError(
+                "exec.compile",
+                f"the system's glasses come from the glass catalogue(s) {', '.join(catalogues)}, "
+                f"which are not loaded ({named}); "
+                "add the .agf file under Glass catalogues in the Workflow panel and run again – "
+                "it is then stored in the workflow",
+            ) from e
+        lines = [f"{d.code}: {d.message} ({d.location})" for d in diagnostics[:5]]
+        more = f" (and {len(diagnostics) - 5} more)" if len(diagnostics) > 5 else ""
+        raise ExecutionError(
+            "exec.compile", f"the system does not compile: {'; '.join(lines) or e}{more}"
+        ) from e
+
+
 def _compiled(ctx: Context) -> Any:
     """The compiled system for the present block offsets (cached per offsets)."""
     import raytatouille as rt
@@ -295,7 +335,7 @@ def _compiled(ctx: Context) -> Any:
         cache = ctx.shared.setdefault("compiled_generated", {})
         if key not in cache:
             system = rt.System.from_json(json.dumps(_system_json(ctx)))
-            cache[key] = rt.compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
+            cache[key] = _compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
         return cache[key]
     if not offsets and not _rigid(ctx):
         if "compiled" not in ctx.shared:
@@ -303,7 +343,7 @@ def _compiled(ctx: Context) -> Any:
                 raise ExecutionError(
                     "exec.no_system", "the executor needs shared['system'] (rt.System)"
                 )
-            ctx.shared["compiled"] = rt.compile(
+            ctx.shared["compiled"] = _compile(
                 ctx.shared["system"], ctx.shared.get("materials", rt.MaterialLibrary())
             )
         return ctx.shared["compiled"]
@@ -311,7 +351,7 @@ def _compiled(ctx: Context) -> Any:
     cache = ctx.shared.setdefault("compiled_by_offsets", {})
     if key not in cache:
         system = rt.System.from_json(json.dumps(_system_json(ctx)))
-        cache[key] = rt.compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
+        cache[key] = _compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
     return cache[key]
 
 
@@ -748,7 +788,7 @@ def _split_path(
             {"name": f"{path}#B", "events": after},
         ]
         system = rt.System.from_json(json.dumps(d))
-        cache[split_key] = rt.compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
+        cache[split_key] = _compile(system, ctx.shared.get("materials", rt.MaterialLibrary()))
     compiled = cache[split_key]
     layouts = list(rt.layout.surfaces(compiled))
     by_id = {L.id: L for L in layouts}
@@ -1265,7 +1305,7 @@ def _runs(
             )
             by_place[(b["name"], i)] = run
     d["paths"] = [*d.get("paths", []), *extra]
-    compiled = rt.compile(
+    compiled = _compile(
         rt.System.from_json(json.dumps(d)), ctx.shared.get("materials", rt.MaterialLibrary())
     )
     cache[key] = (compiled, list(rt.layout.surfaces(compiled)), by_key, by_place, by_port)

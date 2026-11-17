@@ -11,13 +11,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   ein GitHub-Release; *Run workflow* auf dem Tag mit `pypi` lädt sie auf PyPI (Trusted
   Publishing, Projekt `rtt-fusion`, Umgebung `pypi`).
 
-### Geändert
-
-- Die Löser-Module mit festen Commits stehen jetzt in `requirements-modules.txt` statt im Extra
-  `modules` (PyPI nimmt keine Git-Verweise in den Metadaten an): `pip install -r
-  requirements-modules.txt` statt `pip install -e ".[modules]"`. Die Lizenzangabe ist jetzt ein
-  SPDX-Ausdruck (setuptools ≥ 77).
-
 - Was ein Block zur Laufzeit auf einem Link „auto“ benutzt hat, steht jetzt in `Context.used`
   (Link-Schlüssel → Darstellung und Grund), z. B. „H“, wenn ein Detektor nahe einem Fokus mit
   Feldern rechnet, sonst „R“. Entfernte Blöcke schicken es mit ihrer Antwort zurück.
@@ -115,6 +108,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   zudem den Brechungsindex des Objektraums.
 
 ### Geändert
+
+- Die Löser-Module mit festen Commits stehen jetzt in `requirements-modules.txt` statt im Extra
+  `modules` (PyPI nimmt keine Git-Verweise in den Metadaten an): `pip install -r
+  requirements-modules.txt` statt `pip install -e ".[modules]"`. Die Lizenzangabe ist jetzt ein
+  SPDX-Ausdruck (setuptools ≥ 77).
 
 - Felder werden bikubisch mit FITPACK (`spectral.bicubic`) auf ihre Stützstellen zurückgelegt;
   `RegularGridInterpolator(method="cubic")` konvergiert auf solchen Gittern nicht.

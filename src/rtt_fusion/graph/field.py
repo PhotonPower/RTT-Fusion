@@ -247,6 +247,70 @@ def _sample(f: GridlessField | GriddedField, q: FloatArray) -> ComplexArray:
     return out
 
 
+def _onto(fb: FieldBundle, plane: Plane, notes: list[str]) -> tuple[FieldBundle, float]:
+    """The field on a plane parallel to `plane` (resampled geometrically if tilted) and the
+    distance along its normal to `plane`."""
+    n = fb.plane.normal
+    if abs(float(n @ plane.normal)) < 1.0 - 1e-12:
+        # tilted planes: resample geometrically onto a plane parallel to the target (H -> R -> H)
+        n_t = plane.normal if float(n @ plane.normal) > 0 else -plane.normal
+        fb = rays_to_field(field_to_rays(fb), Plane.make(fb.plane.origin, n_t))
+        n = fb.plane.normal
+        notes.append(f"{fb.key.source}: field resampled onto a plane parallel to the detector")
+    return fb, float((plane.origin - fb.plane.origin) @ n)
+
+
+#: output samples per direction of Fieldtracing's Rayleigh–Sommerfeld step (its `n_out` default)
+RS_SAMPLES = 64
+
+
+def plan_onto(
+    fb: FieldBundle,
+    distance: float,
+    window: float | None,
+    tolerance: float | None,
+    notes: list[str],
+) -> Any:
+    """Fieldtracing's plan for `distance` mm. A Rayleigh–Sommerfeld step computes a grid of
+    RS_SAMPLES² points λ/(8 sin θ) apart around the axis; if that does not cover the image
+    window, the plan is Debye (which takes the window) and its estimated error goes to `notes`
+    – otherwise the image would be cut to a few micrometres around the axis."""
+    from fieldtracing.chain import plan_propagation
+
+    extra: dict[str, Any] = {} if tolerance is None else {"tolerance": tolerance}
+    plan = plan_propagation(fb.field, distance, focus_window=window, **extra)
+    if plan.method != "rayleigh_sommerfeld" or window is None:
+        return plan
+    covered = RS_SAMPLES * float(plan.parameters.get("step_out_mm", 0.0))
+    if covered >= window:
+        return plan
+    debye = plan_propagation(fb.field, distance, focus_window=window, method="debye", **extra)
+    error = float(debye.budget.get("debye", float("nan")))
+    eps = float(debye.parameters.get("tolerance", tolerance or 0.02))
+    notes.append(
+        f"{fb.key.source}: Rayleigh–Sommerfeld would cover {covered * 1e3:.3g} µm of the "
+        f"{window:g} mm window – Debye instead, estimated error {error:.2g} (ε = {eps:g})"
+    )
+    return debye
+
+
+def near_focus(
+    fb: FieldBundle, plane: Plane, window: float | None = None, tolerance: float | None = None
+) -> str | None:
+    """Why `plane` needs wave optics, or None: Fieldtracing's selection rule for a target near a
+    caustic (rays cross or focus there, 1/F_target > ε), the reason in its words."""
+    from fieldtracing.chain import plan_propagation
+
+    fb, distance = _onto(fb, plane, [])
+    if abs(distance) < 1e-9:
+        return None
+    extra: dict[str, Any] = {} if tolerance is None else {"tolerance": tolerance}
+    plan = plan_propagation(fb.field, distance, focus_window=window, **extra)
+    if plan.method in ("debye", "rayleigh_sommerfeld"):
+        return str(plan.reason)
+    return None
+
+
 def propagate_to(
     fb: FieldBundle, plane: Plane, window: float | None = None, tolerance: float | None = None
 ) -> tuple[FieldBundle, list[str]]:
@@ -255,23 +319,11 @@ def propagate_to(
     frame of the field coordinates, shifted along the normal onto the target). `tolerance`: ε of
     the planner's selection rules (None: Fieldtracing's default, 0.02); a larger ε lets a cheaper
     method through, e.g. Debye instead of Rayleigh–Sommerfeld near a focus."""
-    from fieldtracing.chain import plan_propagation
-
-    n = fb.plane.normal
     notes: list[str] = []
-    if abs(float(n @ plane.normal)) < 1.0 - 1e-12:
-        # tilted planes: resample geometrically onto a plane parallel to the target (H -> R -> H)
-        n_t = plane.normal if float(n @ plane.normal) > 0 else -plane.normal
-        fb = rays_to_field(field_to_rays(fb), Plane.make(fb.plane.origin, n_t))
-        n = fb.plane.normal
-        notes.append(f"{fb.key.source}: field resampled onto a plane parallel to the detector")
-    distance = float((plane.origin - fb.plane.origin) @ n)
+    fb, distance = _onto(fb, plane, notes)
     if abs(distance) < 1e-9:
         return fb, notes
-    if tolerance is None:
-        plan = plan_propagation(fb.field, distance, focus_window=window)
-    else:
-        plan = plan_propagation(fb.field, distance, tolerance=tolerance, focus_window=window)
+    plan = plan_onto(fb, distance, window, tolerance, notes)
     result, log = plan.run(fb.field)
     notes.append(f"{fb.key.source}: H propagation {distance:g} mm by {plan.method} ({plan.reason})")
     notes += [f"  {e.operator}: {w}" for e in log for w in e.warnings]

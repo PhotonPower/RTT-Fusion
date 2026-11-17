@@ -84,3 +84,50 @@ def test_w18_michelson_fields_like_rays() -> None:
     lit = rays.values > 0.1 * rays.values.max()
     assert np.abs(field.values - rays.values)[lit].max() < 0.12 * rays.values.max()
     assert field.power == pytest.approx(rays.power, rel=2e-2)
+
+
+def test_auto_link_into_a_focus_computes_fields() -> None:
+    """With `auto_fields` a detector on an "auto" link notices that the rays meet near it (W17's
+    focus) and computes fields from the last surface on: the image of the link set to H."""
+    path = DATA / "paraboloid_f50.rtt.json"
+    system = rt.load(str(path))
+    g = graph_from_raytatouille(str(path))
+    half, n = 0.1, 31
+    g.nodes["focus"].params["half_size"] = [half, half]
+    auto, ex = run(g, system, "focus", rings=30, pixels=[n, n], auto_fields=True)
+    assert any("focuses near the detector" in line for line in ex.context.log)
+    g.set_transport(g.links[-1], "H")
+    fields, _ = run(g, system, "focus", rings=30, pixels=[n, n])
+    assert auto.values.max() > 0.0
+    assert np.abs(auto.values - fields.values).max() <= 1e-12 * fields.values.max()
+
+
+def test_auto_link_away_from_a_focus_keeps_rays() -> None:
+    """A collimated beam on the camera (W18's Michelson): no caustic, the auto link stays R."""
+    d = json.loads((DATA / "michelson.rtt.json").read_text(encoding="utf-8"))
+    d["aperture"] = {"type": "epd", "value": 1.0}
+    g = graph_from_raytatouille(d)
+    system = rt.System.from_json(json.dumps(d))
+    g.nodes["camera"].params["half_size"] = [0.3, 0.3]
+    shared = {"rings": 12, "pixels": [32, 32], "gaussian_waist": 0.5}
+    rays, _ = run(g, system, "camera", **shared)
+    auto, ex = run(g, system, "camera", auto_fields=True, **shared)
+    assert not any("focuses near the detector" in line for line in ex.context.log)
+    assert np.array_equal(auto.values, rays.values)
+
+
+def test_a_window_wider_than_rayleigh_sommerfeld_takes_debye() -> None:
+    """Rayleigh–Sommerfeld computes 64² points λ/(8 NA) apart (0.47 mm for W17's focus): for a
+    2 mm window the plan is Debye, with its estimated error in the log, and the Airy pattern's
+    rings reach far beyond that grid instead of being cut off."""
+    path = DATA / "paraboloid_f50.rtt.json"
+    system = rt.load(str(path))
+    g = graph_from_raytatouille(str(path))
+    g.nodes["focus"].params["half_size"] = [1.0, 1.0]
+    g.set_transport(g.links[-1], "H")
+    image, ex = run(g, system, "focus", rings=30, pixels=[41, 41])
+    assert any("Debye instead" in line for line in ex.context.log)
+    assert any("by debye" in line for line in ex.context.log)
+    assert image.values[20, 20] == image.values.max()
+    # 0.78 mm off the axis, far beyond the ±0.24 mm of the Rayleigh–Sommerfeld grid
+    assert image.values[20, 4] > 0.0

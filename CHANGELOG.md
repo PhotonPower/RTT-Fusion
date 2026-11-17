@@ -6,6 +6,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Automatische Wellenoptik nahe einem Fokus (`shared["auto_fields"]`, im CAD das Workflow-Panel):
+  Ein Detektor, dessen Link auf „auto“ steht, prüft vorab mit einem Feldpunkt und einer
+  Wellenlänge je Pfad, ob die Strahlen sich nahe der Detektorebene kreuzen oder fokussieren. Dafür
+  nutzt er die Kaustik-Regel des Fieldtracing-Planers (1/F_target > ε). Trifft das zu, rechnet er
+  ab der letzten Fläche mit Feldern, als stünde der Link auf H, und schreibt Grund und Kennzahlen
+  ins Log. Sonst bleibt er bei Strahlen. Ein Link auf R oder H behält seine Einstellung. Das gilt
+  für ganze Pfade, Split-Pfade (Gitter als Probe) und knotenweise Ausführung.
 - Feldpropagation: Die Fehlergrenze ε des Planers von Fieldtracing ist jetzt eine Einstellung des
   Laufs (`shared["field_tolerance"]`, im CAD das Workflow-Panel). Ohne Angabe gilt weiter der
   Standard 0,02. Nahe einem Fokus lässt ε = 0,05 Debye statt Rayleigh–Sommerfeld zu.
@@ -16,6 +23,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- Feldpropagation mit Rayleigh–Sommerfeld rechnet in Fieldtracing auf 64² Punkte im Abstand
+  λ/(8 sin θ) um die Achse. Ein größeres Bildfenster wurde deshalb stillschweigend auf diesen
+  Bereich beschnitten (Pupillenkamera: 218 µm von 11 mm). Deckt das RS-Gitter das Fenster nicht
+  ab, nimmt `propagate_to` jetzt Debye, das das Fenster berücksichtigt, und schreibt den geschätzten
+  Fehler neben ε ins Log.
 - Abtasten eines Feldes auf die Pixel (`field._sample`): Der kubische Spline wird nur noch über
   den Teil des Gitters gelegt, den die Pixel brauchen (`RectBivariateSpline` statt
   `RegularGridInterpolator`). Bei einem Fokusgitter von 2016² dauerte das vorher 26–38 s pro Feld,

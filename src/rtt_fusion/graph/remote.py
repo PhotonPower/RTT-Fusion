@@ -47,7 +47,8 @@ from rtt_fusion.graph.registry import NodeTypeRegistry
 
 #: request a provider answers: {"node", "socket", "inputs": {socket: handle}, "folders": {socket:
 #: folder of that input}, "out": folder for the outputs, "shared": plain settings of the run}
-#: response: {"ok": True, "outputs": handle, "log": [...]} or {"ok": False, "error": "..."}
+#: response: {"ok": True, "outputs": handle, "log": [...], "used": {link key: {"representation",
+#: "reason"}}} or {"ok": False, "error": "..."}
 Call = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
@@ -153,7 +154,7 @@ class BlockProvider:
             value = self.evaluators[node.type_id](ctx, node, str(request["socket"]), inputs)
             log = list(ctx.log)
             handle = portdata.write(value, request["out"])
-            return {"ok": True, "outputs": handle, "log": log}
+            return {"ok": True, "outputs": handle, "log": log, "used": dict(ctx.used)}
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}: {e}", "log": log}
 
@@ -298,6 +299,9 @@ class RemoteEvaluator:
             except Exception as e:
                 raise ExecutionError("exec.remote", f"{self.provider}: {e}", node.id) from e
             ctx.log.extend(str(x) for x in response.get("log", []))
+            used = response.get("used")
+            if isinstance(used, dict):  # what the block decided on links on "auto"
+                ctx.used.update({str(k): dict(v) for k, v in used.items() if isinstance(v, dict)})
             if not response.get("ok"):
                 raise ExecutionError(
                     "exec.remote",

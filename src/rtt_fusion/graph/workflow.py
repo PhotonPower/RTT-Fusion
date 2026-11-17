@@ -119,6 +119,27 @@ def connection_plan(
     return out
 
 
+def with_used(
+    plan: dict[str, Any],
+    used: dict[str, dict[str, str]],
+    graph: Graph | None = None,
+    model: Model | None = None,
+    reg: NodeTypeRegistry | None = None,
+) -> dict[str, Any]:
+    """The plan with what the blocks used at run time on links on "auto" (`Context.used`, by
+    link key of the run's graph): `links[key]["used"]`, `["used_reason"]`, and – with the model
+    – `connections_used` per connection and direction like `connections`. The GUI shows it at
+    the link where it differs from the planned representation (R→H)."""
+    out = {**plan, "links": {k: dict(v) for k, v in plan.get("links", {}).items()}}
+    for key, u in used.items():
+        if key in out["links"]:
+            out["links"][key]["used"] = str(u.get("representation", ""))
+            out["links"][key]["used_reason"] = str(u.get("reason", ""))
+    if graph is not None and model is not None and reg is not None:
+        out["connections_used"] = connection_plan(graph, model, reg, {"links": used})
+    return out
+
+
 def model_document(
     model: Model,
     reg: NodeTypeRegistry,

@@ -23,6 +23,7 @@ from scipy.special import j1
 from rtt_fusion.graph import builtin_registry, graph_from_raytatouille
 from rtt_fusion.graph.execute import WITH_FIELDS, Executor
 from rtt_fusion.graph.imaging import Image
+from rtt_fusion.graph.workflow import with_used
 
 rt = pytest.importorskip("raytatouille")
 pytest.importorskip("fieldtracing")
@@ -96,6 +97,12 @@ def test_auto_link_into_a_focus_computes_fields() -> None:
     g.nodes["focus"].params["half_size"] = [half, half]
     auto, ex = run(g, system, "focus", rings=30, pixels=[n, n], auto_fields=True)
     assert any("focuses near the detector" in line for line in ex.context.log)
+    (key,) = ex.context.used  # what the GUI shows at the link: planned R, used H
+    assert ex.context.used[key]["representation"] == "H"
+    assert ex.context.plan is not None and ex.context.plan.representations[key] == "R"
+    shown = with_used({"links": {key: {"representation": "R"}}}, ex.context.used)
+    assert shown["links"][key]["used"] == "H"
+    assert "focuses near the detector" in shown["links"][key]["used_reason"]
     g.set_transport(g.links[-1], "H")
     fields, _ = run(g, system, "focus", rings=30, pixels=[n, n])
     assert auto.values.max() > 0.0
@@ -113,6 +120,7 @@ def test_auto_link_away_from_a_focus_keeps_rays() -> None:
     rays, _ = run(g, system, "camera", **shared)
     auto, ex = run(g, system, "camera", auto_fields=True, **shared)
     assert not any("focuses near the detector" in line for line in ex.context.log)
+    assert {u["representation"] for u in ex.context.used.values()} == {"R"}
     assert np.array_equal(auto.values, rays.values)
 
 

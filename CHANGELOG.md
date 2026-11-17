@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Was ein Block zur Laufzeit auf einem Link „auto“ benutzt hat, steht jetzt in `Context.used`
+  (Link-Schlüssel → Darstellung und Grund), z. B. „H“, wenn ein Detektor nahe einem Fokus mit
+  Feldern rechnet, sonst „R“. Entfernte Blöcke schicken es mit ihrer Antwort zurück.
+  `workflow.with_used(plan, used, graph, model, reg)` trägt es in den Plan ein (`links[k]["used"]`,
+  `["used_reason"]`, `connections_used`), damit die GUI am Link „R→H“ zeigen kann.
 - Automatische Wellenoptik nahe einem Fokus (`shared["auto_fields"]`, im CAD das Workflow-Panel):
   Ein Detektor, dessen Link auf „auto“ steht, prüft vorab mit einem Feldpunkt und einer
   Wellenlänge je Pfad, ob die Strahlen sich nahe der Detektorebene kreuzen oder fokussieren. Dafür

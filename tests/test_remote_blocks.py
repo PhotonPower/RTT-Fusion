@@ -86,6 +86,27 @@ def test_w69_a_remote_block_equals_the_local_one(tmp_path: Path) -> None:
     assert not any((tmp_path / "portdata").iterdir())  # the files are gone after the request
 
 
+def test_what_a_remote_block_used_reaches_the_engine(tmp_path: Path) -> None:
+    """A block's run-time decision on its links (`Context.used`, e.g. a detector that computes
+    fields near a focus) travels back with the answer: the GUI shows it at the link."""
+    reg, local = _types_and_evaluators()
+
+    def deciding(ctx: Any, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
+        ctx.used["a.out -> b.in"] = {"representation": "H", "reason": "a focus"}
+        return local["optics.thin_lens"](ctx, node, socket, inputs)
+
+    provider = BlockProvider([reg.get("optics.thin_lens")], {"optics.thin_lens": deciding})
+    remote = RemoteEvaluator(
+        "lenses",
+        lambda _p, r: json.loads(json.dumps(provider.evaluate(json.loads(json.dumps(r))))),
+        frozenset("R"),
+        tmp_path,
+    )
+    ex = Executor(_graph(), reg, {**local, "optics.thin_lens": remote})
+    ex.evaluate("cam", "image")
+    assert ex.context.used == {"a.out -> b.in": {"representation": "H", "reason": "a focus"}}
+
+
 def test_w69_errors_of_the_provider(tmp_path: Path) -> None:
     reg, local = _types_and_evaluators()
 

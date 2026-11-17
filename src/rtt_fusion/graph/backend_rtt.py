@@ -648,14 +648,24 @@ def _near_focus(ctx: Context, node: Node, compiled: Any, probe: list[FieldBundle
             why = near_focus(fb, plane, window, field_tolerance(ctx.shared))
         except Exception as e:  # a field the planner cannot judge: rays as before
             ctx.log.append(f"{node.name or node.id}: no automatic wave optics ({e})")
+            _record_used(ctx, node, "R", f"no automatic wave optics ({e})")
             return False
         if why is not None:
             ctx.log.append(
                 f"{node.name or node.id}: the light focuses near the detector ({why}) – "
                 "computed as fields from the last surface on (link auto → H)"
             )
+            _record_used(ctx, node, "H", f"the light focuses near the detector ({why})")
             return True
+    _record_used(ctx, node, "R", "no focus near the detector")
     return False
+
+
+def _record_used(ctx: Context, node: Node, representation: str, reason: str) -> None:
+    """The representation the detector used on its links (on "auto") in this run: the GUI shows
+    it at the link next to the planned one (R→H)."""
+    for lk in ctx.graph.links_to(node.id):
+        ctx.used[link_key(lk)] = {"representation": representation, "reason": reason}
 
 
 # ---------------------------------------------------------------------- split paths (R19b)

@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Glaskataloge im Dokument: `embedded.embed_catalogs` speichert die AGF-Dateien, die der
+  Raytracer in die Quelle schreibt (`rtt_catalogs`), als `rtt_catalog_data` im Workflow (Teil von
+  `embed_files`). `embedded.load_catalogs` baut daraus und aus den übrigen Dateien die
+  Materialbibliothek. Ein Katalog, der sich nicht lesen lässt und nicht im Dokument steht, ist eine
+  Warnung (`graph.file_unreadable`) mit dem Hinweis, wie man ihn nachträgt, statt eines Abbruchs.
 - Wheels und PyPI: `.github/workflows/wheels.yml` baut das Wheel (reines Python) und die sdist und
   testet das installierte Wheel unter Linux, Windows und macOS. Ein Tag `v<Version>` hängt sie an
   ein GitHub-Release; *Run workflow* auf dem Tag mit `pypi` lädt sie auf PyPI (Trusted

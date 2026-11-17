@@ -204,3 +204,79 @@ def test_w75d_without_file_and_copy_the_run_says_how_to_fix_it(tmp_path: Path) -
     with pytest.raises(ExecutionError) as e:
         _orders({"fouriergrating": missing})
     assert e.value.code == "exec.param" and "Check workflow" in str(e.value)
+
+
+AGF = (
+    "CC Testkatalog\n"
+    "NM TESTGLAS 2 0 1.5 60 0 0 0\n"
+    "CD 1.0 0.005 0 0 0 0 0 0 0 0\n"
+    "LD 0.3 2.5\n"
+)
+
+
+def _source(paths: list[str]) -> Node:
+    return Node("source", "rtt.source", params={"rtt_system": {}, "rtt_catalogs": paths})
+
+
+def test_glass_catalogues_are_stored_in_the_source(tmp_path: Path) -> None:
+    """The catalogues the Raytracer wrote into the source go into the workflow: the material
+    library is the same without the file (a document moved to another folder or machine)."""
+    rt = pytest.importorskip("raytatouille")
+    agf = tmp_path / "mein_katalog.agf"
+    agf.write_text(AGF, encoding="utf-8")
+    node = _source([str(agf)])
+    done = embedded.embed_catalogs(node)
+    assert node.params["rtt_catalogs"] == [] and not done.diagnostics
+    assert [c["name"] for c in node.params["rtt_catalog_data"]] == ["MEIN_KATALOG"]
+    assert str(tmp_path) not in json.dumps(node.params)  # no personal paths in the document
+    agf.unlink()
+    from_file, held = rt.MaterialLibrary(), rt.MaterialLibrary()
+    agf.write_text(AGF, encoding="utf-8")
+    from_file.add_catalog(str(agf))
+    agf.unlink()
+    assert embedded.load_catalogs(held, node.params) == []
+    assert held.catalogs() == from_file.catalogs()
+    (g,), (f,) = held.glasses("MEIN_KATALOG"), from_file.glasses("MEIN_KATALOG")
+    assert (g.reference, g.formula, g.coefficients, g.nd, g.wavelength_range_um) == (
+        f.reference,
+        f.formula,
+        f.coefficients,
+        f.nd,
+        f.wavelength_range_um,
+    )
+
+
+def test_a_missing_glass_catalogue_is_reported_not_raised(tmp_path: Path) -> None:
+    """A catalogue named only by its file name (here not readable): a warning at the check and a
+    line for the log at the run, which says how to fix it – the run goes on without it."""
+    rt = pytest.importorskip("raytatouille")
+    node = _source(["de10316415.agf"])
+    done = embedded.embed_catalogs(node)
+    (d,) = done.diagnostics
+    assert d.code == "graph.file_unreadable" and "Glass catalogues" in d.message
+    assert node.params["rtt_catalogs"] == ["de10316415.agf"]  # kept: readable elsewhere
+    (line,) = embedded.load_catalogs(rt.MaterialLibrary(), node.params)
+    assert "de10316415.agf" in line and "Check workflow" in line
+
+
+def test_a_held_catalogue_needs_its_file_no_more(tmp_path: Path) -> None:
+    """Embedded once, the path may point nowhere: no warning, the copy is used."""
+    agf = tmp_path / "k.agf"
+    agf.write_text(AGF, encoding="utf-8")
+    node = _source([str(agf)])
+    embedded.embed_catalogs(node)
+    node.params["rtt_catalogs"] = [str(tmp_path / "elsewhere" / "k.agf")]
+    done = embedded.embed_catalogs(node)
+    assert not done.diagnostics and node.params["rtt_catalogs"] == []
+    assert len(node.params["rtt_catalog_data"]) == 1
+
+
+def test_a_catalogue_added_later_replaces_the_unreadable_name(tmp_path: Path) -> None:
+    """A document naming `k.agf` only (unreadable here) and the file added from elsewhere: stored,
+    no warning, no path left."""
+    agf = tmp_path / "K.agf"
+    agf.write_text(AGF, encoding="utf-8")
+    node = _source(["k.agf", str(agf)])
+    done = embedded.embed_catalogs(node)
+    assert not done.diagnostics and node.params["rtt_catalogs"] == []
+    assert [c["name"] for c in node.params["rtt_catalog_data"]] == ["K"]

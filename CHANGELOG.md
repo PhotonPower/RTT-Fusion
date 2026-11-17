@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- Gitterblock in C++: Die Schleife über die Strahlen (Tabellenbereich, Rayleigh-Anomalie,
+  Interpolation der Jones-Tabelle, PRT-Matrix) läuft in der C++-Beugungstabelle aus Stufe R12, als
+  optionale Erweiterung `rtt_fusion._diffraction` (pybind11, `setup.py`). Ohne Compiler wird das
+  Paket ohne sie installiert, und der Block nimmt weiter die Python-Schleife. Die Ergebnisse sind
+  gleich, auch welche Strahlen verworfen werden (`tests/test_diffraction_cpp.py`). Die Wheels sind
+  jetzt plattformabhängig (cibuildwheel für Linux, Windows und macOS).
 - Glaskataloge im Dokument: `embedded.embed_catalogs` speichert die AGF-Dateien, die der
   Raytracer in die Quelle schreibt (`rtt_catalogs`), als `rtt_catalog_data` im Workflow (Teil von
   `embed_files`). `embedded.load_catalogs` baut daraus und aus den übrigen Dateien die

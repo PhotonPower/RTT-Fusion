@@ -17,7 +17,7 @@ Plan: [docs/fusionsplan.md](docs/fusionsplan.md) (aus Fieldtracing übernommen);
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 pip install -r requirements-modules.txt   # die Löser aus ihren Repositories (feste Commits)
-pip install -e .
+pip install -e .                         # baut die C++-Erweiterung mit (ohne Compiler: ohne sie)
 pytest
 ruff check . && ruff format --check . && mypy
 ```

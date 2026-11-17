@@ -27,7 +27,9 @@ the phase layer's own contribution.
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -277,6 +279,43 @@ def near_rayleigh_anomaly(
             if d.min() < 0 < d.max():
                 return True
     return False
+
+
+#: use the C++ extension `rtt_fusion._diffraction` where it is installed (tests switch it off to
+#: compare with the Python loop)
+USE_CPP = True
+
+
+def prt_many(
+    table: JonesTable, order: int, wavelength_um: float, sigma: FloatArray, alive: Any
+) -> tuple[ComplexArray, Any] | None:
+    """The local PRT matrices (n, 3, 3) of `order` for n incidences `sigma` (n, 2) and where they
+    are valid (n,): alive, σ on the table's axes, no Rayleigh anomaly over the stencil (orders up
+    to ±8), every stencil node propagating – `near_rayleigh_anomaly`, `interpolate` and
+    `prt_matrix` per ray in one call of the C++ table (stage R12). None without the extension
+    (or with `USE_CPP` off)."""
+    if not USE_CPP:
+        return None
+    try:
+        _diffraction = importlib.import_module("rtt_fusion._diffraction")
+    except ImportError:
+        return None
+    prt, ok = _diffraction.prt_many(
+        list(table.orders),
+        table.side == "reflected",
+        np.ascontiguousarray(table.wavelengths_um, dtype=np.float64),
+        np.ascontiguousarray(table.sigma_x, dtype=np.float64),
+        np.ascontiguousarray(table.sigma_y, dtype=np.float64),
+        float(table.period_um),
+        float(table.n_in),
+        float(table.n_out),
+        np.ascontiguousarray(table.jones, dtype=np.complex128),
+        int(order),
+        float(wavelength_um),
+        np.ascontiguousarray(sigma, dtype=np.float64),
+        np.ascontiguousarray(alive, dtype=bool),
+    )
+    return np.asarray(prt), np.asarray(ok)
 
 
 def prt_matrix(

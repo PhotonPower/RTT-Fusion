@@ -16,3 +16,7 @@ experiments/out/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# the optional C++ extension built in place
+src/rtt_fusion/*.so
+src/rtt_fusion/*.pyd

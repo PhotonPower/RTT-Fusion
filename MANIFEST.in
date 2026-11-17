@@ -1,0 +1,4 @@
+# sources of the optional C++ extension (setup.py)
+include cpp/include/rtt_fusion/diffraction_table.hpp
+include cpp/src/diffraction_table.cpp
+include cpp/python/diffraction_module.cpp

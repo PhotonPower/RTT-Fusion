@@ -116,4 +116,27 @@ Prt prt_matrix(const Jones& j, std::array<double, 2> si, std::array<double, 2> s
   return p;
 }
 
+void prt_many(const DiffractionTable& t, int order, double lam, std::size_t n, const double* sigma,
+              const unsigned char* alive, Prt* out, unsigned char* ok, int max_order) {
+  const auto inside = [](const std::vector<double>& axis, double x) {
+    const auto [lo, hi] = std::minmax_element(axis.begin(), axis.end());
+    return *lo - 1e-12 <= x && x <= *hi + 1e-12;
+  };
+  const double shift = order * lam / t.period_um;
+  for (std::size_t i = 0; i < n; ++i) {
+    out[i] = Prt{};
+    ok[i] = 0;
+    if (!alive[i]) continue;
+    const double sx = sigma[2 * i], sy = sigma[2 * i + 1];
+    if (!inside(t.sigma_x, sx) || !inside(t.sigma_y, sy) || t.near_rayleigh_anomaly(lam, sx, sy, max_order))
+      continue;
+    const Jones j = t.interpolate(order, lam, sx, sy);
+    bool finite = true;
+    for (const cplx& v : j) finite = finite && std::isfinite(v.real()) && std::isfinite(v.imag());
+    if (!finite) continue;
+    out[i] = prt_matrix(j, {sx, sy}, {sx + shift, sy}, t.n_in, t.n_out, t.reflected);
+    ok[i] = 1;
+  }
+}
+
 }  // namespace rtt_fusion

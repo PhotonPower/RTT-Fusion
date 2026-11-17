@@ -1,7 +1,9 @@
 name: Wheels
 
-# rtt-fusion is pure Python: one wheel (py3-none-any) and the sdist, tested on Linux, Windows and
-# macOS against the installed wheel (the solver modules are not installed: their tests skip).
+# rtt-fusion: Python with an optional C++ extension (rtt_fusion._diffraction, the grating block's
+# per-ray loop): wheels per platform (cibuildwheel; Linux manylinux_2_28 x86_64, Windows AMD64,
+# macOS arm64; CPython 3.10-3.13), each tested against the installed wheel, and the sdist (which
+# builds the extension if a compiler is there, else installs without it).
 # Release: a tag v<version> (= pyproject.toml) attaches them to a GitHub release; a pull request that
 # touches the packaging builds them as a check. PyPI only by hand: "Run workflow" on the tag with
 # pypi = true (Trusted Publishing: project rtt-fusion, workflow wheels.yml, environment "pypi").
@@ -9,7 +11,7 @@ on:
   push:
     tags: ["v*"]
   pull_request:
-    paths: [".github/workflows/wheels.yml", "pyproject.toml"]
+    paths: [".github/workflows/wheels.yml", "pyproject.toml", "setup.py", "MANIFEST.in", "cpp/**"]
   workflow_dispatch:
     inputs:
       pypi:
@@ -21,48 +23,48 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - run: pipx run build
-      - run: pipx run twine check --strict dist/*
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/*
-
-  test:
-    name: test (${{ matrix.os }})
-    needs: build
+  wheels:
+    name: wheels (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2022, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: pypa/cibuildwheel@v2.22.0
+        env:
+          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
+          CIBW_ARCHS: auto64
+          CIBW_SKIP: "*-musllinux*"
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          # the extension must be in the wheel; the tests against the installed package (the
+          # solver modules are not installed: their tests skip)
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: >-
+            python -c "import rtt_fusion._diffraction" &&
+            pytest -q -p no:cacheprovider --rootdir {project} {project}/tests/test_diffraction_cpp.py {project}/tests/test_grating.py
+      - uses: actions/upload-artifact@v4
         with:
-          python-version: "3.12"
-      - uses: actions/download-artifact@v4
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  sdist:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx run build --sdist
+      - run: pipx run twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist
-      - name: Install the wheel
-        shell: bash
-        run: pip install dist/*.whl pytest
-      - name: Test against the installed package (not src/)
-        shell: bash
-        run: |
-          rm -rf src
-          python -c "import rtt_fusion as r; print(r.__file__); assert 'site-packages' in r.__file__"
-          pytest -q -p no:cacheprovider
+          name: sdist
+          path: dist/*.tar.gz
 
   github-release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build, test]
+    needs: [wheels, sdist]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -74,8 +76,8 @@ jobs:
           test "$GITHUB_REF_NAME" = "v$v" || { echo "tag $GITHUB_REF_NAME does not match version $v"; exit 1; }
       - uses: actions/download-artifact@v4
         with:
-          name: dist
           path: dist
+          merge-multiple: true
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,7 +85,7 @@ jobs:
 
   pypi:
     if: github.event_name == 'workflow_dispatch' && inputs.pypi && startsWith(github.ref, 'refs/tags/v')
-    needs: [build, test]
+    needs: [wheels, sdist]
     runs-on: ubuntu-24.04
     environment: pypi
     permissions:
@@ -91,6 +93,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
           path: dist
+          merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1

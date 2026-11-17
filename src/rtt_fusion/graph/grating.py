@@ -340,7 +340,13 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
             p_glob = np.zeros((moved.size, 3, 3), dtype=complex)
             cache: dict[tuple[float, float], Any] = {}
             dropped = 0
-            for k in np.flatnonzero(ok):
+            fast = jt.prt_many(table, m, lam, sigma, ok)  # all rays in C++ (R12)
+            if fast is not None:
+                p_loc, valid = fast
+                dropped = int(np.count_nonzero(ok & ~valid))
+                ok = valid
+                p_glob = np.einsum("ij,njk,kl->nil", rot.T, p_loc, rot)
+            for k in np.flatnonzero(ok) if fast is None else ():
                 key = (round(float(sigma[k, 0]), 12), round(float(sigma[k, 1]), 12))
                 if key not in cache:
                     if not (

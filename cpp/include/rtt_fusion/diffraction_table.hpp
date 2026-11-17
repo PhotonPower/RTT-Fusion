@@ -37,4 +37,12 @@ struct DiffractionTable {
 Prt prt_matrix(const Jones& j, std::array<double, 2> sigma_in, std::array<double, 2> sigma_out,
                double n_in, double n_out, bool reflected);
 
+// The local PRT matrices of `order` for n incidences σ (row-major n×2) at one wavelength, as the
+// grating block of the Python prototype does it per ray: ok[i] stays 1 only where alive[i] is set,
+// σ lies on the table's axes, no Rayleigh anomaly crosses the stencil and every node of the
+// stencil propagates; out[i] is the PRT matrix there (zeros elsewhere).
+void prt_many(const DiffractionTable& table, int order, double wavelength_um, std::size_t n,
+              const double* sigma, const unsigned char* alive, Prt* out, unsigned char* ok,
+              int max_order = 8);
+
 }  // namespace rtt_fusion

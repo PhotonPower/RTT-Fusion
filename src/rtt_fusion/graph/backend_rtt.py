@@ -58,6 +58,7 @@ from rtt_fusion.graph.field import (
     FieldError,
     field_image,
     field_tolerance,
+    near_focus,
     rays_to_field,
 )
 from rtt_fusion.graph.imaging import coherent_image
@@ -464,92 +465,105 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
     ]
     muted = {n.id for n in ctx.graph.nodes.values() if n.muted}
     rings = int(ctx.shared.get("rings", 30))
-    fields_wanted = _input_representation(ctx, node) == "H"
     layouts = list(rt.layout.surfaces(compiled))  # in the order of the surface indices
     waist = float(ctx.shared.get("gaussian_waist", 0.0) or 0.0)
+    live = [p for p in paths if not muted & set(ctx.graph.meta["paths"][p])]
+    for path in paths:
+        if path not in live:
+            ctx.log.append(f"{node.id}: path {path} left out (muted block on it)")
+
+    def one(path: str, field: int, wl: int, fields_wanted: bool) -> Any:
+        return _path_light(
+            ctx, node, compiled, layouts, path, field, wl, rings, waist, fields_wanted
+        )
+
+    fields_wanted = _input_representation(ctx, node) == "H"
+    if not fields_wanted and _auto_fields(ctx, node):
+        middle = len(compiled.wavelengths_um) // 2
+        probe = [f for p in live for f in one(p, 0, middle, True)[1]]
+        fields_wanted = _near_focus(ctx, node, compiled, probe)
     bundles: list[RayBundle] = []
     fields: list[FieldBundle] = []
-    steps = max(len(paths) * compiled.field_count * len(compiled.wavelengths_um), 1)
+    steps = max(len(live) * compiled.field_count * len(compiled.wavelengths_um), 1)
     trace_part = 0.3 if fields_wanted else 1.0  # with fields the propagation takes the rest
     step = 0
-
-    def tick(path: str, field: int, wl: int) -> None:
-        nonlocal step
-        ctx.report(
-            trace_part * step / steps,
-            f"{node.name or node.id}: {path}, field {field + 1}/{compiled.field_count}, "
-            f"λ {wl + 1}/{len(compiled.wavelengths_um)}",
-        )
-        step += 1
-
-    for path in paths:
-        if muted & set(ctx.graph.meta["paths"][path]):
-            ctx.log.append(f"{node.id}: path {path} left out (muted block on it)")
-            continue
-        foreign = [
-            b
-            for b in ctx.graph.meta["paths"][path]
-            if b in ctx.graph.nodes and not ctx.graph.nodes[b].type_id.startswith("rtt.")
-        ]
-        if foreign:
-            for field in range(compiled.field_count):
-                for wl in range(len(compiled.wavelengths_um)):
-                    tick(path, field, wl)
-                    out = _split_path(ctx, node, path, foreign, field, wl, fields_wanted)
-                    if fields_wanted:
-                        fields += out
-                    else:
-                        bundles += out
-            continue
+    for path in live:
         for field in range(compiled.field_count):
             for wl in range(len(compiled.wavelengths_um)):
-                tick(path, field, wl)
-                rays = (
-                    _edge_refined(ctx, compiled, path, rings, field, wl)
-                    if fields_wanted
-                    else _start_rays(ctx, compiled, path, rings, field, wl)
+                ctx.report(
+                    trace_part * step / steps,
+                    f"{node.name or node.id}: {path}, field {field + 1}/{compiled.field_count}, "
+                    f"λ {wl + 1}/{len(compiled.wavelengths_um)}",
                 )
-                pupil = np.stack([np.asarray(rays.pupil_x), np.asarray(rays.pupil_y)], -1).copy()
-                apod = (
-                    np.exp(-np.sum(pupil * pupil, axis=1) / waist**2)
-                    if waist > 0
-                    else np.ones(len(pupil))
-                )
-                _, rec = rt.trace.trace(
-                    compiled,
-                    rays,
-                    path=path,
-                    record_path=True,
-                    max_recorded_rays=max(rays.size, 1),
-                    polarization=fields_wanted,
-                )
-                if fields_wanted:
-                    try:
-                        fields += _fields(rec, pupil, compiled, layouts, path, field, wl, apod)
-                    except FieldError as e:
-                        raise ExecutionError("exec.field", f"path {path}: {e}", node.id) from e
-                    continue
-                count = np.asarray(rec.count)
-                idx = np.asarray(rec.ray_indices)
-                last = count - 1
-                reached = _passed(rec)
-                rows = np.arange(len(idx))
-                weight = np.asarray(rec.weight)[rows, last]
-                bundles.append(
-                    RayBundle(
-                        key=CoherenceKey("source", field, wl, 0),
-                        wavelength_um=float(compiled.wavelengths_um[wl]),
-                        position=np.asarray(rec.position)[rows, last],
-                        direction=np.asarray(rec.direction)[rows, last],
-                        opl=np.asarray(rec.opl)[rows, last]
-                        + _start_opl(rec, rows, _object_index(compiled, wl)),
-                        amplitude=(np.sqrt(np.clip(weight, 0.0, None)) * apod[idx]).astype(complex),
-                        source_xy=pupil[idx],
-                        alive=reached,
-                        path=(path,),
-                    )
-                )
+                step += 1
+                rays, waves = one(path, field, wl, fields_wanted)
+                bundles += rays
+                fields += waves
     return _image(ctx, node, compiled, bundles, fields, fields_wanted, trace_part)
+
+
+def _path_light(
+    ctx: Context,
+    node: Node,
+    compiled: Any,
+    layouts: list[Any],
+    path: str,
+    field: int,
+    wl: int,
+    rings: int,
+    waist: float,
+    fields_wanted: bool,
+) -> tuple[list[RayBundle], list[FieldBundle]]:
+    """The light of one path, field point and wavelength at the detector: ray bundles on its
+    surface (R) or fields after the last surface before it (H)."""
+    import raytatouille as rt
+
+    foreign = [
+        b
+        for b in ctx.graph.meta["paths"][path]
+        if b in ctx.graph.nodes and not ctx.graph.nodes[b].type_id.startswith("rtt.")
+    ]
+    if foreign:
+        out = _split_path(ctx, node, path, foreign, field, wl, fields_wanted)
+        return ([], out) if fields_wanted else (out, [])
+    rays = (
+        _edge_refined(ctx, compiled, path, rings, field, wl)
+        if fields_wanted
+        else _start_rays(ctx, compiled, path, rings, field, wl)
+    )
+    pupil = np.stack([np.asarray(rays.pupil_x), np.asarray(rays.pupil_y)], -1).copy()
+    apod = np.exp(-np.sum(pupil * pupil, axis=1) / waist**2) if waist > 0 else np.ones(len(pupil))
+    _, rec = rt.trace.trace(
+        compiled,
+        rays,
+        path=path,
+        record_path=True,
+        max_recorded_rays=max(rays.size, 1),
+        polarization=fields_wanted,
+    )
+    if fields_wanted:
+        try:
+            return [], _fields(rec, pupil, compiled, layouts, path, field, wl, apod)
+        except FieldError as e:
+            raise ExecutionError("exec.field", f"path {path}: {e}", node.id) from e
+    count = np.asarray(rec.count)
+    idx = np.asarray(rec.ray_indices)
+    last = count - 1
+    reached = _passed(rec)
+    rows = np.arange(len(idx))
+    weight = np.asarray(rec.weight)[rows, last]
+    bundle = RayBundle(
+        key=CoherenceKey("source", field, wl, 0),
+        wavelength_um=float(compiled.wavelengths_um[wl]),
+        position=np.asarray(rec.position)[rows, last],
+        direction=np.asarray(rec.direction)[rows, last],
+        opl=np.asarray(rec.opl)[rows, last] + _start_opl(rec, rows, _object_index(compiled, wl)),
+        amplitude=(np.sqrt(np.clip(weight, 0.0, None)) * apod[idx]).astype(complex),
+        source_xy=pupil[idx],
+        alive=reached,
+        path=(path,),
+    )
+    return [bundle], []
 
 
 def _image(
@@ -562,24 +576,7 @@ def _image(
     trace_part: float,
 ) -> Any:
     """The image on the detector surface: rays coherently (R) or fields propagated (H)."""
-    import raytatouille as rt
-
-    surface = next((s for s in node.params.get("surfaces", [])), None)
-    L = next((x for x in rt.layout.surfaces(compiled) if x.id == surface), None)
-    if L is None:
-        raise ExecutionError(
-            "exec.no_surface", f"detector surface {surface!r} not in the system", node.id
-        )
-    rot = np.asarray(L.rotation)
-    plane = Plane(np.asarray(L.translation, dtype=float), rot[:, 2], rot[:, 0], rot[:, 1])
-    if L.aperture is not None and L.aperture[0] == "rectangular":
-        hu, hv = L.aperture[1]["half_width_x"], L.aperture[1]["half_width_y"]
-    elif L.aperture is not None:
-        hu = hv = float(L.aperture[1].get("radius", L.aperture[1].get("semi_axis_x", 1.0)))
-    else:
-        hu = hv = 1.0
-    if node.params.get("half_size"):
-        hu, hv = (float(v) for v in node.params["half_size"])
+    plane, hu, hv = _detector_plane(node, compiled)
     nx, ny = (int(v) for v in ctx.shared.get("pixels", [256, 256]))
     if fields_wanted:
         try:
@@ -599,6 +596,66 @@ def _image(
         except FieldError as e:
             raise ExecutionError("exec.field", str(e), node.id) from e
     return coherent_image(bundles, plane, float(hu), float(hv), nx, ny)
+
+
+def _detector_plane(node: Node, compiled: Any) -> tuple[Plane, float, float]:
+    """The plane of the detector's surface and its half widths (its aperture or `half_size`)."""
+    import raytatouille as rt
+
+    surface = next((s for s in node.params.get("surfaces", [])), None)
+    L = next((x for x in rt.layout.surfaces(compiled) if x.id == surface), None)
+    if L is None:
+        raise ExecutionError(
+            "exec.no_surface", f"detector surface {surface!r} not in the system", node.id
+        )
+    rot = np.asarray(L.rotation)
+    plane = Plane(np.asarray(L.translation, dtype=float), rot[:, 2], rot[:, 0], rot[:, 1])
+    if L.aperture is not None and L.aperture[0] == "rectangular":
+        hu, hv = L.aperture[1]["half_width_x"], L.aperture[1]["half_width_y"]
+    elif L.aperture is not None:
+        hu = hv = float(L.aperture[1].get("radius", L.aperture[1].get("semi_axis_x", 1.0)))
+    else:
+        hu = hv = 1.0
+    if node.params.get("half_size"):
+        hu, hv = (float(v) for v in node.params["half_size"])
+    return plane, float(hu), float(hv)
+
+
+def _auto_fields(ctx: Context, node: Node) -> bool:
+    """Whether the detector decides itself between rays and fields: asked for
+    (`shared["auto_fields"]`, the Workflow panel), every link into it on "auto" (a link set to R
+    or H keeps that) and Fieldtracing installed."""
+    if not ctx.shared.get("auto_fields"):
+        return False
+    links = ctx.graph.links_to(node.id)
+    if not links or any(lk.transport != "auto" for lk in links):
+        return False
+    try:
+        import fieldtracing  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _near_focus(ctx: Context, node: Node, compiled: Any, probe: list[FieldBundle]) -> bool:
+    """Whether the detector lies near a caustic of the light (rays cross or focus there): then
+    rays give no image and the detector computes fields from the last surface on (H). `probe`:
+    fields of one field point and wavelength per path. The decision goes to the log."""
+    plane, hu, hv = _detector_plane(node, compiled)
+    window = 2.0 * max(hu, hv)
+    for fb in probe:
+        try:
+            why = near_focus(fb, plane, window, field_tolerance(ctx.shared))
+        except Exception as e:  # a field the planner cannot judge: rays as before
+            ctx.log.append(f"{node.name or node.id}: no automatic wave optics ({e})")
+            return False
+        if why is not None:
+            ctx.log.append(
+                f"{node.name or node.id}: the light focuses near the detector ({why}) – "
+                "computed as fields from the last surface on (link auto → H)"
+            )
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------- split paths (R19b)
@@ -1509,6 +1566,30 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
     fields after the last surface and propagates them (H)."""
     compiled, layouts, _, _, _ = _runs(ctx)
     fields_wanted = _input_representation(ctx, node) == "H"
+    if not fields_wanted and _auto_fields(ctx, node):
+        first = next(
+            (
+                b
+                for arriving in inputs.values()
+                for b in arriving or []
+                if isinstance(b, RayBundle) and b.branch is not None
+            ),
+            None,
+        )
+        if first is not None and first.branch is not None:
+            run, _ = _run_of(ctx, node, first, None)
+            probe = _trace_run(
+                compiled,
+                layouts,
+                run,
+                first,
+                first.key.wavelength_index,
+                first.key.field_index,
+                True,
+                first=first.branch[1] < 0,
+                keep_all=True,
+            )
+            fields_wanted = _near_focus(ctx, node, compiled, probe)
     bundles: list[RayBundle] = []
     fields: list[FieldBundle] = []
     for arriving in inputs.values():

@@ -7,7 +7,10 @@ that used to name files hold the content in data parameters instead:
 - `fg.grating`: `config` (the FourierGrating configuration, FG `docs/config_format.md`) instead of
   `fouriergrating`, `table_data` (the `raytatouille-result` document of a Jones table, stage R6)
   instead of `table`;
-- `fg.stack`: `config` instead of `fouriergrating`.
+- `fg.stack`: `config` instead of `fouriergrating`;
+- `rtt.source`: `rtt_catalog_data` (the glass catalogues, AGF, base64) instead of the files in
+  `rtt_catalogs` (written by the Raytracer plugin); `load_catalogs` builds the material library
+  from both.
 
 The evaluators read the embedded content first and fall back to the file only for models that do
 not hold it yet. `embed_nodes` / `embed_files` move a readable file's content into its block once
@@ -19,6 +22,7 @@ outside the document and is reported (`graph.file_external`).
 
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import os
@@ -150,13 +154,97 @@ def embed_node(node: Node) -> Embedded:
     return done
 
 
+#: what to do about a glass catalogue that cannot be read and is not in the document
+CATALOG_HINT = (
+    "add it under Glass catalogues in the Workflow panel (Raytatouille Fusion) and run Check "
+    "workflow – it is then stored in the workflow"
+)
+
+
+def catalog_name(path: str) -> str:
+    """The name Raytatouille gives a catalogue file (`MaterialLibrary.add_catalog`): its stem in
+    capitals."""
+    return os.path.splitext(os.path.basename(path))[0].upper()
+
+
+def embed_catalogs(node: Node) -> Embedded:
+    """The glass catalogues of a source (`rtt_catalogs`, files) into `rtt_catalog_data`
+    ({"name", "file", "base64"} per catalogue; a file read again replaces its copy). Readable
+    and already held files lose their path; an unreadable file the block holds no copy of stays
+    named (`graph.file_unreadable`)."""
+    done = Embedded([], [])
+    paths = [str(p) for p in node.params.get("rtt_catalogs") or [] if p]
+    if node.type_id != "rtt.source" or not paths:
+        return done
+    held = {str(c.get("name")): dict(c) for c in node.params.get("rtt_catalog_data") or []}
+    unread: list[tuple[str, OSError]] = []
+    for path in paths:  # first what can be read: a file of the same name may stand for another
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except OSError as e:
+            unread.append((path, e))
+            continue
+        file = os.path.basename(path)
+        held[catalog_name(path)] = {
+            "name": catalog_name(path),
+            "file": file,
+            "base64": base64.b64encode(data).decode("ascii"),
+        }
+        done.stored.append(f"{node.id}: glass catalogue {file} stored in the workflow")
+    left: list[str] = []
+    for path, e in unread:
+        if catalog_name(path) in held:  # the document holds it: the path goes
+            continue
+        left.append(path)
+        done.diagnostics.append(
+            Diagnostic(
+                "graph.file_unreadable",
+                "warning",
+                f"glass catalogue {path}: cannot read it ({e.strerror or e}) and the workflow "
+                f"holds no copy – the glasses from it are missing; {CATALOG_HINT}",
+                node.id,
+            )
+        )
+    node.params["rtt_catalog_data"] = list(held.values())
+    node.params["rtt_catalogs"] = left
+    return done
+
+
+def load_catalogs(library: Any, params: dict[str, Any]) -> list[str]:
+    """Adds the glass catalogues of a source's parameters to a Raytatouille `MaterialLibrary`:
+    those the workflow holds (`rtt_catalog_data`), then the files of `rtt_catalogs` it does not
+    hold. A catalogue that cannot be loaded is left out; the reasons come back for the log."""
+    problems: list[str] = []
+    loaded: set[str] = set()
+    for c in params.get("rtt_catalog_data") or []:
+        file = str(c.get("file") or c.get("name"))
+        try:
+            library.add_catalog_text(
+                base64.b64decode(str(c["base64"])), str(c["name"]), source=file
+            )
+            loaded.add(str(c["name"]))
+        except Exception as e:  # a broken catalogue should not stop the others
+            problems.append(f"glass catalogue {file}: {e}")
+    for path in params.get("rtt_catalogs") or []:
+        if not path or catalog_name(str(path)) in loaded:
+            continue
+        try:
+            library.add_catalog(str(path))
+        except Exception as e:
+            problems.append(
+                f"glass catalogue {path}: {e} – the glasses from it are missing; {CATALOG_HINT}"
+            )
+    return problems
+
+
 def embed_nodes(nodes: Iterable[Node]) -> Embedded:
     """`embed_node` for every block."""
     done = Embedded([], [])
     for node in nodes:
-        one = embed_node(node)
-        done.stored += one.stored
-        done.diagnostics += one.diagnostics
+        for one in (embed_node(node), embed_catalogs(node)):
+            done.stored += one.stored
+            done.diagnostics += one.diagnostics
     return done
 
 
@@ -173,14 +261,18 @@ def embed_files(model: Any) -> Embedded:
 
 
 __all__ = [
+    "CATALOG_HINT",
     "EMBED_HINT",
     "FILE_PARAMS",
     "Embedded",
+    "catalog_name",
     "content",
+    "embed_catalogs",
     "embed_files",
     "embed_node",
     "embed_nodes",
     "has",
+    "load_catalogs",
     "read_fouriergrating",
     "read_result",
 ]

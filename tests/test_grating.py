@@ -156,6 +156,7 @@ def test_w21_mirror_replaced_by_grating() -> None:
     image: Image = Executor(g, reg, ev).evaluate("cam", "image")
     assert image.values.max() > 0
     # a field link into the grating: converted to rays at its port, same orders
+    pytest.importorskip("fieldtracing")  # H needs Fieldtracing (requirements-modules.txt)
     _, rays = setup()
     _, fields = setup(transport="H")
     a, b = orders(rays), orders(fields)

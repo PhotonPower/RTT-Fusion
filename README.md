@@ -16,7 +16,8 @@ Plan: [docs/fusionsplan.md](docs/fusionsplan.md) (aus Fieldtracing übernommen);
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pip install -e ".[modules]"     # BWPM, FourierGrating, Fieldtracing aus ihren Repositories
+pip install -r requirements-modules.txt   # die Löser aus ihren Repositories (feste Commits)
+pip install -e .
 pytest
 ruff check . && ruff format --check . && mypy
 ```

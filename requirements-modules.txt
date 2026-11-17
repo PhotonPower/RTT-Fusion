@@ -1,0 +1,12 @@
+# Solver modules of RTT-Fusion from their repositories at pinned commits (the CI builds the same
+# into a cached wheelhouse). PyPI does not accept such pins in a package's metadata, hence a
+# requirements file: pip install -r requirements-modules.txt
+bwpm @ git+https://github.com/PhotonPower/BWPM.git@ef2de941d226d364db000a977963b0eba24aea44
+fouriergrating @ git+https://github.com/PhotonPower/FourierGrating.git@174ef93d4e3b41ece7bb2f9a70055909e247ee25
+fieldtracing @ git+https://github.com/PhotonPower/Fieldtracing.git@ea6da7b2d457ee8938fc079b21ed87d1b78504cf
+raytatouille @ git+https://github.com/PhotonPower/Raytatouille.git@708b6dda655a4bd0f20fb9f34b51c61d51761590
+cliffordbem @ git+https://github.com/PhotonPower/CliffordBem.git@41e64e627b82f96766c7cfe4f7d663864a5e5cfe
+# hpfem needs BLAS/LAPACK to build; specklebem pybind11 < 3 (constraints-modules.txt)
+hpfem @ git+https://github.com/PhotonPower/hp-FEM.git@dce07d5d5cc52681715044310c03a10c088d20e7
+gmsh
+specklebem @ git+https://github.com/PhotonPower/SpeckleBem.git@4f04efe26b71f95122ff58cc7589641ba7e8b28f#subdirectory=python

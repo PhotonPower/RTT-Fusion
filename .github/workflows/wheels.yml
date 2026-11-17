@@ -1,12 +1,9 @@
+name: Wheels
+
 # rtt-fusion: Python with an optional C++ extension (rtt_fusion._diffraction, the grating block's
 # per-ray loop): wheels per platform (cibuildwheel; Linux manylinux_2_28 x86_64, Windows AMD64,
 # macOS arm64; CPython 3.10-3.13), each tested against the installed wheel, and the sdist (which
 # builds the extension if a compiler is there, else installs without it).
-# Release: a tag v<version> (= pyproject.toml) attaches them to a GitHub release; a pull request that
-# touches the packaging builds them as a check. PyPI only by hand: "Run workflow" on the tag with
-# pypi = true (Trusted Publishing: project rtt-fusion, workflow wheels.yml, environment "pypi").
-on: one wheel (py3-none-any) and the sdist, tested on Linux, Windows and
-# macOS against the installed wheel (the solver modules are not installed: their tests skip).
 # Release: a tag v<version> (= pyproject.toml) attaches them to a GitHub release; a pull request that
 # touches the packaging builds them as a check. PyPI only by hand: "Run workflow" on the tag with
 # pypi = true (Trusted Publishing: project rtt-fusion, workflow wheels.yml, environment "pypi").

@@ -156,7 +156,7 @@ def embed_node(node: Node) -> Embedded:
 
 #: what to do about a glass catalogue that cannot be read and is not in the document
 CATALOG_HINT = (
-    "add it under Glass catalogues in the Workflow panel (Raytatouille Fusion) and run Check "
+    "add it under Glass catalogues in the Raytracer panel (Raytatouille Fusion) and run Check "
     "workflow – it is then stored in the workflow"
 )
 

@@ -314,7 +314,7 @@ def _compile(system: Any, materials: Any) -> Any:
                 "exec.compile",
                 f"the system's glasses come from the glass catalogue(s) {', '.join(catalogues)}, "
                 f"which are not loaded ({named}); "
-                "add the .agf file under Glass catalogues in the Workflow panel and run again – "
+                "add the .agf file under Glass catalogues in the Raytracer panel and run again – "
                 "it is then stored in the workflow",
             ) from e
         lines = [f"{d.code}: {d.message} ({d.location})" for d in diagnostics[:5]]

@@ -18,6 +18,13 @@ default R). The executor converts at the ports: a link planned H turns the rays 
 fields on a port plane (R -> H); if the evaluator at its end works with rays only, the fields
 become rays again there (H -> R, after nothing but the conversion; propagation of fields between
 blocks belongs to the evaluators that take fields, such as detectors).
+
+Spectra (R30a, `rtt_fusion.graph.spectrum`): with fieldtracing the executable set is {R, H, S}
+(`WITH_SPECTRA`). A link planned S turns rays and fields into plane-wave spectra (R -> H -> S,
+H -> S, G -> S); a consumer that does not take S gets a field (S -> H) if it takes H, else rays
+(S -> H -> R). "auto" admits S only between two blocks that both take S natively (decision 3 of
+the plan, `Requirements.native`). Diagnostics of the conversions (`exec.spectrum_cut`,
+`exec.spectrum_rays`) are warnings in `Context.log`.
 """
 
 from __future__ import annotations
@@ -30,21 +37,35 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays, rays_to_field
+from rtt_fusion.graph.field import (
+    FieldBundle,
+    FieldError,
+    field_to_rays,
+    field_tolerance,
+    rays_to_field,
+)
 from rtt_fusion.graph.light import RayBundle
 from rtt_fusion.graph.model import Direction, Graph, Node, SocketKind
 from rtt_fusion.graph.planner import Plan, Requirements, link_key, plan
 from rtt_fusion.graph.pose import Isometry, bind_exported, placement, posed
 from rtt_fusion.graph.registry import NodeTypeRegistry
+from rtt_fusion.graph.spectrum import (
+    SpectrumBundle,
+    field_to_spectrum,
+    spectrum_to_field,
+    spectrum_to_rays,
+)
 from rtt_fusion.graph.validate import errors, node_sockets, node_through, validate
 
 #: evaluator(context, node, output socket, inputs) -> value of that output.
 #: Light inputs and outputs are lists of RayBundle; data values are free objects.
 Evaluator = Callable[["Context", Node, str, dict[str, Any]], Any]
 
-#: Representations run by default (backends whose evaluators produce rays may add H, R18).
+#: Representations run by default (backends whose evaluators produce rays may add H, R18, and
+#: plane-wave spectra S, R30a; both need fieldtracing).
 EXECUTABLE = frozenset({"R"})
 WITH_FIELDS = frozenset({"R", "H"})
+WITH_SPECTRA = frozenset({"R", "H", "S"})
 SUPPORTED_TRANSPORTS = frozenset({"auto"}) | EXECUTABLE
 
 
@@ -142,7 +163,11 @@ class Executor:
                     f"{''.join(sorted(self.available))})",
                     f"{lk.source[0]}.{lk.source[1]} -> {lk.target[0]}.{lk.target[1]}",
                 )
-        self.plan = plan(self.graph, self.registry, Requirements(available=self.available))
+        self.plan = plan(
+            self.graph,
+            self.registry,
+            Requirements(available=self.available, native=self.native),
+        )
         self.context.plan = self.plan
         for d in self.plan.diagnostics:
             if d.severity == "error":
@@ -162,6 +187,15 @@ class Executor:
                 if s.direction is Direction.OUT and s.kind is SocketKind.DATA:
                     out[(node.id, s.name)] = self._value(node.id, s.name, ())[0]
         return out
+
+    def native(self, node_id: str) -> frozenset[str]:
+        """The representations a block's evaluator works in (attribute `representations`, default
+        R); a muted block passes rays."""
+        node = self.graph.nodes.get(node_id)
+        if node is None or node.muted:
+            return frozenset("R")
+        evaluator = self.evaluators.get(node.type_id)
+        return frozenset(getattr(evaluator, "representations", frozenset("R")))
 
     # ------------------------------------------------------------------ internals
     def _key(self, node_id: str, socket: str, stack: tuple[str, ...] = ()) -> str:
@@ -343,20 +377,32 @@ class Executor:
             return value
         native = getattr(self.evaluators.get(consumer.type_id), "representations", frozenset("R"))
         where = f"{lk.source[0]}.{lk.source[1]} -> {lk.target[0]}.{lk.target[1]}"
+        # rays where the consumer cannot take fields, and where the user asked for rays on the
+        # link (a block that got a field returns one); the same for spectra (S -> H or S -> R)
+        rays_wanted = "H" not in native or consumer.muted or lk.transport == "R"
+        spectrum_kept = "S" in native and not consumer.muted and lk.transport not in ("R", "H")
+        notes: list[str] = []
         out: list[Any] = []
         try:
             for item in value:
-                if rep == "H" and isinstance(item, RayBundle):
+                if rep in ("H", "S") and isinstance(item, RayBundle):
                     item = rays_to_field(item)
-                # rays where the consumer cannot take fields, and where the user asked for rays
-                # on the link (a block that got a field returns one)
-                if isinstance(item, FieldBundle) and (
-                    "H" not in native or consumer.muted or lk.transport == "R"
-                ):
+                if rep == "S" and isinstance(item, FieldBundle):
+                    item = field_to_spectrum(
+                        item, tolerance=field_tolerance(self.context.shared), notes=notes
+                    )
+                if isinstance(item, SpectrumBundle) and (rep == "H" or not spectrum_kept):
+                    if rays_wanted:
+                        item = spectrum_to_rays(item, notes)
+                    else:
+                        item = spectrum_to_field(item, notes)
+                if isinstance(item, FieldBundle) and rays_wanted:
                     item = field_to_rays(item)
                 out.append(item)
         except FieldError as e:
             raise ExecutionError("exec.field", str(e), where) from e
+        finally:
+            self.context.log.extend(f"{where}: {line}" for line in notes)
         return out
 
 

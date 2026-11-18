@@ -38,8 +38,10 @@ from rtt_fusion.graph.model import (
 )
 from rtt_fusion.graph.topology import Branch, Model, Step, unroll
 
-# representations a Raytatouille block can take and give (rays now, fields with rtt-field)
-_SECTION_REPS = "RH"
+# representations the links of a Raytatouille block may carry: rays, fields (rtt-field) and
+# plane-wave spectra (R30b: the detector images them; the executor turns them into rays in front
+# of the other blocks, which trace rays)
+_SECTION_REPS = "RHS"
 
 
 @dataclass

@@ -330,7 +330,15 @@ def propagate_to(
     return FieldBundle(fb.key, fb.plane, result, fb.path, fb.branch), notes
 
 
-def field_image(
+def pixel_centres(plane: Plane, half_u: float, half_v: float, nx: int, ny: int) -> FloatArray:
+    """Global positions (ny·nx, 3) of the pixel centres of a detector on `plane`, row by row."""
+    u = (np.arange(nx) + 0.5) / nx * 2 * half_u - half_u
+    v = (np.arange(ny) + 0.5) / ny * 2 * half_v - half_v
+    uu, vv = np.meshgrid(u, v)
+    return np.asarray(plane.origin + uu.reshape(-1, 1) * plane.u + vv.reshape(-1, 1) * plane.v)
+
+
+def field_sums(
     fields: list[FieldBundle],
     plane: Plane,
     half_u: float,
@@ -340,14 +348,12 @@ def field_image(
     log: list[str] | None = None,
     progress: Callable[[float, str], None] | None = None,
     tolerance: float | None = None,
-) -> Image:
-    """Intensity on the pixel grid of `plane` from fields (amplitudes per coherence group);
-    `tolerance`: ε of the propagation planner (`propagate_to`)."""
-    u = (np.arange(nx) + 0.5) / nx * 2 * half_u - half_u
-    v = (np.arange(ny) + 0.5) / ny * 2 * half_v - half_v
-    uu, vv = np.meshgrid(u, v)
-    pixels = plane.origin + uu.reshape(-1, 1) * plane.u + vv.reshape(-1, 1) * plane.v
-    sums: dict[CoherenceKey, ComplexArray] = {}
+    sums: dict[CoherenceKey, ComplexArray] | None = None,
+) -> tuple[dict[CoherenceKey, ComplexArray], float]:
+    """The global field (ny·nx, 3) on the pixel centres per coherence group, added to `sums`,
+    and the power of the fields (`field_power`)."""
+    pixels = pixel_centres(plane, half_u, half_v, nx, ny)
+    sums = {} if sums is None else sums
     power = 0.0
     for i, fb in enumerate(fields):
         if progress is not None:
@@ -363,10 +369,39 @@ def field_image(
         q = np.stack([rel @ target.plane.u, rel @ target.plane.v], axis=-1)
         e = _sample(target.field, q) @ rot
         sums[fb.key] = np.asarray(sums[fb.key] + e if fb.key in sums else e, dtype=np.complex128)
+    return sums, power
+
+
+def image_of(
+    sums: dict[CoherenceKey, ComplexArray],
+    half_u: float,
+    half_v: float,
+    nx: int,
+    ny: int,
+    power: float,
+) -> Image:
+    """Intensity Σ_groups |E|² of the pixel fields per coherence group (`field_sums`)."""
     values = np.zeros(nx * ny)
     for total in sums.values():
         values = values + np.sum(np.abs(total) ** 2, axis=1)
     return Image(values.reshape(ny, nx), (-half_u, half_u, -half_v, half_v), power, list(sums))
+
+
+def field_image(
+    fields: list[FieldBundle],
+    plane: Plane,
+    half_u: float,
+    half_v: float,
+    nx: int,
+    ny: int,
+    log: list[str] | None = None,
+    progress: Callable[[float, str], None] | None = None,
+    tolerance: float | None = None,
+) -> Image:
+    """Intensity on the pixel grid of `plane` from fields (amplitudes per coherence group);
+    `tolerance`: ε of the propagation planner (`propagate_to`)."""
+    sums, power = field_sums(fields, plane, half_u, half_v, nx, ny, log, progress, tolerance)
+    return image_of(sums, half_u, half_v, nx, ny, power)
 
 
 def field_tolerance(shared: dict[str, Any]) -> float | None:

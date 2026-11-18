@@ -23,12 +23,31 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Blöcken, die beide S nativ nehmen (Entscheidung 3). Bisherige Pläne bleiben unverändert.
   `workflow.native_of` und `workflow.checked(..., evaluators)` liefern es für das Dokument.
 - `fusion.convert` rechnet `to = S` (G und P melden weiter `exec.convert_unsupported`).
+- Detektor und freie Ausbreitung mit S, Stufe R30b: `optics.detector` und `rtt.detector` (ganze
+  Pfade und knotenweise) nehmen Spektren nativ und bilden das Bild aus der Summe der ebenen Wellen
+  auf den Pixeln (`spectrum.spectrum_image`) – exakt für diskrete Wellen (Streifen zweier ebener
+  Wellen), für kontinuierliche Spektren die Quadratur des Winkelspektrums ohne Fresnel- oder
+  Debye-Näherung, solange die Wellen für das Fenster dicht genug liegen (Prüfung des
+  Phasenschritts; sonst S → H und Ausbreitung wie bei H, mit Vermerk im Protokoll).
+  Gitterspektren auf parallelen Ebenen als zwei Matrixprodukte (`spectrum.grid_sum`). Felder
+  und Spektren auf einem Eingang interferieren. Freie Ausbreitung im Spektrum
+  `spectrum.propagate` (Plan S4): Phase e^(ik·Δr) je Welle, gekippte Ebenen mit Drehung in den
+  neuen Rahmen, evaneszente und nicht vorwärts laufende Wellen fallen mit `exec.spectrum_cut`
+  weg; die PFT-Abtastung wandert mit, sodass S → H auf der neuen Ebene gilt. Abnahme W79–W80
+  (`tests/test_spectrum_detector.py`).
 
 ### Geändert
 
 - Standard von `fusion.convert` ist `to = H` statt S (Plan S6).
 - Die Licht-Sockets der Blöcke `optics.*` nehmen R, H und S (vorher R und H); die Ausführung wandelt
   S an ihren Ports.
+- `rtt.detector` mit S auf der Eingangsverbindung rechnet im Modus ganzer Pfade nicht mehr still mit
+  Strahlen, sondern wandelt die Felder hinter der letzten Fläche in Spektren (offener Punkt aus
+  R30a). Die Licht-Sockets importierter Raytatouille-Systeme (`importer`, `topology.unroll`,
+  `parts`) nehmen R, H und S; vor den übrigen Raytatouille-Blöcken wandelt die Ausführung S in
+  Strahlen. Pläne mit „auto“ bleiben unverändert.
+- `field.field_image` aufgeteilt in `field_sums` (Feld je Kohärenzgruppe auf den Pixeln) und
+  `image_of`; `field.pixel_centres`.
 
 ## [0.2.1] - 2026-11-18
 

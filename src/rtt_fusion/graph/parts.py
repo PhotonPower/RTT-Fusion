@@ -28,7 +28,7 @@ from rtt_fusion.graph.model import (
     light_out,
 )
 
-_REPS = "RH"
+_REPS = "RHS"  # rays, fields and (R30b) spectra on the links; the blocks trace rays
 _APERTURE = {"type": "circular", "radius": 12.5}
 _POSE = {"position": [0.0, 0.0, 0.0], "rotation_deg": [0.0, 0.0, 0.0]}
 

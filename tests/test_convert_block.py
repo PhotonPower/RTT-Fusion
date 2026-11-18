@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
-
-from typing import Any
 
 from rtt_fusion.graph import Graph, Node, NodeTypeRegistry, builtin_registry, conversion, optics
 from rtt_fusion.graph.execute import ExecutionError, Executor

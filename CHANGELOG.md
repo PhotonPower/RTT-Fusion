@@ -4,6 +4,32 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- Spektren ebener Wellen (S) auf Verbindungen, Stufe R30a (`graph/spectrum.py`, Plan
+  `docs/plan-s-spektren.md`): Lichttyp `SpectrumBundle` (Kohärenzgruppe, Port-Ebene mit
+  Phasenbezug im Ursprung, `ports.PlaneWaves` mit Raumwinkeln dΩ, Abtastung für den Rückweg) und die
+  Umwandlungen H → S (punktweise Fourier-Transformation von Fieldtracing, wo die lokale
+  Fresnel-Zahl groß ist, sonst FFT auf einem Gitter), G → S (Gitterfeld über
+  `ports.to_plane_waves`), S → H (inverse PFT bzw. FFT zurück auf die Stützstellen), R → S und
+  S → R (über H). Die Ausführung wandelt an den Ports (`Executor._convert`): eine Verbindung mit S
+  trägt Spektren, ein Block, der S nicht nimmt, bekommt ein Feld (S → H) oder Strahlen (S → R).
+  Diagnosen als Warnung im Protokoll: `exec.spectrum_cut` (Anteil der Leistung, der evaneszent
+  wegfällt), `exec.spectrum_rays` (Bündel nicht groß gegen λ). Abnahme W76–W78
+  (`tests/test_spectrum_links.py`): Gauß-Strahl gegen das analytische Winkelspektrum, Rundreisen,
+  Leistung, Fokus gegen Richards–Wolf.
+- `execute.WITH_SPECTRA` = {R, H, S}; `workflow.available()` gibt es mit fieldtracing zurück.
+- Planer: `Requirements.native` (was jeder Block nativ nimmt); „auto“ wählt S nur zwischen zwei
+  Blöcken, die beide S nativ nehmen (Entscheidung 3). Bisherige Pläne bleiben unverändert.
+  `workflow.native_of` und `workflow.checked(..., evaluators)` liefern es für das Dokument.
+- `fusion.convert` rechnet `to = S` (G und P melden weiter `exec.convert_unsupported`).
+
+### Geändert
+
+- Standard von `fusion.convert` ist `to = H` statt S (Plan S6).
+- Die Licht-Sockets der Blöcke `optics.*` nehmen R, H und S (vorher R und H); die Ausführung wandelt
+  S an ihren Ports.
+
 ## [0.2.1] - 2026-11-18
 
 ### Hinzugefügt

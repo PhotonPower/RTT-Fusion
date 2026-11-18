@@ -129,3 +129,59 @@ R30a und R30b sind die Voraussetzung; R30c und R30d sind unabhängig voneinander
 | 2 | S3: Weg R → S | **über H**, Debye direkt nur im Fokus (Empfehlung übernommen) |
 | 3 | S5: wählt „auto“ S? | **Ja:** der Planer wählt S selbst zwischen zwei Blöcken, die S nativ können |
 | 4 | Reihenfolge nach R30b | **zuerst Gitter und Stapel (R30c)**, dann Streukörper (R30d) |
+
+## Nachtrag R30a (Umsetzung, 2026-11-18)
+
+**Gebaut.** `graph/spectrum.py` mit `SpectrumBundle(key, plane, waves, path, branch, support)` und
+den Operatoren `field_to_spectrum` (H → S, G → S), `spectrum_to_field` (S → H), `rays_to_spectrum`
+(R → H → S) und `spectrum_to_rays` (S → H → R); `Executor._convert` wandelt an den Ports nach dem
+Plan der Verbindung und dem, was der Block nativ nimmt (S → H, wenn er H nimmt, sonst S → R);
+`execute.WITH_SPECTRA` = {R, H, S}, `workflow.available()` gibt es mit fieldtracing zurück;
+`fusion.convert` mit `to = S`, Standard H (S6). Abnahme W76–W78 in `tests/test_spectrum_links.py`
+(Messwerte in [testfaelle.md](testfaelle.md)): PFT gegen das Winkelspektrum des Gauß-Strahls mit
+genau dem erwarteten Fehler z_R/z der stationären Phase, FFT 2·10⁻⁵, Leistung ≤ 6·10⁻⁵,
+Rundreisen über die PFT auf Rundung, Fokus NA 0,8 aus dem Spektrum gegen Richards–Wolf 9·10⁻⁴.
+
+**Abweichungen und Präzisierungen.**
+
+1. **`support` im Lichttyp.** Aus den ebenen Wellen allein (k, Amplitude) lässt sich S → H nicht
+   rechnen: Die inverse PFT braucht die Spektralphase ψ̃ mit Gradient (−ρ) und Hesse-Matrix, die
+   inverse FFT das Gitter. Der Typ hat deshalb ein sechstes Feld `support`: das Spektrum als
+   Fieldtracing-Feld im Frequenzbereich (eine Stützstelle je Welle) bzw. das Gitter mit der Lage
+   jeder Welle. S → H nimmt die Amplituden aus `waves`, nur die Geometrie aus `support`; ein Block,
+   der die Wellen ändert (R30c), lässt die Geometrie stehen. Diskrete Wellen ohne `support` werden
+   noch kein Feld (`FieldError`, kommt mit R30b).
+2. **H → S nicht nur über die PFT.** Die PFT braucht eine reguläre Hesse-Matrix und eine große
+   lokale Fresnel-Zahl F (Fehler O(1/F)): ein kollimierter Strahl oder ein Gauß-Strahl an der Taille
+   hat keine. „auto“ nimmt die PFT, wo 1/F ≤ ε (ε = `field_tolerance` des Laufs, Standard 0,02 wie
+   Fieldtracings Auswahlregeln), sonst eine FFT des Felds auf dem Gitter von `graph.spectral` (Träger
+   k_c, Residuum kubisch interpoliert – linear verlöre 2·10⁻³ der Leistung); passt kein Gitter, die
+   PFT bis F = 10 mit einem Vermerk ihres Fehlers.
+3. **Gewichte dΩ.** Δ²k je Welle aus den Delaunay-Dreiecken der Wellenvektoren (dΩ = Δ²k/(k k_z)),
+   nicht über die Jacobi-Abbildung der Flächen in der Port-Ebene: Ein fokussierter Strahl hat seine
+   Stützstellen gleichmäßig in der Pupille, also in k∥, und dort gilt die Trapezregel. Die
+   Leistung des Spektrums ist dann die der Strahlen (2·10⁻¹⁶ bei NA 0,8); `field.field_power` der
+   Felder liegt bei konvergierenden Bündeln am Rand etwa 1 % darunter (Quadratur in der Port-Ebene).
+4. **G → S, S → G.** Gitterfelder von Fieldtracing (nach einer Ausbreitung in einen Fokus) gehen über
+   `ports.to_plane_waves`; der Rückweg ist die inverse FFT mit derselben Konvention wie
+   `ports.to_gridded` (das je Welle über das Gitter summiert und für große Gitter zu langsam ist).
+   Wellen unter 10⁻⁸ der größten Amplitude fallen weg.
+5. **Sockets.** Damit eine Verbindung S tragen kann, müssen beide Sockets S zulassen: Die Blöcke
+   `optics.*` nehmen jetzt R, H und S (die Ausführung wandelt an ihren Ports). Die `rtt.*`-Typen
+   ließen S schon seit R14 zu; Gitter, Stapel, Partikel und Sonde bleiben bei R und H bis R30c/R30d.
+6. **Planer.** `Requirements.native` (Block → native Darstellungen) und `planner.NATIVE_ONLY` = {S}:
+   „auto“ lässt S nur zwischen zwei Blöcken zu, die es beide nativ nehmen; ein fester Transport S
+   gilt immer. Ohne `native` (abstrakte Planung, Planer-Tests) gilt die Regel nicht. Die Ausführung
+   nimmt die Attribute `representations` ihrer Auswerter, das Workflow-Dokument die der optionalen
+   Module (`workflow.native_of`). Da noch kein Block S nativ nimmt, ändert „auto“ keinen Plan.
+7. **Diagnosen** stehen wie die übrigen Hinweise der Ausführung als Zeilen in `Context.log`
+   (`<Verbindung>: exec.spectrum_cut: …`), nicht als `Diagnostic` des Plans. `exec.spectrum_rays`
+   prüft in R30a nur die Größe des Bündels (< 10 λ/n); „Ordnungen getrennt“ folgt mit den Ordnungen
+   in R30c.
+8. **Test angepasst:** `test_convert_block.py` prüfte `exec.convert_unsupported` mit `to = S`; jetzt
+   mit G und P, dazu ein Test für `to = S`.
+
+**Offen.** `SpectrumBundle` in den Port-Daten (`portdata`, Blöcke anderer Prozesse) fehlt noch; es
+wird gebraucht, sobald ein Plugin-Block S nativ nimmt (R30c). Ein Raytatouille-Detektor
+(`rtt.detector`) mit S auf der Eingangsverbindung rechnet im Modus ganzer Pfade mit Strahlen wie bei
+R (er wertet nur H aus).

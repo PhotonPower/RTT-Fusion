@@ -41,6 +41,7 @@
 | **R19d FourierGrating im Gitter-Block** | `fg.grating` mit `fouriergrating` (Konfigurationsdatei) baut seine Jones-Tabelle selbst um die einfallenden Strahlen (λ ± 1,5 nm, σ-Bereich + Rand, ≥ 4 Knoten je Achse), Seite reflektiert/transmittiert, Cache je Konfiguration und Gitter. 1D läuft lokal (FourierGrating mit GCC gebaut) | Block = FourierGrating direkt, R + T = 1 ✅ (W26, W27) |
 | **R19c Partikel als Probe** | Block `fusion.particle` (Sockets eines Spiegels): fokussierte Strahlen → Winkelspektrum (Debye/Richards–Wolf je Strahl, Raumwinkel aus den Richtungen, Leistung aus dem Strahlschlauch), CliffordBem (Adapter R4), Rückstreuung als Strahlen vom Teilchen aus; kollimiertes Licht als eine ebene Welle; Kugel (Icosphere) mit Radius, Brechzahl, Netzstufe | Fokusfeld = Richards–Wolf, K3 im Graphen = CliffordBem allein, Rückstreuung gegen Mie (Richardson über zwei Netze) ✅ (W29–W31) |
 | **R7 Sollwertdateien für den C++-Port** | Export der Port-Typen, Umwandlungen und Adapter-Ergebnisse im Format `raytatouille-result` | Dateien aktuell, Rundreise ✅ (S1) |
+| **R30 Spektren auf Verbindungen** (geplant) | Darstellung S zwischen Blöcken: `SpectrumBundle`, Umwandlungen H ↔ S, R → S, S → R in der Ausführung, Detektor und freie Ausbreitung im Spektrum, Gitter/Stapel/Verdichten und Streukörper mit S, Transport „S“ in der CAD-GUI; Stufen R30a–R30e ([Plan](plan-s-spektren.md)); setzt F5 aus dem Gitter-Feldoperator um | Rundreisen und Leistung, Fokus gegen Richards–Wolf, Gitterketten gegen FourierGrating, K3 ohne Strahlen (W76–W85) |
 
 ## Entscheidungen
 

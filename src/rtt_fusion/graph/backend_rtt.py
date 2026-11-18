@@ -802,7 +802,12 @@ def _split_path(
     placed = Node(block.id, block.type_id, block.name, params)
     evaluator = ctx.evaluators.get(block.type_id)
     if evaluator is None:
-        raise ExecutionError("exec.no_evaluator", f"no evaluator for {block.type_id}", block.id)
+        raise ExecutionError(
+            "exec.no_evaluator",
+            f"no evaluator for {block.type_id} – this installation cannot compute the block "
+            "(a planned type, or its plugin is not loaded)",
+            block.id,
+        )
     rings = int(ctx.shared.get("rings", 30))
     waist = float(ctx.shared.get("gaussian_waist", 0.0) or 0.0)
     # --- part A: up to the block

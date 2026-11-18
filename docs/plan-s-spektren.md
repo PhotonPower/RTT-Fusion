@@ -185,3 +185,77 @@ Rundreisen über die PFT auf Rundung, Fokus NA 0,8 aus dem Spektrum gegen Richar
 wird gebraucht, sobald ein Plugin-Block S nativ nimmt (R30c). Ein Raytatouille-Detektor
 (`rtt.detector`) mit S auf der Eingangsverbindung rechnet im Modus ganzer Pfade mit Strahlen wie bei
 R (er wertet nur H aus).
+
+## Nachtrag R30b (Umsetzung, 2026-11-18)
+
+**Gebaut.** In `graph/spectrum.py`: `spectrum_image` (Bild aus Spektren und Feldern, Amplituden
+je Kohärenzgruppe), `wave_sum` (Σ_j E_j e^(i k_j·(r − o)) an Punkten im Raum), `grid_sum` (dieselbe
+Summe für Gitterspektren als zwei Matrixprodukte), `sum_phase_step` (Prüfung der Abtastung) und
+`propagate` (S4). `optics.detector` und `rtt.detector` nehmen S nativ (`representations` = RHS);
+in `graph/field.py` ist `field_image` in `field_sums` und `image_of` geteilt, damit Felder und
+Spektren auf einem Eingang interferieren. Abnahme W79–W80 in `tests/test_spectrum_detector.py`
+(Messwerte in [testfaelle.md](testfaelle.md)): Streifen zweier ebener Wellen auf Rundung
+(2,5·10⁻¹², auch auf einem gekippten Detektor), Gauß-Fokus NA 0,5 über S gegen H 7,5·10⁻⁴ und
+gegen Richards–Wolf mit Gauß-Apodisation 6,8·10⁻⁵ (H: 7,8·10⁻⁴), Gauß-Strahl im Spektrum um
+0,5–2 z_R verschoben gegen das Fresnel-Integral 1,6·10⁻⁵, verschobenes PFT-Spektrum über die
+inverse PFT = geometrische Ausbreitung von Fieldtracing auf Rundung, Paraboloid (W17) mit S gegen
+Airy 5,6·10⁻⁴, knotenweise = ganze Pfade.
+
+**Entscheidungen und Abweichungen.**
+
+1. **Bild als Summe der Wellen im Raum.** Der Detektor wertet die Wellen an den Pixelmitten im
+   Raum aus, ohne das Spektrum erst auf die Detektorebene zu bringen: Eine ebene Welle ist in
+   jedem Rahmen dieselbe, so verliert auch ein gekippter Detektor nichts (S4 ließe dort Wellen
+   fallen). Für diskrete Wellen ist das exakt und braucht keine Abtastung (`support`) – damit sind
+   diskrete Spektren am Detektor nutzbar. Für kontinuierliche Spektren ist es die Quadratur des
+   Winkelspektrums: exakte freie Ausbreitung ohne Fresnel- oder Debye-Näherung, solange die Wellen
+   für das Fenster dicht genug liegen. Geprüft wird der Phasenschritt |r − ρ_j|·δk_j zwischen
+   Nachbarwellen über die Ecken des Fensters, ρ_j der Auftreffpunkt der Welle (aus −∇ψ̃ der PFT
+   bzw. der Ausdehnung des Felds auf dem FFT-Gitter, entlang k_j verschoben): Grenze 2π für
+   Gitterspektren (Poisson: Kopien im Abstand des Fensters), π für die verstreuten Wellen der PFT.
+   Im Fokus ist das immer erfüllt (dort ist die Summe das Debye-Integral ohne dessen Näherung und
+   genauer als der H-Weg), weit vom Fokus nicht; dann wandelt der Detektor S → H auf der Ebene des
+   Spektrums (die inverse Transformation, exakt) und rechnet weiter wie mit H (Fieldtracings
+   Planer), mit Vermerk im Protokoll – das Bild ist dann das von H. Statt „inverse PFT auf die
+   Detektorebene“: diese bräuchte im Fokus eine reguläre Hesse-Matrix, die es dort nicht gibt.
+2. **Kosten.** Eine Exponentialfunktion je Welle und Pixel (PFT-Spektrum mit 2800 Wellen auf 256²
+   Pixeln: 1,8·10⁸ Terme, wenige Sekunden). Gitterspektren (FFT, oft 65 000 Wellen) auf einem zur
+   Spektrumsebene parallelen Detektor mit gleichen Achsen (bis auf Vorzeichen und Reihenfolge)
+   zerfallen in zwei Matrixprodukte über Zeilen und Spalten des Gitters (`grid_sum`, gleich der
+   direkten Summe auf 10⁻¹²). Über `SUM_BUDGET` = 5·10⁸ Terme geht ein Spektrum mit Abtastung über
+   H. Beim Paraboloid (W17) ist S rund 150-mal schneller als H (Debye auf großem Gitter).
+3. **Freie Ausbreitung (S4) als Helfer, nicht an der Verbindung.** `propagate(sb, plane)`
+   verschiebt die Phase je Welle (e^(i k·Δr)), dreht bei gekippter Ebene jede Welle in den neuen
+   Rahmen (Normale entlang des Lichts) und lässt evaneszente und nicht vorwärts laufende Wellen mit
+   `exec.spectrum_cut` (Anteil der Leistung) fallen; auf parallelen Ebenen klingen evaneszente
+   Wellen ab und fallen nur hinter der Ebene weg. dΩ gehört zur Richtung und bleibt. Die Abtastung
+   eines PFT-Spektrums wandert mit (ψ̃ + k·Δr, Gradient −ρ um die Strahlversetzung −(k∥/k_n)Δn,
+   Hesse-Matrix um −Δn ∂²k_n/∂k∥²), sodass S → H auf der neuen Ebene gilt; Gitterspektren und
+   gekippte Ebenen verlieren sie (`support` None, Vermerk). Die Ausführung bewegt Spektren wie
+   Felder nicht zwischen Port-Ebenen (`_convert` kennt die Port-Ebene des Verbrauchers nicht, und
+   H wird ebenfalls erst im Block ausgebreitet); ein Block, der S nimmt, ruft `propagate` selbst
+   auf (R30c: Gitter und Stapel auf ihrer Ebene).
+4. **`rtt.detector`** (offener Punkt aus R30a): Mit S auf der Eingangsverbindung nimmt er im
+   Modus ganzer Pfade die Felder hinter der letzten Fläche wie bei H und wandelt sie in Spektren
+   (H → S, meist PFT); knotenweise wandelt die Ausführung an der Verbindung. Damit eine Verbindung
+   in einen Raytatouille-Detektor S tragen kann, nehmen die Licht-Sockets importierter Systeme
+   (`importer`, `topology.unroll`, `parts`) jetzt R, H und S; vor den übrigen Raytatouille-Blöcken
+   (Strahlen) wandelt die Ausführung S → H → R, und auf einer S-Verbindung hinter einem Block
+   bekommt das Bündel wie bei H das Medium hinter seiner letzten Fläche.
+5. **Planer.** Detektoren nehmen S nativ; „auto“ wählt S aber nur, wenn auch der Block davor S
+   nativ nimmt. Vor Detektoren stehen bisher nur Blöcke, die Strahlen rechnen, oder
+   `fusion.convert` (RHS). Zwischen `fusion.convert` und einem Detektor ist S nun zulässig, die
+   Kostenrangfolge (R 1, S 4) lässt „auto“ aber bei R; ein Spektrum aus `fusion.convert` mit
+   `to = S` erreicht den Detektor dann unverändert (wie Felder auf einer R-Verbindung seit R30a),
+   statt an seinem Port nach H gewandelt zu werden. Bestehende Pläne mit „auto“ bleiben unverändert
+   (Linnik, Fokus: `test_existing_plans_are_unchanged`); S wählt „auto“ nur, wo R gar nicht
+   zulässig ist (Quelle, die nur S abgibt, W79).
+6. **Leistung im Bild** (`ray_power`): `spectrum_power` der kontinuierlichen Spektren, diskrete
+   Wellen tragen keine endliche Leistung (0).
+
+**Offen.** `SpectrumBundle` in den Port-Daten fehlt weiter: Ein Gitterspektrum trägt in
+`GridSupport` eine Funktion (`Sampled.back`), die nicht über eine Prozessgrenze geht – nötig,
+sobald ein Raytatouille-Detektor in einem anderen Prozess knotenweise S bekommt oder ein
+Plugin-Block S nativ nimmt (R30c). Die Anzeige „geplant R, genutzt S“ für `fusion.convert` →
+Detektor (`Context.used`) gehört zu R30e. Ein gekippter Detektor hinter einem großen
+Gitterspektrum fällt auf die direkte Summe zurück und über `SUM_BUDGET` auf H.

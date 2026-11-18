@@ -24,6 +24,11 @@ come from the recorded OPL (ΔOPL/length of the first and the last segment), the
 map from the reflections (direction against the surface axis before and after each event).
 Executors of this backend may run R and H (`execute.WITH_FIELDS`); fieldtracing is needed for H.
 
+Spectra (R30b): with S planned on the link into the detector, the fields after the last surface
+become plane-wave spectra (H -> S on their plane, `spectrum.field_to_spectrum`) and the image is
+the sum of the waves on the pixels (`spectrum.spectrum_image`) – along whole paths as node-wise
+(there the executor converts on the link). With `execute.WITH_SPECTRA`.
+
 Node-wise (R25, ADR ports, poses, branches): every Raytatouille block passes the light of each
 branch along its own events (a *run*: the events of the block in a path of the system), the
 source starts two input polarisations per field point and wavelength and per branch (aimed along
@@ -68,6 +73,7 @@ from rtt_fusion.graph.model import Node
 from rtt_fusion.graph.optics import hexapolar
 from rtt_fusion.graph.planner import link_key
 from rtt_fusion.graph.pose import angles_xyz, offset_of, rotation_xyz
+from rtt_fusion.graph.spectrum import SpectrumBundle, field_to_spectrum, spectrum_image
 from rtt_fusion.graph.validate import node_sockets
 
 
@@ -517,7 +523,8 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
             ctx, node, compiled, layouts, path, field, wl, rings, waist, fields_wanted
         )
 
-    fields_wanted = _input_representation(ctx, node) == "H"
+    planned = _input_representation(ctx, node)
+    fields_wanted = planned in ("H", "S")
     if not fields_wanted and _auto_fields(ctx, node):
         middle = len(compiled.wavelengths_um) // 2
         probe = [f for p in live for f in one(p, 0, middle, True)[1]]
@@ -539,7 +546,9 @@ def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> A
                 rays, waves = one(path, field, wl, fields_wanted)
                 bundles += rays
                 fields += waves
-    return _image(ctx, node, compiled, bundles, fields, fields_wanted, trace_part)
+    return _image(
+        ctx, node, compiled, bundles, fields, fields_wanted, trace_part, as_spectra=planned == "S"
+    )
 
 
 def _path_light(
@@ -614,28 +623,39 @@ def _image(
     fields: list[FieldBundle],
     fields_wanted: bool,
     trace_part: float,
+    spectra: list[SpectrumBundle] | None = None,
+    as_spectra: bool = False,
 ) -> Any:
-    """The image on the detector surface: rays coherently (R) or fields propagated (H)."""
+    """The image on the detector surface: rays coherently (R), fields propagated (H) or plane-wave
+    spectra summed on the pixels (S, R30b; `as_spectra`: the fields become spectra first, H -> S
+    on their plane after the last surface)."""
     plane, hu, hv = _detector_plane(node, compiled)
     nx, ny = (int(v) for v in ctx.shared.get("pixels", [256, 256]))
-    if fields_wanted:
-        try:
+    if not fields_wanted and not spectra:
+        return coherent_image(bundles, plane, float(hu), float(hv), nx, ny)
+
+    def progress(part: float, text: str) -> None:
+        ctx.report(trace_part + (1 - trace_part) * part, f"{node.name or node.id}: {text}")
+
+    tolerance = field_tolerance(ctx.shared)
+    try:
+        if not as_spectra and not spectra:
             return field_image(
-                fields,
-                plane,
-                float(hu),
-                float(hv),
-                nx,
-                ny,
-                ctx.log,
-                lambda part, text: ctx.report(
-                    trace_part + (1 - trace_part) * part, f"{node.name or node.id}: {text}"
-                ),
-                tolerance=field_tolerance(ctx.shared),
+                fields, plane, float(hu), float(hv), nx, ny, ctx.log, progress, tolerance
             )
-        except FieldError as e:
-            raise ExecutionError("exec.field", str(e), node.id) from e
-    return coherent_image(bundles, plane, float(hu), float(hv), nx, ny)
+        waves = list(spectra or [])
+        if as_spectra:
+            notes: list[str] = []
+            try:
+                waves += [field_to_spectrum(fb, tolerance=tolerance, notes=notes) for fb in fields]
+            finally:
+                ctx.log.extend(f"{node.name or node.id}: {line}" for line in notes)
+            fields = []
+        return spectrum_image(
+            waves, fields, plane, float(hu), float(hv), nx, ny, ctx.log, progress, tolerance
+        )
+    except FieldError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
 
 
 def _detector_plane(node: Node, compiled: Any) -> tuple[Plane, float, float]:
@@ -1595,7 +1615,7 @@ def _block_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) 
             if not run:
                 continue
             fields_next = ctx.plan is not None and any(
-                ctx.plan.representations.get(link_key(lk)) == "H"
+                ctx.plan.representations.get(link_key(lk)) in ("H", "S")
                 for lk in ctx.graph.links_from(node.id, socket)
             )
             for traced in _trace_run(
@@ -1618,9 +1638,11 @@ def _block_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) 
 
 def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
     """Node-wise detector: traces the arriving bundles onto its surface (R) or turns them into
-    fields after the last surface and propagates them (H)."""
+    fields after the last surface and propagates them (H); spectra (S, converted on the link)
+    are summed on the pixels."""
     compiled, layouts, _, _, _ = _runs(ctx)
-    fields_wanted = _input_representation(ctx, node) == "H"
+    planned = _input_representation(ctx, node)
+    fields_wanted = planned in ("H", "S")
     if not fields_wanted and _auto_fields(ctx, node):
         first = next(
             (
@@ -1647,10 +1669,14 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
             fields_wanted = _near_focus(ctx, node, compiled, probe)
     bundles: list[RayBundle] = []
     fields: list[FieldBundle] = []
+    spectra: list[SpectrumBundle] = []
     for arriving in inputs.values():
         for b in arriving or []:
             if isinstance(b, FieldBundle):  # turned into a field on the link (plan: H)
                 fields.append(b)
+                continue
+            if isinstance(b, SpectrumBundle):  # turned into a spectrum on the link (plan: S)
+                spectra.append(b)
                 continue
             if not isinstance(b, RayBundle) or b.branch is None:
                 continue
@@ -1670,7 +1696,7 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
                 fields += traced
             else:
                 bundles += traced
-    return _image(ctx, node, compiled, bundles, fields, fields_wanted, 0.3)
+    return _image(ctx, node, compiled, bundles, fields, fields_wanted, 0.3, spectra, planned == "S")
 
 
 EVALUATORS: dict[str, Evaluator] = {
@@ -1686,8 +1712,9 @@ EVALUATORS: dict[str, Evaluator] = {
     "rtt.part.splitter": _block_nodes,
     "rtt.part.detector": detector,
 }
-# node-wise, light on an H link into the detector arrives as fields (R25)
-detector.representations = frozenset("RH")  # type: ignore[attr-defined]
+# node-wise, light on an H link into the detector arrives as fields (R25), on an S link as
+# plane-wave spectra (R30b); along whole paths the detector makes them itself
+detector.representations = frozenset("RHS")  # type: ignore[attr-defined]
 
 
 def foreign_blocks(ctx: Context, node: Node) -> list[str]:

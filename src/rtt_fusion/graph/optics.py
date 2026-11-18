@@ -36,6 +36,7 @@ from rtt_fusion.graph.model import (
     light_out,
 )
 from rtt_fusion.graph.registry import NodeTypeRegistry
+from rtt_fusion.graph.spectrum import SpectrumBundle, spectrum_image
 
 SQRT_HALF = float(np.sqrt(0.5))
 
@@ -245,28 +246,44 @@ def thin_lens(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> 
 
 
 def detector(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
-    """Coherent image of rays (R, `imaging.coherent_image`) and fields (H, `field.field_image`)."""
+    """Coherent image of rays (R, `imaging.coherent_image`), fields (H, `field.field_image`) and
+    plane-wave spectra (S, R30b: `spectrum.spectrum_image`, the sum of the waves on the pixels);
+    fields and spectra on one input interfere."""
     plane = _plane(node)
     hu, hv = (float(x) for x in node.params.get("half_size", [1.0, 1.0]))
     nx, ny = (int(x) for x in node.params.get("pixels", [128, 128]))
     items = list(inputs.get("in", []))
     rays = [b for b in items if isinstance(b, RayBundle)]
-    fields = [b for b in items if isinstance(b, FieldBundle)]
-    if not fields:
+    waves = [b for b in items if not isinstance(b, RayBundle)]
+    if not waves:
         return coherent_image(rays, plane, hu, hv, nx, ny)
     if rays:
         raise ExecutionError(
             "exec.mixed_representations", "rays and fields on one detector input", node.id
         )
+    fields = [b for b in waves if isinstance(b, FieldBundle)]
     try:
-        return field_image(
-            fields, plane, hu, hv, nx, ny, ctx.log, tolerance=field_tolerance(ctx.shared)
+        if len(fields) == len(waves):
+            return field_image(
+                fields, plane, hu, hv, nx, ny, ctx.log, tolerance=field_tolerance(ctx.shared)
+            )
+        spectra = [b for b in waves if isinstance(b, SpectrumBundle)]
+        return spectrum_image(
+            spectra,
+            fields,
+            plane,
+            hu,
+            hv,
+            nx,
+            ny,
+            ctx.log,
+            tolerance=field_tolerance(ctx.shared),
         )
     except FieldError as e:
         raise ExecutionError("exec.field", str(e), node.id) from e
 
 
-detector.representations = frozenset("RH")  # type: ignore[attr-defined]
+detector.representations = frozenset("RHS")  # type: ignore[attr-defined]
 
 
 # ------------------------------------------------------------------------------ registration
@@ -439,7 +456,7 @@ _PLANE_PARAMS = (
 )
 
 #: what the light links of these blocks may carry: rays, fields and (R30a) plane-wave spectra; the
-#: evaluators take R (detector: R and H) and the executor converts the rest at their ports
+#: evaluators take R (detector: R, H and S) and the executor converts the rest at their ports
 _LIGHT = "RHS"
 
 TYPES = (

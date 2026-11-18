@@ -33,12 +33,44 @@ Operators (fusion plan, table 6.3; plan S3):
 - `spectrum_to_rays` (S → R): S → H → R (`field.field_to_rays`); `exec.spectrum_rays` if the
   bundle is not large against λ (rays from a beam of a few wavelengths say little).
 
+Free propagation and image (stage R30b, plan S4):
+
+- `propagate` (S4): the spectrum on another port plane. Parallel planes: every wave gets the phase
+  e^(i k·Δr) of the shift (evanescent waves decay; behind the plane they would grow and are left
+  out), an in-plane turn of the frame turns k∥ and E. Tilted planes: every wave is turned into the
+  new frame (u, v, n of the target, n along the light); evanescent waves and waves that do not
+  cross the new plane forward are left out with `exec.spectrum_cut`. The weights dΩ belong to the
+  directions and stay. The spectral phase of a PFT spectrum moves with it (ψ̃ + k·Δr, its gradient
+  −ρ by the ray shift −(k∥/k_n)Δn, its Hessian by −Δn ∂²k_n/∂k∥²), so the inverse PFT still
+  gives the field on the new plane; a grid spectrum and tilted planes lose the sampling
+  (`support` None). Like fields, spectra are not moved by the executor: a block that takes S
+  natively moves them to its port plane (the detector evaluates them in space directly).
+- `spectrum_image`: the detector's coherent image from spectra (and fields). The field of the
+  waves at the pixel centres in space, E(r) = Σ_j E_j e^(i k_j·(r − o)), with no plane in between:
+  exact for discrete waves (diffraction orders, interference of plane waves) and for a tilted
+  detector, and for a continuous spectrum the quadrature of the angular-spectrum integral – exact
+  free propagation without Fresnel or Debye approximation, as long as the waves are dense enough
+  for the window. That is checked per wave j from where its ray lands, ρ_j (−∇ψ̃ moved along k_j,
+  or the field's extent on the grid of an FFT spectrum): the phase of the integrand changes
+  between neighbouring waves by |r − ρ_j|·δk_j, which must stay below `GRID_STEP_LIMIT` for a
+  grid spectrum (beyond it the replicas of the periodic sum enter the window) and
+  `SCATTERED_STEP_LIMIT` for the scattered waves of a PFT. Near a focus this always holds (all
+  rays land at the focus: the sum is the Debye integral without its approximation); far from a
+  focus – a large beam on a window far away – it does not, and the spectrum goes back to a field
+  on its plane (S → H, the inverse transform) and through Fieldtracing's propagation planner as
+  H does (`field.field_sums`), with a line in the log. Cost: one complex exponential per pixel
+  and wave, in blocks of `SUM_BLOCK` (a PFT spectrum of 2800 waves on 256² pixels: 1.8·10⁸
+  terms, a few seconds); a grid spectrum on a detector parallel to its plane with the same axes
+  (up to sign and order) factorises into two matrix products over the grid's rows and columns
+  (`grid_sum`), and a spectrum whose sum would exceed `SUM_BUDGET` terms goes through H as well.
+
 Power: `spectrum_power` in the units of `field.field_power` (W): the flux of `ports` divided by
 k₀ (`ports.spectrum_power` counts Re k_z |E|², `field_power` n cos γ |U|²).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -46,9 +78,19 @@ import numpy as np
 from scipy.spatial import Delaunay, QhullError
 
 from rtt_fusion import ports
-from rtt_fusion._types import FloatArray, IntArray
+from rtt_fusion._types import ComplexArray, FloatArray, IntArray
 from rtt_fusion.graph import spectral
-from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays, rays_to_field
+from rtt_fusion.graph.field import (
+    FieldBundle,
+    FieldError,
+    field_power,
+    field_sums,
+    field_to_rays,
+    image_of,
+    pixel_centres,
+    rays_to_field,
+)
+from rtt_fusion.graph.imaging import Image
 from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
 
 if TYPE_CHECKING:
@@ -66,6 +108,19 @@ DEFAULT_TOLERANCE = 0.02
 MIN_FRESNEL = 10.0
 #: S -> R: a bundle narrower than this many wavelengths (in the medium) gets `exec.spectrum_rays`
 BUNDLE_MIN_WAVELENGTHS = 10.0
+#: image by the sum of the waves: largest phase step (rad) of the integrand between neighbouring
+#: waves over the window – a grid spectrum is periodic with the window L of its grid (Poisson:
+#: replicas L apart, 2π per bin), the scattered waves of a PFT get half of that
+GRID_STEP_LIMIT = 2.0 * np.pi
+SCATTERED_STEP_LIMIT = np.pi
+#: waves whose Fourier amplitude |Ẽ| is below this share of the largest do not count for the
+#: sampling check of the sum (their replicas stay below it)
+SIGNIFICANT = 1e-4
+#: complex numbers per block of the direct sum (pixels × waves), about 64 MB
+SUM_BLOCK = 4_000_000
+#: waves × pixels above which a spectrum with a sampling goes through H instead of the direct
+#: sum (a few seconds); a grid spectrum on a parallel detector factorises and has no limit
+SUM_BUDGET = 500_000_000
 
 
 @dataclass(frozen=True)
@@ -389,8 +444,8 @@ def spectrum_to_field(sb: SpectrumBundle, notes: list[str] | None = None) -> Fie
     support = sb.support
     if w.solid_angle is None or support is None:
         raise FieldError(
-            "discrete plane waves (no solid angles or no sampling) cannot become a field yet "
-            "(detector and propagation in the spectrum come with R30b)"
+            "discrete plane waves (no solid angles or no sampling) do not become a field on a "
+            "plane; a detector takes them as they are (the sum of the waves)"
         )
     n = sb.refractive_index
     k = n * sb.k0
@@ -468,6 +523,334 @@ def spectrum_to_rays(sb: SpectrumBundle, notes: list[str] | None = None) -> RayB
     return field_to_rays(fb)
 
 
+# ------------------------------------------------------------------ R30b: propagation and image
+
+
+def _frame(plane: Plane) -> FloatArray:
+    """Rows u, v, n: global -> local is x @ R.T, local -> global is x @ R."""
+    return np.asarray(np.stack([plane.u, plane.v, plane.normal]))
+
+
+def _local_waves(sb: SpectrumBundle) -> tuple[ComplexArray, ComplexArray]:
+    """Wave vectors (k_u, k_v, k_n) (complex k_n for evanescent waves) and fields (E_u, E_v, E_n)
+    in the frame of the bundle's plane."""
+    w = sb.waves
+    kz = np.asarray(w.port.kz(w.kx, w.ky), dtype=np.complex128)
+    k = np.column_stack([np.asarray(w.kx, dtype=np.complex128), w.ky, kz])
+    return np.asarray(k), np.asarray(_field3(w), dtype=np.complex128)
+
+
+def _weights(sb: SpectrumBundle, e: ComplexArray) -> FloatArray:
+    """The share of the power per wave: |E|²/dΩ (continuous) or |E|² (discrete waves)."""
+    magnitude = np.sum(np.abs(e) ** 2, axis=1)
+    if sb.waves.solid_angle is None:
+        return np.asarray(magnitude)
+    return np.asarray(magnitude / np.asarray(sb.waves.solid_angle))
+
+
+def propagate(sb: SpectrumBundle, plane: Plane, notes: list[str] | None = None) -> SpectrumBundle:
+    """S4: the spectrum on `plane` (module docstring). The new frame is the plane's (u, v, n),
+    turned to (u, −v, −n) where its normal points against the light."""
+    rot_s = _frame(sb.plane)
+    cos = float(np.asarray(sb.plane.normal) @ np.asarray(plane.normal))
+    if cos >= 0.0:
+        target = Plane(np.asarray(plane.origin), plane.normal, plane.u, plane.v)
+    else:
+        target = Plane(np.asarray(plane.origin), -plane.normal, plane.u, -plane.v)
+    rot_t = _frame(target)
+    k_loc, e_loc = _local_waves(sb)
+    w = sb.waves
+    n = sb.refractive_index
+    k = n * sb.k0
+    delta = rot_s @ (np.asarray(target.origin) - np.asarray(sb.plane.origin))  # source frame
+    evanescent = np.abs(np.imag(k_loc[:, 2])) > 0.0
+    parallel = abs(cos) > 1.0 - 1e-12
+    turn = rot_t @ rot_s.T  # source local -> target local (block diagonal for parallel planes)
+    if parallel and np.allclose(turn, np.eye(3), rtol=0.0, atol=1e-12) and not delta.any():
+        return SpectrumBundle(sb.key, target, w, sb.path, sb.branch, sb.support)  # same plane
+    weight = _weights(sb, e_loc)
+    total = float(weight.sum()) or 1.0
+    if parallel:
+        keep = ~evanescent | (delta[2] >= 0.0)
+        _report_cut(notes, float(weight[~keep].sum()) / total, "evanescent waves behind the plane")
+        k_new = k_loc[keep] @ turn.T
+        k_new[:, 2] = k_loc[keep, 2]
+    else:
+        k_real = np.real(k_loc) @ rot_s @ rot_t.T  # global, then the target's frame
+        forward = k_real[:, 2] > np.sqrt(2.0 * GRAZING) * k
+        keep = ~evanescent & forward
+        _report_cut(
+            notes,
+            float(weight[~keep].sum()) / total,
+            "evanescent or not forward through the tilted plane",
+        )
+        k_new = k_real[keep].astype(np.complex128)
+    phase = np.exp(1j * (k_loc[keep] @ delta))
+    e_new = (e_loc[keep] * phase[:, None]) @ rot_s @ rot_t.T
+    port = _port(sb.wavelength_um, n)
+    waves = ports.PlaneWaves(
+        port,
+        np.ascontiguousarray(np.real(k_new[:, 0])),
+        np.ascontiguousarray(np.real(k_new[:, 1])),
+        np.ascontiguousarray(e_new[:, :2]),
+        orders=None if w.orders is None else np.asarray(w.orders)[keep],
+        solid_angle=None if w.solid_angle is None else np.asarray(w.solid_angle)[keep],
+    )
+    support = None
+    if parallel and _is_pft(sb.support) and bool(keep.all()):
+        support = _moved_support(sb.support, k_loc, delta, turn[:2, :2], k_new)
+    elif sb.support is not None and notes is not None:
+        notes.append(
+            f"{sb.key.source}: the spectrum moved in S keeps no sampling for S -> H "
+            f"({'tilted plane' if not parallel else 'grid spectrum'})"
+        )
+    return SpectrumBundle(sb.key, target, waves, sb.path, sb.branch, support)
+
+
+def _is_pft(support: Any) -> bool:
+    try:
+        from fieldtracing.field import GridlessField
+    except ImportError:  # pragma: no cover - fieldtracing is needed for supports
+        return False
+    return isinstance(support, GridlessField)
+
+
+def _moved_support(
+    support: Any,
+    k_loc: ComplexArray,
+    delta: FloatArray,
+    turn: FloatArray,
+    k_new: ComplexArray,
+) -> Any:
+    """The frequency-domain field of a PFT spectrum on a parallel plane shifted by `delta` (source
+    frame) and turned in the plane by `turn` (2 × 2)."""
+    kpar = np.real(k_loc[:, :2])
+    kn = np.real(k_loc[:, 2])
+    dn = float(delta[2])
+    phase = np.asarray(support.phase) + kpar @ delta[:2] + kn * dn
+    gradient = np.asarray(support.gradient) + delta[:2] - kpar / kn[:, None] * dn
+    eye = np.eye(2)
+    d2kn = -(eye / kn[:, None, None] + np.einsum("ni,nj->nij", kpar, kpar) / kn[:, None, None] ** 3)
+    hessian = np.asarray(support.hessian) + dn * d2kn
+    turn3 = np.eye(3)
+    turn3[:2, :2] = turn
+    return type(support)(
+        np.ascontiguousarray(np.real(k_new[:, :2])),
+        phase,
+        gradient @ turn.T,
+        np.einsum("ij,njk,lk->nil", turn, hessian, turn),
+        np.asarray(support.amplitude) @ turn3.T,
+        support.wavelength_um,
+        support.refractive_index,
+        "frequency",
+    )
+
+
+def _landing(sb: SpectrumBundle) -> tuple[FloatArray, FloatArray] | None:
+    """Where the significant waves start in the bundle's plane: per wave (N, 2) for a PFT
+    spectrum (ρ = −∇ψ̃), or the box (2, 2) [lo, hi] of the field on the grid of an FFT
+    spectrum; and the mask of the significant waves. None without a sampling."""
+    w = sb.waves
+    assert w.solid_angle is not None
+    k = sb.refractive_index * sb.k0
+    kz = np.real(w.port.kz(w.kx, w.ky))
+    dk2 = np.asarray(w.solid_angle) * k * kz
+    amp = np.linalg.norm(np.asarray(w.field), axis=1) / dk2
+    significant = amp >= SIGNIFICANT * float(amp.max() or 1.0)
+    support = sb.support
+    if _is_pft(support):
+        return -np.asarray(support.gradient, dtype=float), significant
+    if isinstance(support, GridSupport):
+        grid = support.sampled.grid
+        magnitude = np.sum(np.abs(np.asarray(support.sampled.residual)) ** 2, axis=-1)
+        rows, cols = np.nonzero(magnitude >= SIGNIFICANT**2 * float(magnitude.max() or 1.0))
+        x, y = grid.axes()
+        box = np.array([[x[cols].min(), y[rows].min()], [x[cols].max(), y[rows].max()]])
+        return box, significant
+    return None
+
+
+def sum_phase_step(sb: SpectrumBundle, corners: FloatArray) -> tuple[float, float]:
+    """The largest phase step of the sum of the waves between neighbouring waves over a window
+    with these (global) corners, and its limit (module docstring); (0, inf) for discrete waves,
+    (nan, inf) for a continuous spectrum without sampling."""
+    w = sb.waves
+    if w.solid_angle is None:
+        return 0.0, np.inf
+    found = _landing(sb)
+    if found is None:
+        return float("nan"), np.inf
+    start, significant = found
+    q = (np.asarray(corners, dtype=float) - sb.plane.origin) @ _frame(sb.plane).T  # (C, 3)
+    kz = np.real(w.port.kz(w.kx, w.ky))
+    tan = np.column_stack([w.kx, w.ky]) / kz[:, None]
+    tan = tan[significant]
+    shift = q[:, None, :2] - tan[None, :, :] * q[:, None, 2:]  # (C, N, 2): r − Δn·tan θ
+    if isinstance(sb.support, GridSupport):
+        grid = sb.support.sampled.grid
+        dk = 2.0 * np.pi / (np.array([grid.nx, grid.ny]) * grid.step)
+        reach = np.maximum(np.abs(shift - start[0]), np.abs(shift - start[1]))
+        return float(np.max(reach * dk)), GRID_STEP_LIMIT
+    k = sb.refractive_index * sb.k0
+    dk = np.sqrt(np.asarray(w.solid_angle)[significant] * k * kz[significant])
+    reach = np.max(np.abs(shift - start[significant][None]), axis=2)  # ∞-norm
+    return float(np.max(reach * dk[None, :])), SCATTERED_STEP_LIMIT
+
+
+def wave_sum(sb: SpectrumBundle, points: FloatArray) -> ComplexArray:
+    """The field Σ_j E_j e^(i k_j·(r − o)) of the waves at global points (M, 3), as global
+    components (M, 3). Evanescent waves count only in front of the plane."""
+    rot = _frame(sb.plane)
+    k_loc, e_loc = _local_waves(sb)
+    evanescent = np.abs(np.imag(k_loc[:, 2])) > 0.0
+    q = (np.asarray(points, dtype=float) - sb.plane.origin) @ rot.T
+    out = np.zeros((len(q), 3), dtype=np.complex128)
+    block = max(1, SUM_BLOCK // max(len(k_loc), 1))
+    for a in range(0, len(q), block):
+        part = q[a : a + block]
+        expo = np.exp(1j * (part @ k_loc.T))
+        if evanescent.any():
+            expo[:, evanescent] *= (part[:, 2:3] >= 0.0).astype(float)
+        out[a : a + block] = expo @ e_loc
+    return np.asarray(out @ rot)
+
+
+def grid_sum(
+    sb: SpectrumBundle, plane: Plane, half_u: float, half_v: float, nx: int, ny: int
+) -> ComplexArray | None:
+    """`wave_sum` on the pixel centres of a detector (`field.pixel_centres`) for a grid spectrum on
+    a plane parallel to the detector, whose axes are those of the detector up to sign and order:
+    the sum then factorises into two matrix products over the grid's columns and rows (a partial
+    inverse DFT onto the pixels, exact as the sum). None where it does not apply."""
+    support = sb.support
+    if not isinstance(support, GridSupport) or len(sb.waves.kx) == 0:
+        return None
+    rot = _frame(sb.plane)
+    if abs(float(np.asarray(plane.normal) @ rot[2])) < 1.0 - 1e-12:
+        return None
+    axes = np.array([[plane.u @ rot[0], plane.u @ rot[1]], [plane.v @ rot[0], plane.v @ rot[1]]])
+    swapped = abs(axes[0, 1]) > 0.5
+    signs = (axes[0, 1], axes[1, 0]) if swapped else (axes[0, 0], axes[1, 1])
+    if not all(abs(abs(x) - 1.0) < 1e-12 for x in signs):
+        return None
+    grid = support.sampled.grid
+    rows, cols = support.bins[:, 0], support.bins[:, 1]
+    kap_x = 2.0 * np.pi * np.fft.fftfreq(grid.nx, d=grid.step)
+    kap_y = 2.0 * np.pi * np.fft.fftfreq(grid.ny, d=grid.step)
+    kx_col = grid.carrier[0] + kap_x  # k_u of every column of the grid
+    ky_row = grid.carrier[1] + kap_y  # k_v of every row
+    k_loc, e_loc = _local_waves(sb)
+    q0 = rot @ (np.asarray(plane.origin) - np.asarray(sb.plane.origin))
+    coeff = np.zeros((grid.ny, grid.nx, 3), dtype=np.complex128)
+    coeff[rows, cols] = e_loc * np.exp(1j * k_loc[:, 2] * q0[2])[:, None]
+    s = (np.arange(nx) + 0.5) / nx * 2 * half_u - half_u  # pixel coordinates along u, v
+    t = (np.arange(ny) + 0.5) / ny * 2 * half_v - half_v
+    if not swapped:  # q_u = q0_u + σ_u s, q_v = q0_v + σ_v t
+        x = np.exp(1j * np.outer(q0[0] + signs[0] * s, kx_col))  # (nx, columns)
+        y = np.exp(1j * np.outer(q0[1] + signs[1] * t, ky_row))  # (ny, rows)
+        out = np.stack([y @ coeff[..., c] @ x.T for c in range(3)], axis=-1)
+    else:  # q_u = q0_u + σ t (v of the detector along u), q_v = q0_v + σ' s
+        x = np.exp(1j * np.outer(q0[1] + signs[0] * s, ky_row))  # (nx, rows)
+        y = np.exp(1j * np.outer(q0[0] + signs[1] * t, kx_col))  # (ny, columns)
+        out = np.stack([y @ coeff[..., c].T @ x.T for c in range(3)], axis=-1)
+    return np.asarray(out.reshape(ny * nx, 3) @ rot)
+
+
+def _on_pixels(
+    sb: SpectrumBundle,
+    plane: Plane,
+    half_u: float,
+    half_v: float,
+    nx: int,
+    ny: int,
+    pixels: FloatArray,
+    corners: FloatArray,
+    notes: list[str],
+) -> ComplexArray | FieldBundle:
+    """The global field of one spectrum on the pixel centres, or – where the sum would alias or
+    cost too much – the spectrum as a field on its plane (S -> H) for the field propagation."""
+    count = len(sb.waves.kx)
+    step, limit = sum_phase_step(sb, corners)
+    if step > limit:
+        notes.append(
+            f"{sb.key.source}: the sum of {count} waves would alias on the window (phase step "
+            f"{step:.3g} rad between neighbouring waves, at most {limit:.3g}) – S -> H on its "
+            "plane and propagated as a field"
+        )
+        return spectrum_to_field(sb, notes)
+    e = grid_sum(sb, plane, half_u, half_v, nx, ny)
+    cost = count * len(pixels)
+    if e is None and cost > SUM_BUDGET and sb.support is not None:
+        notes.append(
+            f"{sb.key.source}: the sum of {count} waves on {len(pixels)} pixels would cost "
+            f"{cost:.2g} terms (at most {SUM_BUDGET:.2g}) – S -> H on its plane and propagated "
+            "as a field"
+        )
+        return spectrum_to_field(sb, notes)
+    if np.isnan(step):
+        notes.append(
+            f"{sb.key.source}: a continuous spectrum without its sampling – the sum of its "
+            f"{count} waves is not checked for aliasing"
+        )
+    detail = "" if np.isnan(step) or step == 0.0 else f" (phase step {step:.2g} rad)"
+    notes.append(f"{sb.key.source}: image from the sum of {count} plane waves{detail}")
+    return e if e is not None else wave_sum(sb, pixels)
+
+
+def spectrum_image(
+    spectra: list[SpectrumBundle],
+    fields: list[FieldBundle],
+    plane: Plane,
+    half_u: float,
+    half_v: float,
+    nx: int,
+    ny: int,
+    log: list[str] | None = None,
+    progress: Callable[[float, str], None] | None = None,
+    tolerance: float | None = None,
+) -> Image:
+    """Intensity on the pixel grid of `plane` from spectra and fields, amplitudes per coherence
+    group (module docstring). `ray_power`: the power of the continuous spectra
+    (`spectrum_power`) and of the fields (`field.field_power`); discrete waves carry none."""
+    pixels = pixel_centres(plane, half_u, half_v, nx, ny)
+    corners = np.asarray(
+        [
+            plane.origin + a * half_u * plane.u + b * half_v * plane.v
+            for a in (-1, 1)
+            for b in (-1, 1)
+        ]
+    )
+    total = max(len(spectra) + len(fields), 1)
+    sums: dict[CoherenceKey, ComplexArray] = {}
+    power = sum(field_power(fb) for fb in fields)
+    rest: list[FieldBundle] = []
+    notes: list[str] = []
+    try:
+        for i, sb in enumerate(spectra):
+            if progress is not None:
+                progress(i / total, f"plane waves {i + 1}/{len(spectra)}")
+            if sb.continuous:
+                power += spectrum_power(sb)
+            e = _on_pixels(sb, plane, half_u, half_v, nx, ny, pixels, corners, notes)
+            if isinstance(e, FieldBundle):
+                rest.append(e)
+            else:
+                sums[sb.key] = sums[sb.key] + e if sb.key in sums else e
+    finally:
+        if log is not None:
+            log.extend(notes)
+    rest += fields
+    if rest:
+        done = len(spectra) + len(fields) - len(rest)
+
+        def part(p: float, text: str) -> None:
+            if progress is not None:
+                progress((done + p * len(rest)) / total, text)
+
+        sums, _ = field_sums(rest, plane, half_u, half_v, nx, ny, log, part, tolerance, sums)
+    return image_of(sums, half_u, half_v, nx, ny, power)
+
+
 __all__ = [
     "BUNDLE_MIN_WAVELENGTHS",
     "CUT_WARNING",
@@ -477,8 +860,13 @@ __all__ = [
     "beam_size",
     "field_to_spectrum",
     "fresnel_number",
+    "grid_sum",
+    "propagate",
     "rays_to_spectrum",
+    "spectrum_image",
     "spectrum_power",
     "spectrum_to_field",
     "spectrum_to_rays",
+    "sum_phase_step",
+    "wave_sum",
 ]

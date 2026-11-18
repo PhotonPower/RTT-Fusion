@@ -13,7 +13,7 @@ References, independent of the code under test:
 - W77 round trips: S -> H -> S and H -> S -> H give back what went in (the inverse PFT is the
   Legendre inverse of the PFT; the FFT path interpolates); R -> S -> R equals R -> H -> R and the
   spectrum carries the rays' power; a link with S into a detector gives the image of a link with
-  H.
+  H (since R30b the detector sums the waves itself: to 1e−3, see test_spectrum_detector.py).
 - W78 focus of an aplanatic lens (NA 0.8) from the spectrum of its rays (R -> H -> S): the
   Richards–Wolf spectrum of `couplings.focus` (Gauss–Legendre, no rays) as in W29, and the
   detector image of a link with S against Fieldtracing's `focus.richards_wolf` (Bessel
@@ -307,10 +307,10 @@ def test_w77_w78_detector_behind_a_spectrum_link() -> None:
     key = "lens.out -> cam.in"
     assert ex.plan is not None and ex.plan.representations[key] == "S"
     assert any(key in line and "H -> S by the PFT" in line for line in ex.context.log)
-    assert any(key in line and "S -> H by the inverse PFT" in line for line in ex.context.log)
-    # the same image as with H on the link (the inverse PFT gives the field back)
+    # since R30b the detector takes S: the image is the sum of the waves (W79), no S -> H
+    assert not any("S -> H" in line for line in ex.context.log)
     with_h: Image = focus_graph("H").evaluate("cam", "image")
-    assert np.abs(im.values - with_h.values).max() < 1e-9 * with_h.values.max()
+    assert np.abs(im.values - with_h.values).max() < 1e-3 * with_h.values.max()  # 7.8e-4
     # W13: against Richards–Wolf (Bessel integrals)
     n, half = 41, 2.5e-3
     u = (np.arange(n) + 0.5) / n * 2 * half - half

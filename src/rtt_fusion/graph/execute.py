@@ -22,8 +22,11 @@ blocks belongs to the evaluators that take fields, such as detectors).
 Spectra (R30a, `rtt_fusion.graph.spectrum`): with fieldtracing the executable set is {R, H, S}
 (`WITH_SPECTRA`). A link planned S turns rays and fields into plane-wave spectra (R -> H -> S,
 H -> S, G -> S); a consumer that does not take S gets a field (S -> H) if it takes H, else rays
-(S -> H -> R). "auto" admits S only between two blocks that both take S natively (decision 3 of
-the plan, `Requirements.native`). Diagnostics of the conversions (`exec.spectrum_cut`,
+(S -> H -> R); one that takes S natively (the detectors since R30b) gets the spectrum as it is,
+on the plane where it was made – like fields, spectra are not moved between port planes here;
+the block moves them itself (`spectrum.propagate`, plan S4) or evaluates them in space. "auto"
+admits S only between two blocks that both take S natively (decision 3 of the plan,
+`Requirements.native`). Diagnostics of the conversions (`exec.spectrum_cut`,
 `exec.spectrum_rays`) are warnings in `Context.log`.
 """
 

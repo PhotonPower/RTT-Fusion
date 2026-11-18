@@ -1189,7 +1189,7 @@ def section_to_group(model: Model, node_id: str) -> Model:
         sockets = tuple(
             s
             for p in neighbours[loc]
-            for s in (light_in(f"from_{p}", "RH", "", p), light_out(f"to_{p}", "RH", "", p))
+            for s in (light_in(f"from_{p}", "RHS", "", p), light_out(f"to_{p}", "RHS", "", p))
         )
         through: dict[str, list[str]] = {}
         for run_key in runs_of[loc]:

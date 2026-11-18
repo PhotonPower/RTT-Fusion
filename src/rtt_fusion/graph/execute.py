@@ -27,7 +27,9 @@ on the plane where it was made – like fields, spectra are not moved between po
 the block moves them itself (`spectrum.propagate`, plan S4) or evaluates them in space. "auto"
 admits S only between two blocks that both take S natively (decision 3 of the plan,
 `Requirements.native`). Diagnostics of the conversions (`exec.spectrum_cut`,
-`exec.spectrum_rays`) are warnings in `Context.log`.
+`exec.spectrum_rays`: bundle not large against λ, or – since R30c – diffraction orders of one
+coherence group whose spectra overlap, so that rays lose their interference) are warnings in
+`Context.log`.
 """
 
 from __future__ import annotations
@@ -55,6 +57,7 @@ from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.graph.spectrum import (
     SpectrumBundle,
     field_to_spectrum,
+    overlapping_orders,
     spectrum_to_field,
     spectrum_to_rays,
 )
@@ -386,6 +389,12 @@ class Executor:
         spectrum_kept = "S" in native and not consumer.muted and lk.transport not in ("R", "H")
         notes: list[str] = []
         out: list[Any] = []
+        to_rays = [
+            b
+            for b in value
+            if isinstance(b, SpectrumBundle) and rays_wanted and (rep == "H" or not spectrum_kept)
+        ]
+        notes += overlapping_orders(to_rays)  # S -> R: are the orders separated? (plan S3)
         try:
             for item in value:
                 if rep in ("H", "S") and isinstance(item, RayBundle):

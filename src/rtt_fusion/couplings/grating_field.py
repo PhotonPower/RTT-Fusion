@@ -261,6 +261,181 @@ def _transfer_at(
     return out
 
 
+def transfer_waves(
+    handle: Any,
+    wavelength_um: float,
+    kx: Any,
+    ky: Any,
+    e2: Any,
+    *,
+    orders: Callable[[int, int], bool] | None = None,
+    cache: dict[tuple[float, float], Any] | None = None,
+) -> dict[tuple[str, tuple[int, int]], tuple[Any, ComplexArray]]:
+    """Plane waves (k_x, k_y) with transverse fields `e2` (N, 2), all in the structure's frame
+    (x = grating vector, z along the incident light), through FourierGrating one by one (stage
+    R30c, the operator per spectral point of `apply` without a grid): per side and order the
+    indices of the incident waves that have it and their outgoing fields T·E (M, 3) in the frame of
+    `apply` (FourierGrating's frame for that side, before the mirroring of reflected light).
+    `cache` is the transfer per direction of `apply` (same keys and values)."""
+    from rtt_fusion.adapters import fouriergrating as fga
+
+    port = fga.front_port(handle, wavelength_um)
+    cache = cache if cache is not None else {}
+    keys = [(round(float(a), 9), round(float(b), 9)) for a, b in zip(kx, ky, strict=True)]
+    missing = sorted(set(keys) - set(cache))
+    if missing:
+        found = _transfer_at(
+            handle,
+            port,
+            np.array([m[0] for m in missing]),
+            np.array([m[1] for m in missing]),
+            orders,
+        )
+        cache.update(zip(missing, found, strict=True))
+    picked: dict[tuple[str, tuple[int, int]], tuple[list[int], list[ComplexArray]]] = {}
+    e = np.asarray(e2)
+    for j, key in enumerate(keys):
+        for so, t in cache[key].items():
+            idx, out = picked.setdefault(so, ([], []))
+            idx.append(j)
+            out.append(t @ e[j])
+    return {
+        so: (np.asarray(idx, dtype=np.int64), np.asarray(out, dtype=np.complex128).reshape(-1, 3))
+        for so, (idx, out) in picked.items()
+    }
+
+
+def spectrum_through(
+    handle: Any,
+    sb: Any,
+    x_axis: Any,
+    side: str,
+    *,
+    orders: Callable[[int, int], bool] | None = None,
+    cache: dict[tuple[float, float], Any] | None = None,
+    log: list[str] | None = None,
+    transfer: str = "exact",
+    tolerance: float = 1e-8,
+) -> dict[tuple[int, int], Any]:
+    """A plane-wave spectrum (`graph.spectrum.SpectrumBundle`, on the structure's plane with its
+    normal along the light) through a periodic structure (stage R30c): every wave on its own
+    (`transfer_waves`), order (n, m) leaving with k∥ + n·K_x + m·K_y. Per order of `side`
+    ("front": reflected, "back": transmitted) a spectrum on the same plane with the incident
+    axes (u, v), turned to (u, −v, −n) for reflected light; Δ²k of every wave is kept, its dΩ
+    follows from the medium it leaves into (dΩ = Δ²k/(k k_z)); discrete waves stay discrete. The
+    sampling (`support`) goes with the waves (`spectrum.order_support`), so that S -> H works
+    behind the block. Evanescent waves and waves beyond the structure's incident medium are left
+    out (`exec.spectrum_cut`)."""
+    from rtt_fusion import ports
+    from rtt_fusion.graph import spectrum as spm
+
+    log = log if log is not None else []
+    plane = sb.plane
+    z = np.asarray(plane.normal, dtype=float)
+    x = np.asarray(x_axis, dtype=float) - z * float(np.asarray(x_axis) @ z)
+    x = x / np.linalg.norm(x)
+    y = np.cross(z, x)
+    u, v = np.asarray(plane.u, dtype=float), np.asarray(plane.v, dtype=float)
+    q = np.array([[x @ u, x @ v], [y @ u, y @ v]])  # (u, v) -> (x, y)
+    w = sb.waves
+    lam = sb.wavelength_um
+    n_in = float(handle.front_index.real)
+    k0 = 2e3 * np.pi / lam
+    if abs(sb.refractive_index - n_in) > 1e-9:
+        log.append(f"spectrum in index {sb.refractive_index}, the structure expects {n_in}")
+    kpar = np.column_stack([w.kx, w.ky])
+    e3 = np.column_stack([np.asarray(w.field), w.ez()])
+    kz_in = np.asarray(w.port.kz(w.kx, w.ky))
+    ok = (np.abs(np.imag(kz_in)) == 0.0) & (np.real(kz_in) > 0.0)
+    ok &= np.hypot(w.kx, w.ky) < n_in * k0 * (1.0 - 1e-12)
+    if not ok.all():
+        weight = np.sum(np.abs(e3) ** 2, axis=1)
+        if w.solid_angle is not None:
+            weight = weight / np.asarray(w.solid_angle)
+        share = float(weight[~ok].sum() / (weight.sum() or 1.0))
+        log.append(
+            f"exec.spectrum_cut: {share:.2e} of the power left out of the spectrum (evanescent "
+            "or beyond the structure's incident medium)"
+        )
+    live = np.flatnonzero(ok)
+    kg = kpar[live] @ q.T
+    eg = e3[live, :2] @ q.T  # E_n stays: z is the plane's normal
+    found = None
+    if transfer == "interpolated" and isinstance(sb.support, spm.GridSupport) and len(live):
+        found = _interpolated_waves(handle, sb, live, q, eg, orders, tolerance, log)
+    if found is None:
+        found = transfer_waves(handle, lam, kg[:, 0], kg[:, 1], eg, orders=orders, cache=cache)
+    period = handle.structure.config.get("period_um", {})
+    px, pz = float(period.get("x", 0.0) or 0.0), float(period.get("z", 0.0) or 0.0)
+    step = np.array([2e3 * np.pi / px if px else 0.0, 2e3 * np.pi / pz if pz else 0.0])
+    flip = side == "front"
+    n_out = n_in if flip else float(handle.back_index.real)
+    k_out = n_out * k0
+    out_v = -v if flip else v
+    frame_g = np.stack([x, y, z])  # rows: the structure's axes (global)
+    out_plane = type(plane)(np.asarray(plane.origin), -z if flip else z, u, out_v)
+    result: dict[tuple[int, int], Any] = {}
+    for (s, order), (idx, e_out) in sorted(found.items()):
+        if s != side:
+            continue
+        take = live[idx]
+        kick = order[0] * step[0] * x + order[1] * step[1] * y  # global, in the plane
+        shift = np.array([kick @ u, kick @ out_v])
+        k_glob = kpar[take, 0:1] * u + kpar[take, 1:2] * v + kick
+        kvec = np.column_stack([k_glob @ u, k_glob @ out_v])
+        e_glob = e_out @ frame_g  # T·E has the components along the structure's x, y, z
+        field = np.column_stack([e_glob @ u, e_glob @ out_v])
+        solid = None
+        if w.solid_angle is not None:
+            dk2 = np.asarray(w.solid_angle)[take] * sb.refractive_index * k0 * np.real(kz_in[take])
+            kz_out = np.sqrt(np.maximum(k_out * k_out - np.sum(kvec * kvec, axis=1), 0.0))
+            solid = dk2 / (k_out * kz_out)
+        waves = ports.PlaneWaves(
+            ports.Port(0.0, 1, complex(n_out), float(lam)),
+            np.ascontiguousarray(kvec[:, 0]),
+            np.ascontiguousarray(kvec[:, 1]),
+            np.ascontiguousarray(field, dtype=np.complex128),
+            orders=np.tile(np.array(order, dtype=np.int64), (len(take), 1)),
+            solid_angle=solid,
+        )
+        support = spm.order_support(sb.support, take, flip, shift, kvec, n_out)
+        result[order] = spm.SpectrumBundle(sb.key, out_plane, waves, sb.path, sb.branch, support)
+    return result
+
+
+def _interpolated_waves(
+    handle: Any,
+    sb: Any,
+    live: Any,
+    q: Any,
+    eg: Any,
+    orders: Callable[[int, int], bool] | None,
+    tolerance: float,
+    log: list[str],
+) -> dict[tuple[str, tuple[int, int]], tuple[Any, ComplexArray]] | None:
+    """`transfer_waves` for the waves `live` of a grid spectrum with T interpolated on its grid
+    (in the spectrum's frame, turned by q into the structure's)."""
+    from rtt_fusion.adapters import fouriergrating as fga
+
+    grid = sb.support.grid
+    kap_x, kap_y = grid.frequencies()
+    kx, ky = kap_x + grid.carrier[0], kap_y + grid.carrier[1]
+    bins = np.asarray(sb.support.bins)[live]
+    keep = np.zeros(kx.shape, dtype=bool)
+    keep[bins[:, 0], bins[:, 1]] = True
+    port = fga.front_port(handle, sb.wavelength_um)
+    found = interpolated_transfer(handle, port, kx, ky, keep, orders, tolerance, log, q)
+    if found is None:
+        return None
+    keys, at = found
+    w = sb.waves
+    out: dict[tuple[str, tuple[int, int]], tuple[Any, ComplexArray]] = {}
+    for key in keys:
+        t = at(key, np.asarray(w.kx)[live], np.asarray(w.ky)[live])
+        out[key] = (np.arange(len(live)), np.einsum("nij,nj->ni", t, eg))
+    return out
+
+
 def _interpolated(
     handle: Any,
     port: Any,
@@ -275,12 +450,47 @@ def _interpolated(
 ) -> tuple[dict[tuple[str, tuple[int, int]], ComplexArray], dict[Any, ComplexArray]] | None:
     """Outgoing spectra and carrier transfers with T interpolated from a verified sub-grid (module
     docstring); None if the exact path has to be taken."""
+    found = interpolated_transfer(handle, port, kx, ky, keep, orders, tolerance, log)
+    if found is None:
+        return None
+    keys, at = found
+    t0 = _transfer_at(handle, port, np.array([carrier[0]]), np.array([carrier[1]]), orders)[0]
+    rows, cols = np.nonzero(keep)
+    specs: dict[tuple[str, tuple[int, int]], ComplexArray] = {}
+    for key in keys:
+        t = at(key, kx[rows, cols], ky[rows, cols])
+        s = np.zeros_like(spec)
+        s[rows, cols] = np.einsum("nij,nj->ni", t, spec[rows, cols, :2])
+        specs[key] = s
+    return specs, t0
+
+
+def interpolated_transfer(
+    handle: Any,
+    port: Any,
+    kx: Any,
+    ky: Any,
+    keep: Any,
+    orders: Callable[[int, int], bool] | None,
+    tolerance: float,
+    log: list[str],
+    q: Any = None,
+) -> tuple[set[tuple[str, tuple[int, int]]], Callable[[Any, Any, Any], Any]] | None:
+    """T of every side and order (3 × 2) interpolated (bicubic) from a sub-grid of the grid
+    (kx, ky) (ny × nx, numpy FFT order) and verified at bins of `keep` between its nodes (module
+    docstring): the keys and `at(key, qx, qy)` -> (M, 3, 2), or None if the exact path has to be
+    taken. `q` (2 × 2) turns the grid's frame into the structure's (default: the same)."""
     ny, nx = keep.shape
+    turn = np.eye(2) if q is None else np.asarray(q, dtype=float)
+
+    def exact_at(px: Any, py: Any) -> list[dict[tuple[str, tuple[int, int]], ComplexArray]]:
+        g = np.column_stack([np.ravel(px), np.ravel(py)]) @ turn.T
+        return _transfer_at(handle, port, g[:, 0], g[:, 1], orders)
+
     # monotonic axes of the spectrum (fftshift order) and the bins in that order
     ax = np.fft.fftshift(kx[0])
     ay = np.fft.fftshift(ky[:, 0])
     rng = np.random.default_rng(0)
-    t0 = _transfer_at(handle, port, np.array([carrier[0]]), np.array([carrier[1]]), orders)[0]
     previous = None
     for stride in (16, 8, 4, 2):
         ix = np.unique(np.r_[np.arange(0, nx, stride), nx - 1])
@@ -291,7 +501,7 @@ def _interpolated(
         if np.any(np.hypot(gx, gy) >= handle.front_index.real * port.k0 * (1.0 - 1e-12)):
             log.append("interpolated transfer: the spectrum reaches evanescent directions – exact")
             return None
-        nodes = _transfer_at(handle, port, gx.ravel(), gy.ravel(), orders)
+        nodes = exact_at(gx, gy)
         keys = set(nodes[0])
         if any(set(n) != keys for n in nodes):
             log.append("interpolated transfer: an order appears inside the spectrum – exact")
@@ -307,7 +517,7 @@ def _interpolated(
         cand = np.argwhere(keep)
         pick = cand[rng.choice(len(cand), size=min(12, len(cand)), replace=False)]
         qx, qy = kx[pick[:, 0], pick[:, 1]], ky[pick[:, 0], pick[:, 1]]
-        exact = _transfer_at(handle, port, qx, qy, orders)
+        exact = exact_at(qx, qy)
         scale = max(float(np.max(np.abs(tables[k]))) for k in keys) or 1.0
         error = (
             max(
@@ -320,14 +530,7 @@ def _interpolated(
                 f"interpolated transfer: {len(ix)}×{len(iy)} nodes, verified to {error:.1e} "
                 f"(tolerance {tolerance:g})"
             )
-            rows, cols = np.nonzero(keep)
-            specs: dict[tuple[str, tuple[int, int]], ComplexArray] = {}
-            for key in keys:
-                t = at(key, kx[rows, cols], ky[rows, cols])
-                s = np.zeros_like(spec)
-                s[rows, cols] = np.einsum("nij,nj->ni", t, spec[rows, cols, :2])
-                specs[key] = s
-            return specs, t0
+            return keys, at
         if previous is not None and error > previous / 2:
             # a smooth T loses ~16× per halving (cubic, h⁴), a kink ~1–2× (random check points:
             # give up below 2×): a kink – an order appearing or a Wood

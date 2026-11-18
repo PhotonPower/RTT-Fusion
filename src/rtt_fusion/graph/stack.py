@@ -24,6 +24,12 @@ outgoing spectrum is put back on the field's own samples with its phase ψ (the 
 Plane waves below `field_threshold` (relative amplitude) and evanescent ones are left out; their
 share of the power is logged.
 
+Representation S (stage R30c): a plane-wave spectrum is moved onto the stack's plane in the
+spectrum (`spectrum.propagate`, exact; resampled through H only from a tilted plane), and every
+wave goes through FourierGrating on its own (`couplings.grating_field.spectrum_through`): the
+stack is diagonal in k∥, so reflected and transmitted light leave as spectra on the same k∥ with
+the sampling kept.
+
 The stack: a FourierGrating configuration (`fouriergrating`, a JSON file) with homogeneous layers
 only, listed as FourierGrating lists them – from the substrate (back) upwards to the superstrate
 (front), `docs/config_format.md` of FourierGrating –, materials as FourierGrating takes them (n,
@@ -34,6 +40,7 @@ from __future__ import annotations
 
 import copy
 import json
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -42,8 +49,8 @@ from rtt_fusion.couplings import grating_field as gf
 from rtt_fusion.couplings import jones_table as jt
 from rtt_fusion.graph import embedded, spectral
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
-from rtt_fusion.graph.field import FieldBundle, FieldError
-from rtt_fusion.graph.grating import CONFIG, split_prt
+from rtt_fusion.graph.field import FieldBundle, FieldError, field_tolerance
+from rtt_fusion.graph.grating import CONFIG, spectrum_onto, split_prt
 from rtt_fusion.graph.light import Plane, RayBundle
 from rtt_fusion.graph.model import (
     Category,
@@ -55,6 +62,7 @@ from rtt_fusion.graph.model import (
     light_out,
 )
 from rtt_fusion.graph.registry import NodeTypeRegistry
+from rtt_fusion.graph.spectrum import SpectrumBundle
 
 TYPE_ID = "fg.stack"
 
@@ -266,9 +274,49 @@ def _apply_field(
     return FieldBundle(fb.key, out_plane, new, (*fb.path, label), fb.branch)
 
 
+def _apply_spectrum(
+    ctx: Context, node: Node, sb: SpectrumBundle, plane: Plane, from_back: bool, reflect: bool
+) -> SpectrumBundle:
+    """A plane-wave spectrum through the stack (stage R30c): moved onto the stack's plane in the
+    spectrum (S4), every wave through FourierGrating on its own (diagonal in k∥), in the frame x =
+    the plane's u (anisotropic layers see their axes); the spectrum leaves with the incident
+    axes, turned to (u, −v, −n) when reflected (`couplings.grating_field.spectrum_through`)."""
+    light = np.asarray(plane.normal) * (1.0 if from_back else -1.0)
+    if float(np.asarray(sb.plane.normal) @ light) <= 0.0:
+        raise ExecutionError(
+            "exec.field", "the spectrum does not run into the block (wrong side)", node.id
+        )
+    log: list[str] = []
+    try:
+        moved = spectrum_onto(sb, plane.origin, light, log, field_tolerance(ctx.shared))
+        handle = _handle(ctx, node, sb.wavelength_um, from_back)
+        side = "front" if reflect else "back"
+        by_order = gf.spectrum_through(
+            handle,
+            moved,
+            plane.u,
+            side,
+            cache=ctx.shared.setdefault("fg_stack_transfers", {}).setdefault(
+                handle.content_hash, {}
+            ),
+            log=log,
+            transfer=str(node.params.get("field_transfer", "exact")),
+        )
+    except FieldError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
+    except (ValueError, RuntimeError) as e:
+        raise ExecutionError("exec.solver", f"FourierGrating: {e}", node.id) from e
+    finally:
+        ctx.log.extend(f"{node.id}: {line}" for line in log)
+    out: SpectrumBundle | None = by_order.get((0, 0))
+    if out is None:
+        raise ExecutionError("exec.field", "no light leaves on this side", node.id)
+    return replace(out, path=(*sb.path, f"{node.id}[{'r' if reflect else 't'}]"))
+
+
 def stack(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:
     """Light in through one side leaves reflected through it and transmitted through the other;
-    rays as rays (R), fields as fields (H)."""
+    rays as rays (R), fields as fields (H), spectra as spectra (S)."""
     plane = _plane(node)
     out_side = socket.split("_")[0]
     out: list[Any] = []
@@ -276,6 +324,9 @@ def stack(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list
         in_side = in_socket.split("_")[0]
         for b in bundles or []:
             reflect = in_side == out_side
+            if isinstance(b, SpectrumBundle):
+                out.append(_apply_spectrum(ctx, node, b, plane, in_side == "back", reflect))
+                continue
             if isinstance(b, FieldBundle):
                 try:
                     out.append(_apply_field(ctx, node, b, plane, in_side == "back", reflect))
@@ -290,7 +341,7 @@ def stack(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list
     return out
 
 
-stack.representations = frozenset("RH")  # type: ignore[attr-defined]
+stack.representations = frozenset("RHS")  # type: ignore[attr-defined]
 
 
 def _frames(node: Node) -> dict[str, PortFrame]:
@@ -307,10 +358,10 @@ TYPE = NodeType(
     TYPE_ID,
     Category.DOMAIN,
     (
-        light_in("front_in", "RH", "front"),
-        light_out("front_out", "RH", "front"),
-        light_in("back_in", "RH", "back"),
-        light_out("back_out", "RH", "back"),
+        light_in("front_in", "RHS", "front"),
+        light_out("front_out", "RHS", "front"),
+        light_in("back_in", "RHS", "back"),
+        light_out("back_out", "RHS", "back"),
     ),
     (
         ParamSpec(

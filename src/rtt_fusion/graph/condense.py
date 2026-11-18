@@ -14,6 +14,10 @@ the table). The probes check it: a group whose result depends on where the light
 or that mixes s and p (anisotropic) cannot be condensed this way (`exec.condense`); its operator
 needs the adapters' operators (L4). The probes run in air (index 1 at the entry port).
 
+Plane-wave spectra (S, stage R30c, `apply_spectrum`): the table per wave at its direction, the
+phase from the probe's optical path and lateral shift; the block takes rays and spectra natively
+(fields reach it as rays).
+
 An outer branch through a condensed group still names its inner branch; the block applies exactly
 the inner branches the branches of the model use (decision P6), one output bundle per inner
 branch.
@@ -27,12 +31,14 @@ from typing import Any
 
 import numpy as np
 
+from rtt_fusion import ports
 from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError, Executor, _hash
-from rtt_fusion.graph.light import Plane, RayBundle
+from rtt_fusion.graph.light import Plane, RayBundle, rotation_between
 from rtt_fusion.graph.model import Node
 from rtt_fusion.graph.pose import placement
 from rtt_fusion.graph.registry import NodeTypeRegistry
+from rtt_fusion.graph.spectrum import SpectrumBundle, propagate
 
 TYPE_ID = "fusion.condensed"
 INVARIANCE_TOL = 1e-9
@@ -304,13 +310,112 @@ def apply(table: Table, b: RayBundle, iso: Any, name: str) -> RayBundle:
     )
 
 
-def condensed(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
+def _exit_frame(along: FloatArray, u: FloatArray, v: FloatArray, k_out: FloatArray) -> Any:
+    """Axes (u', v') of the plane the spectrum leaves on, normal `k_out`: the entry axes carried
+    from `along` to `k_out` by the smallest rotation, or mirrored (v flipped, to keep the frame
+    right-handed) if the light runs back."""
+    if float(along @ k_out) > 0:
+        rot = rotation_between(along, k_out)
+        return rot @ u, rot @ v
+    n = (k_out - along) / np.linalg.norm(k_out - along)
+
+    def mirror(a: FloatArray) -> FloatArray:
+        return np.asarray(a - 2.0 * float(a @ n) * n)
+
+    return mirror(u), -mirror(v)
+
+
+def apply_spectrum(
+    table: Table, sb: SpectrumBundle, iso: Any, name: str, log: list[str]
+) -> SpectrumBundle | None:
+    """The table applied to a plane-wave spectrum, wave by wave (stage R30c): moved onto the
+    entry plane in the spectrum (`spectrum.propagate`, S4), per wave the table at its direction σ
+    (bilinear between the grid points, the tolerance of the table): the field c_s·(s·E)·s +
+    c_p·(p_in·E)·p_out, the direction k_out and the phase k₀·OPL of the probe ray that entered at
+    the entry origin o_e and left at o_e + shift. On the exit plane (origin o_e + shift(σ = 0),
+    normal k_out(σ = 0)) the wave has the phase k₀ OPL + k_out·(o_x − o_e − shift): for a plate
+    this is k_z′d, the plane-wave transfer. Δ²k is kept (a laterally invariant group maps k∥
+    rigidly), dΩ follows in the medium behind (index 1, as the probes). The spectrum keeps no
+    sampling (the beam's lateral shift in the group is in the phases, not in a sampling);
+    waves outside the table, evanescent or not leaving forward are left out
+    (`exec.spectrum_cut`)."""
+    o_e = np.asarray(iso.point(table.entry[0]))
+    along, u, v = (np.asarray(iso.vector(x)) for x in table.entry[1:])
+    moved = propagate(sb, Plane(o_e, along, u, v), log)
+    w = moved.waves
+    n = moved.refractive_index
+    k0 = moved.k0
+    if abs(n - 1.0) > 1e-9:
+        log.append(f"{name}: spectrum in index {n}, the table was probed in air (index 1)")
+    k_loc = np.asarray(w.port.kz(w.kx, w.ky))
+    rot = np.stack([u, v, along])
+    e_glob = np.column_stack([np.asarray(w.field), w.ez()]) @ rot
+    k_dir = np.column_stack([w.kx, w.ky, np.real(k_loc)]) / (n * k0)
+    sx, sy = k_dir[:, 0], k_dir[:, 1]
+    limit = table.sigma[-1] + 1e-12
+    ok = (np.abs(np.imag(k_loc)) == 0.0) & (np.abs(sx) <= limit) & (np.abs(sy) <= limit)
+    k = k_dir @ rot
+    zero = np.zeros(1)
+    k_c = (_bilinear(table, zero, zero, table.k_out) @ iso.rotation.T)[0]
+    k_c = k_c / np.linalg.norm(k_c)
+    shift_c = (_bilinear(table, zero, zero, table.shift) @ iso.rotation.T)[0]
+    o_x = o_e + shift_c
+    u_x, v_x = _exit_frame(along, u, v, k_c)
+    c_s = _bilinear(table, sx, sy, table.c_s)
+    c_p = _bilinear(table, sx, sy, table.c_p)
+    k_out = _bilinear(table, sx, sy, table.k_out) @ iso.rotation.T
+    k_out = k_out / np.linalg.norm(k_out, axis=1)[:, None]
+    d_opl = _bilinear(table, sx, sy, table.d_opl)
+    shift = _bilinear(table, sx, sy, table.shift) @ iso.rotation.T
+    ok &= k_out @ k_c > 1e-9
+    weight = np.sum(np.abs(e_glob) ** 2, axis=1)
+    if w.solid_angle is not None:
+        weight = weight / np.asarray(w.solid_angle)
+    share = float(weight[~ok].sum() / (weight.sum() or 1.0))
+    if share > 0.0:
+        log.append(
+            f"exec.spectrum_cut: {share:.2e} of the power left out of the spectrum (outside the "
+            "table, evanescent or not leaving forward)"
+        )
+    s = np.cross(k, along)
+    norm = np.linalg.norm(s, axis=1)
+    s = np.where(norm[:, None] > 1e-12, s / np.where(norm > 0, norm, 1.0)[:, None], u)
+    p_in, p_out = np.cross(s, k), np.cross(s, k_out)
+    e_out = (
+        c_s[:, None] * np.sum(s * e_glob, axis=1)[:, None] * s
+        + c_p[:, None] * np.sum(p_in * e_glob, axis=1)[:, None] * p_out
+    )
+    phase = k0 * d_opl + k0 * np.sum(k_out * (o_x - o_e - shift), axis=1)
+    e_out = e_out * np.exp(1j * phase)[:, None]
+    keep = np.flatnonzero(ok)
+    if len(keep) == 0:
+        return None
+    kvec = k0 * np.column_stack([k_out @ u_x, k_out @ v_x])[keep]
+    solid = None
+    if w.solid_angle is not None:
+        dk2 = np.asarray(w.solid_angle)[keep] * n * k0 * np.real(k_loc[keep])
+        solid = dk2 / (k0 * k0 * (k_out[keep] @ np.cross(u_x, v_x)))  # Δ²k/(k k_z), k = k₀
+    waves = ports.PlaneWaves(
+        ports.Port(0.0, 1, 1.0 + 0j, moved.wavelength_um),
+        np.ascontiguousarray(kvec[:, 0]),
+        np.ascontiguousarray(kvec[:, 1]),
+        np.ascontiguousarray(np.column_stack([e_out @ u_x, e_out @ v_x])[keep]),
+        orders=None if w.orders is None else np.asarray(w.orders)[keep],
+        solid_angle=solid,
+    )
+    if moved.support is not None:
+        log.append(f"{name}: the spectrum behind the condensed group keeps no sampling for S -> H")
+    exit_plane = Plane(o_x, np.cross(u_x, v_x), u_x, v_x)
+    return SpectrumBundle(sb.key, exit_plane, waves, (*sb.path, name), sb.branch)
+
+
+def condensed(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:
     """The condensed group: per arriving bundle, the tables of the inner branches the model's
-    branches take from its port in to this port out."""
+    branches take from its port in to this port out; rays as rays, spectra as spectra (R30c)."""
     exit_port = socket[: -len("_out")]
     channels = node.params.get("_channels") or {}
     iso = placement(node)
-    out: list[RayBundle] = []
+    out: list[Any] = []
     for in_socket, bundles in inputs.items():
         entry_port = in_socket[: -len("_in")]
         for name in channels.get(f"{entry_port}>{exit_port}", []):
@@ -321,7 +426,25 @@ def condensed(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> 
                             _table(ctx, node, name, b.wavelength_um), b, iso, f"{node.id}[{name}]"
                         )
                     )
+                elif isinstance(b, SpectrumBundle):
+                    log: list[str] = []
+                    try:
+                        got = apply_spectrum(
+                            _table(ctx, node, name, b.wavelength_um),
+                            b,
+                            iso,
+                            f"{node.id}[{name}]",
+                            log,
+                        )
+                    finally:
+                        ctx.log.extend(f"{node.id}: {line}" for line in log)
+                    if got is not None:
+                        out.append(got)
     return out
+
+
+#: rays and spectra natively; fields reach the block as rays (it has no field path)
+condensed.representations = frozenset("RS")  # type: ignore[attr-defined]
 
 
 def condensed_node(gid: str, node: Node, variant: Any, settings: dict[str, Any]) -> Node:
@@ -358,7 +481,7 @@ def condensed_node(gid: str, node: Node, variant: Any, settings: dict[str, Any])
             "condense": dict(settings),
         },
         sockets=tuple(
-            s for p in names for s in (light_in(f"{p}_in", "RH"), light_out(f"{p}_out", "RH"))
+            s for p in names for s in (light_in(f"{p}_in", "RHS"), light_out(f"{p}_out", "RHS"))
         ),
         ports=tuple(PortSpec(p, f"{p}_in", f"{p}_out") for p in names),
         through=tuple((o, tuple(i)) for o, i in through.items()),

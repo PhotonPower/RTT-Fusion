@@ -23,11 +23,19 @@ light's side of exit for "transmitted", towards the incident side for "reflected
 
 Rays whose order is evaporating or whose (λ, σ) lies outside the table or near a Rayleigh anomaly
 (`jones_table.near_rayleigh_anomaly`) are dropped with a log line.
+
+Fields (H, stage F2) go through the field operator (`grating_fields`). Plane-wave spectra (S,
+stage R30c, `grating_spectra`): every wave through FourierGrating on its own – the operator per
+spectral point of the field path, without the grid – and every order a spectrum of its own, the
+incident one shifted by n·K with unchanged Δ²k (continuous spectra stay continuous, decision 1 of
+docs/plan-s-spektren.md; discrete waves stay discrete), with the sampling carried along so that
+S -> H works behind the block. With only a table a spectrum becomes rays at the port.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -36,7 +44,7 @@ from rtt_fusion._types import FloatArray
 from rtt_fusion.couplings import jones_table as jt
 from rtt_fusion.graph import embedded
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
-from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays
+from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays, field_tolerance
 from rtt_fusion.graph.light import Plane, RayBundle, rotation_between
 from rtt_fusion.graph.model import (
     Category,
@@ -49,6 +57,13 @@ from rtt_fusion.graph.model import (
     light_out,
 )
 from rtt_fusion.graph.registry import NodeTypeRegistry
+from rtt_fusion.graph.spectrum import (
+    SpectrumBundle,
+    field_to_spectrum,
+    propagate,
+    spectrum_to_field,
+    spectrum_to_rays,
+)
 from rtt_fusion.results import load_json
 
 #: the files the block may name and the parameters that hold their content (`graph.embedded`)
@@ -275,7 +290,104 @@ def grating_fields(ctx: Context, node: Node, fb: FieldBundle) -> list[FieldBundl
     return out
 
 
+def parallel_plane(plane: Plane, point: Any, light: Any) -> Plane:
+    """A plane through `point` with its normal along `light`, with the axes (u, v) of `plane`
+    where the two are parallel (a spectrum moved there keeps its frame and its sampling)."""
+    light = np.asarray(light, dtype=float)
+    if float(np.asarray(plane.normal) @ light) > 1.0 - 1e-12:
+        o = np.asarray(point, dtype=float)
+        return Plane(o, light, np.asarray(plane.u), np.asarray(plane.v))
+    return Plane.make(point, light, plane.v)
+
+
+def spectrum_onto(
+    sb: SpectrumBundle, point: Any, light: Any, log: list[str], tolerance: float | None = None
+) -> SpectrumBundle:
+    """A spectrum on the plane through `point` with its normal along `light` (a block's plane).
+    Parallel planes, and spectra without a sampling: in the spectrum (`spectrum.propagate`, S4,
+    exact per wave). A spectrum with a sampling on a tilted plane (a link's port plane is
+    perpendicular to the light, the block's plane need not be): the waves would no longer lie on
+    the grid of their sampling in the new frame, and S -> H behind the block would be lost; it is
+    resampled through H instead (S -> H, the field onto the plane as fields are –
+    `couplings.grating_field.onto_plane` –, H -> S), with a line in the log."""
+    from rtt_fusion.couplings import grating_field as gf
+
+    target = parallel_plane(sb.plane, point, light)
+    if sb.support is None or float(np.asarray(sb.plane.normal) @ target.normal) > 1.0 - 1e-12:
+        return propagate(sb, target, log)
+    notes: list[str] = []
+    fb = spectrum_to_field(sb, notes)
+    front = Plane.make(point, -np.asarray(light, dtype=float))
+    on = gf.onto_plane(fb, front, False, notes)
+    out = field_to_spectrum(on, tolerance=tolerance, notes=notes)
+    log.append(
+        f"{sb.key.source}: the spectrum's plane is tilted against the block's – resampled "
+        "through H onto it (S -> H -> S)"
+    )
+    log.extend(notes)
+    return out
+
+
+def grating_spectra(ctx: Context, node: Node, sb: SpectrumBundle) -> list[SpectrumBundle]:
+    """A plane-wave spectrum through the grating (stage R30c): moved onto the grating's plane in
+    the spectrum (`spectrum.propagate`, S4), every wave through FourierGrating on its own and
+    every order of the chosen side a spectrum of its own, the incident one shifted by n·K
+    (`couplings.grating_field.spectrum_through`; continuous stays continuous, decision 1)."""
+    from rtt_fusion.couplings import grating_field as gf
+
+    point = np.asarray(node.params.get("point", [0.0, 0.0, 0.0]), dtype=float)
+    normal = np.asarray(node.params.get("normal", [0.0, 0.0, 1.0]), dtype=float)
+    normal = normal / np.linalg.norm(normal)
+    light = -normal if float(np.asarray(sb.plane.normal) @ normal) < 0 else normal
+    log: list[str] = []
+    try:
+        moved = spectrum_onto(sb, point, light, log, field_tolerance(ctx.shared))
+        handle = _field_handle(ctx, node, sb.wavelength_um)
+        side = "front" if str(node.params.get("side", "reflected")) == "reflected" else "back"
+        wanted = {int(m) for m in node.params.get("orders", []) or []}
+        transfers = ctx.shared.setdefault("fg_grating_transfers", {}).setdefault(
+            (handle.content_hash, tuple(sorted(wanted))), {}
+        )
+        by_order = gf.spectrum_through(
+            handle,
+            moved,
+            node.params.get("grating_vector", [1.0, 0.0, 0.0]),
+            side,
+            orders=(lambda n, m: n in wanted) if wanted else None,
+            cache=transfers,
+            log=log,
+            transfer=str(node.params.get("field_transfer", "exact")),
+        )
+    except FieldError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
+    except (ValueError, RuntimeError) as e:
+        raise ExecutionError("exec.solver", f"FourierGrating: {e}", node.id) from e
+    finally:
+        ctx.log.extend(f"{node.id}: {line}" for line in log)
+    out: list[SpectrumBundle] = []
+    for (n, m), b in sorted(by_order.items()):
+        label = f"{n}" if m == 0 else f"{n},{m}"
+        out.append(replace(b, path=(*sb.path, f"{node.id}[{label}]")))
+    return out
+
+
 def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:
+    spectra = [b for b in inputs.get("in", []) if isinstance(b, SpectrumBundle)]
+    if spectra:
+        rest = [b for b in inputs.get("in", []) if not isinstance(b, SpectrumBundle)]
+        if not embedded.has(node, *CONFIG[:2]):
+            # a table describes rays: a spectrum at a table grating becomes rays at its port
+            notes: list[str] = []
+            try:
+                rest += [spectrum_to_rays(sb, notes) for sb in spectra]
+            except FieldError as e:
+                raise ExecutionError("exec.field", str(e), node.id) from e
+            finally:
+                ctx.log.extend(f"{node.id}: {line}" for line in notes)
+            ctx.log.append(f"{node.id}: spectrum converted to rays (the table is for rays)")
+            return grating(ctx, node, socket, {"in": rest})
+        from_spectra: list[Any] = [o for sb in spectra for o in grating_spectra(ctx, node, sb)]
+        return from_spectra + (grating(ctx, node, socket, {"in": rest}) if rest else [])
     fields = [b for b in inputs.get("in", []) if isinstance(b, FieldBundle)]
     if fields:
         rays = [b for b in inputs.get("in", []) if isinstance(b, RayBundle)]
@@ -435,7 +547,7 @@ def _carry(frame: Any, a: Any, b: Any) -> Any:
 TYPE = NodeType(
     "fg.grating",
     Category.SPLITTER,
-    (light_in("in", "RH"), light_out("out", "RH", label="orders")),
+    (light_in("in", "RHS"), light_out("out", "RHS", label="orders")),
     (
         ParamSpec(
             "table",
@@ -537,7 +649,7 @@ TYPE = NodeType(
     description="Periodic sample (FourierGrating table): diffraction orders as channels",
 )
 
-grating.representations = frozenset("RH")  # type: ignore[attr-defined]
+grating.representations = frozenset("RHS")  # type: ignore[attr-defined]
 
 EVALUATORS: dict[str, Evaluator] = {"fg.grating": grating}
 

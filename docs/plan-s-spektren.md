@@ -259,3 +259,75 @@ sobald ein Raytatouille-Detektor in einem anderen Prozess knotenweise S bekommt 
 Plugin-Block S nativ nimmt (R30c). Die Anzeige „geplant R, genutzt S“ für `fusion.convert` →
 Detektor (`Context.used`) gehört zu R30e. Ein gekippter Detektor hinter einem großen
 Gitterspektrum fällt auf die direkte Summe zurück und über `SUM_BUDGET` auf H.
+
+## Nachtrag R30c (Umsetzung, 2026-11-18)
+
+**Gebaut.** `fg.grating`, `fg.stack` und `fusion.condensed` nehmen Spektren nativ und geben
+Spektren ab; mit H oder R am Eingang rechnen sie wie bisher. Gitter und Stapel
+(`couplings.grating_field.spectrum_through`): das Spektrum auf die Blockebene (S4), jede Welle
+für sich durch FourierGrating – derselbe Weg wie der Feldoperator (`_transfer_at`,
+`apply_many`, derselbe Cache je Richtung), nur ohne Gitter –, Ordnung (n, m) bei
+k∥ + n·K_x + m·K_y, je Ordnung ein eigenes Spektrum (Pfad `block[n]` wie bei Strahlen und
+Feldern). Kontinuierliche Spektren bleiben kontinuierlich (Entscheidung 1: Δ²k unverändert,
+dΩ = Δ²k/(k k_z) im Medium dahinter), diskrete bleiben diskret; die Wellen tragen ihre Ordnung
+(`orders`). Ausgangsebene: Blockebene mit den Achsen des Eingangs, reflektiert (u, −v, −n).
+Verdichtete Gruppe (`condense.apply_spectrum`): je Welle die Tabelle bei ihrem σ (bilinear, die
+Toleranz der Tabelle), Phase k₀·OPL + k_out·(o_x − o_e − Versatz), das ist bei einer Platte die
+Übertragung e^(ik_z′d) der ebenen Welle. Diagnose `exec.spectrum_rays` „Ordnungen nicht
+getrennt“ (`spectrum.overlapping_orders`) bei S → R in `Executor._convert`: Spektren einer
+Kohärenzgruppe mit verschiedenen Ordnungen, deren wesentliche Wellen sich in k∥ überlappen.
+Abnahme W81–W83 in `tests/test_spectrum_blocks.py` (Messwerte in [testfaelle.md](testfaelle.md)):
+zwei Gitter als Kette gegen FourierGrating mit beiden Gittern in einer Struktur 5,9·10⁻⁵ (die
+Mehrfachreflexionen zwischen den Gittern, ∝ Δn²: 5,7·10⁻⁶ bei einem Drittel des Kontrasts),
+Gauß-Strahl durch zwei Gitter gegen die H-Kette 5,8·10⁻⁴, Σ Ordnungen = R + T auf 4·10⁻¹⁵,
+Stapel gegen Airy je Welle 1,9·10⁻¹³, verdichtete Platte gegen die Airy-Teilsumme 2·10⁻¹².
+
+**Entscheidungen und Abweichungen.**
+
+1. **Abtastung (`support`) als Daten.** `GridSupport` hält jetzt Gitter (Mitte, Schritt, Größe,
+   Träger), Bins und die Stützstellen, auf die S → H zurückgeht (das `GridlessField` mit ψ,
+   Gradient und Hesse-Matrix bzw. das `GriddedField` mit Krümmung) statt `Sampled.back`;
+   `GridSupport.to_field` baut das Feld daraus. Damit gehen Spektren als Port-Daten über die
+   Prozessgrenze (offener Punkt aus R30a/R30b, Rundreise bitgenau, Gitter im FourierGrating-
+   Plugin = im Prozess). Die Eigenschaft `sampled` bleibt als Sicht für bestehenden Code.
+2. **Abtastung hinter einer Ordnung** (`spectrum.order_support`): PFT-Spektren behalten ψ̃, −ρ
+   und Hesse-Matrix auf den verschobenen Punkten; Gitterspektren behalten ihre Bins, das Gitter
+   bekommt den Träger k_c + n·K und die Stützstellen die Phase ψ + n·K·x – wie beim Feldoperator
+   (Ordnungen auf denselben Bins, kein mit der Periode kommensurables Fenster nötig). Spiegelung
+   bei Reflexion: v, Gradient, Hesse-Matrix und Bins (κ_v → −κ_v).
+3. **Ausbreitung eines Gitterspektrums** (`propagate`, Erweiterung von S4): zwischen parallelen
+   Ebenen behält ein Gitterspektrum seine Bins; das Gitter wandert mit dem Licht, die Stützstellen
+   kommen geometrisch von der alten Ebene (H → R → H wie `onto_plane`), solange der Strahl im
+   Fenster bleibt (Ausdehnung · `PAD` ≤ Fenster), sonst entfällt die Abtastung mit Vermerk. S → H
+   bleibt dabei die exakte inverse FFT der verschobenen Wellen.
+4. **Gekippte Ebenen.** Die Port-Ebene einer Verbindung steht senkrecht zum Licht, die Ebene eines
+   Gitters oder Stapels oft nicht. Gedrehte Wellen lägen nicht mehr auf dem Gitter ihrer
+   Abtastung; ein Spektrum mit Abtastung wird deshalb vor dem Block über H auf dessen Ebene
+   gebracht (S → H → S, wie Felder), mit Vermerk; ohne Abtastung (diskrete Wellen) exakt gedreht.
+   Exakt im Spektrum ist die Kette also zwischen parallelen Ebenen – Gitter → Stapel, Gitter →
+   Gitter.
+5. **Befund W81 (b):** mit 20 µm zwischen den Gittern weicht die H-Kette um 2,7·10⁻³ ab, genau
+   die Beugung z/z_R (2,9·10⁻³), die ihr geometrischer Schritt zwischen den Blöcken auslässt
+   (`onto_plane` wählt Wellenausbreitung nur an Kaustiken); S breitet exakt aus. Bei einer
+   senkrecht einfallenden Gauß-Strahl 1 mm vor dem Gitter waren es 14 %: dort ist S die genauere
+   Kette.
+6. **Interpolierte Übertragung auch für S.** `field_transfer = interpolated` gilt für
+   Gitterspektren (die verifizierte Interpolation auf ihrem Gitter, `interpolated_transfer`, im
+   Rahmen des Spektrums ausgewertet und in den des Gitters gedreht); sonst und wenn die Prüfung
+   scheitert exakt je Welle. Ohne sie kostet ein Strahl mit 64² Wellen je Gitter rund 10⁴
+   FourierGrating-Lösungen.
+7. **Verdichtete Gruppe:** nativ R und S (keine H-Wege; Felder kommen als Strahlen). Hinter ihr hat
+   das Spektrum keine Abtastung: Der seitliche Versatz in der Gruppe steckt in den Phasen, nicht
+   in einer Abtastung – S → H dahinter ist offen; der Detektor summiert die Wellen.
+8. **Planer und bestehende Pläne.** Sockets von Gitter, Stapel und verdichteter Gruppe nehmen
+   RHS, die Auswerter S nativ: „auto“ lässt S zwischen ihnen (und zum Detektor) zu. Die
+   Kostenrangfolge (R 1 < H 3 < S 4, Umwandlung S → R 1) behält R überall, wo R zulässig ist, auch
+   hinter einem Block, der S bekommt; kommt ein Spektrum an einen nativen Block, bleibt es auf der
+   Verbindung mit „auto“ ein Spektrum (wie seit R30b vor dem Detektor). Geprüft: die Pläne des
+   Linnik mit Gitterprobe (`linnik_mini`, mit und ohne H am Gitter) und der Beispiele
+   `auflicht_si_gitter` und `auflicht_si_gitter_100x` sind auf `main` und hier gleich (nur R
+   bzw. dasselbe H mit denselben Umwandlungen) – keine Planänderung.
+
+**Offen.** S → H hinter einer verdichteten Gruppe; die Phase des Übertrags eines dicken Stapels
+steckt im Residuum, nicht in ψ̃ (für die inverse PFT eine Näherung wie beim Feldoperator); die
+Anzeige „geplant R, genutzt S“ (R30e).

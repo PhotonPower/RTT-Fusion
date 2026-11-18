@@ -35,6 +35,21 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   neuen Rahmen, evaneszente und nicht vorwärts laufende Wellen fallen mit `exec.spectrum_cut`
   weg; die PFT-Abtastung wandert mit, sodass S → H auf der neuen Ebene gilt. Abnahme W79–W80
   (`tests/test_spectrum_detector.py`).
+- Gitter, Schichtstapel und verdichtete Gruppen mit S, Stufe R30c: `fg.grating`, `fg.stack` und
+  `fusion.condensed` nehmen Spektren nativ und geben Spektren ab. Jede Welle geht für sich durch
+  FourierGrating (derselbe Weg wie der Feldoperator, `apply_many`; wahlweise mit verifizierter
+  Interpolation auf dem Gitter eines Gitterspektrums) bzw. durch die Ebene-Wellen-Tabelle der
+  Gruppe; Ordnung n liegt bei k∥ + n·K, jede Ordnung ein eigenes Spektrum, kontinuierliche
+  Spektren bleiben kontinuierlich (Δ²k unverändert), diskrete bleiben diskret (Entscheidung 1).
+  Die Abtastung geht mit (`spectrum.order_support`), sodass S → H hinter dem Block gilt; ein
+  Gitterspektrum behält sie auch bei der Ausbreitung zwischen parallelen Ebenen. Mit H am Eingang
+  rechnen die Blöcke wie bisher. Diagnose `exec.spectrum_rays` bei S → R für Ordnungen, deren
+  Spektren sich überlappen. Abnahme W81–W83 (`tests/test_spectrum_blocks.py`): zwei Gitter als
+  Kette gegen FourierGrating mit beiden Gittern in einer Struktur und gegen die H-Kette,
+  Σ Ordnungen = R + T, Stapel und verdichtete Platte gegen die Airy-Formel je Welle.
+- `SpectrumBundle` als Port-Daten (`portdata`, Blöcke anderer Prozesse): die Abtastung eines
+  Gitterspektrums (`GridSupport`) ist jetzt reine Daten (Gitter, Bins, Stützstellen) statt einer
+  Funktion.
 
 ### Geändert
 
@@ -48,6 +63,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Strahlen. Pläne mit „auto“ bleiben unverändert.
 - `field.field_image` aufgeteilt in `field_sums` (Feld je Kohärenzgruppe auf den Pixeln) und
   `image_of`; `field.pixel_centres`.
+- Licht-Sockets von `fg.grating`, `fg.stack` und verdichteten Gruppen nehmen R, H und S (vorher R
+  und H); ihre Auswerter nehmen S nativ (`fusion.condensed`: R und S, Felder als Strahlen). „auto“
+  lässt S zwischen ihnen zu, die Kostenrangfolge behält aber R, wo R zulässig ist: bestehende
+  Pläne (Linnik mit Gitterprobe, `auflicht_si_gitter`) bleiben unverändert.
+- Ein Spektrum auf einer gegen die Blockebene gekippten Ebene mit Abtastung wird vor Gitter und
+  Stapel über H auf die Blockebene gebracht (S → H → S), damit die Abtastung erhalten bleibt;
+  parallele Ebenen und diskrete Wellen exakt im Spektrum.
+- `couplings.grating_field`: die interpolierte Übertragung als `interpolated_transfer` (auch für
+  Spektren), `transfer_waves` und `spectrum_through` für Wellen ohne Gitter.
 
 ## [0.2.1] - 2026-11-18
 

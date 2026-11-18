@@ -42,9 +42,17 @@ Free propagation and image (stage R30b, plan S4):
   cross the new plane forward are left out with `exec.spectrum_cut`. The weights dΩ belong to the
   directions and stay. The spectral phase of a PFT spectrum moves with it (ψ̃ + k·Δr, its gradient
   −ρ by the ray shift −(k∥/k_n)Δn, its Hessian by −Δn ∂²k_n/∂k∥²), so the inverse PFT still
-  gives the field on the new plane; a grid spectrum and tilted planes lose the sampling
-  (`support` None). Like fields, spectra are not moved by the executor: a block that takes S
-  natively moves them to its port plane (the detector evaluates them in space directly).
+  gives the field on the new plane. A grid spectrum keeps its bins on a grid that moves with the
+  light (R30c), with samples carried there geometrically from the old plane, as long as the beam
+  stays inside the grid's window; tilted planes lose the sampling (`support` None). Like fields,
+  spectra are not moved by the executor: a block that takes S natively moves them to its port
+  plane (the detector evaluates them in space directly).
+
+Blocks with S (stage R30c): gratings, layer stacks and condensed groups take spectra natively
+(`graph.grating`, `graph.stack`, `graph.condense`); `order_support` carries the sampling through
+a map k∥ -> F·k∥ + n·K, `overlapping_orders` is the `exec.spectrum_rays` check of orders that
+are not separated (S -> R). `GridSupport` is plain data, so spectra travel as port data to
+blocks of other processes.
 - `spectrum_image`: the detector's coherent image from spectra (and fields). The field of the
   waves at the pixel centres in space, E(r) = Σ_j E_j e^(i k_j·(r − o)), with no plane in between:
   exact for discrete waves (diffraction orders, interference of plane waves) and for a tilted
@@ -125,11 +133,52 @@ SUM_BUDGET = 500_000_000
 
 @dataclass(frozen=True)
 class GridSupport:
-    """How a grid spectrum was sampled: the field on its grid (`spectral.Sampled`) and the grid
-    bin (row, column) of every wave, so that S → H puts the waves back on the same grid."""
+    """How a grid spectrum was sampled, as plain data (port data carries it across a process
+    boundary, R30c): the grid in the bundle's plane (centre, step, size, carrier k_c), the grid
+    bin (row, column) of every wave, so that S → H puts the waves back on the same grid, and
+    the samples the field comes back to (`field`): a `GridlessField` whose points, phase ψ,
+    gradient and Hessian give the geometry of the field (its amplitude is not used; the field is
+    E·e^(−iψ) interpolated from the grid, as `spectral.outgoing`), or a `GriddedField` whose grid
+    and curvature C do (values E·e^(−i/2 xᵀCx) on its own nodes)."""
 
-    sampled: spectral.Sampled
+    grid: spectral.Grid
     bins: IntArray
+    field: Any
+
+    @property
+    def sampled(self) -> spectral.Sampled:
+        """A view as `spectral.Sampled` (grid and the way back; the residual is not kept)."""
+        empty = np.zeros((0, 0, 3), dtype=np.complex128)
+        return spectral.Sampled(self.grid, empty, lambda r, n, _: self.to_field(r, n))
+
+    def to_field(self, residual: ComplexArray, refractive_index: float) -> Any:
+        """The field object from a residual grid (ny, nx, 3) of this support. SpectralError if a
+        gridded field's grid does not resolve the carrier."""
+        from fieldtracing.field import GridlessField
+
+        g, f = self.grid, self.field
+        if isinstance(f, GridlessField):
+            e = spectral.at_samples(residual, g, f)
+            return spectral.outgoing(f, e, refractive_index, False)
+        from fieldtracing.field import GriddedField
+
+        if float(np.max(np.abs(g.carrier))) * g.step > np.pi:
+            raise spectral.SpectralError(
+                "the gridded field's grid does not resolve the spectrum's carrier "
+                f"(|k_c|·step = {float(np.max(np.abs(g.carrier))) * g.step:.2f} > π)"
+            )
+        x, y = g.axes()
+        xx, yy = np.meshgrid(x, y)
+        c = np.asarray(f.curvature, dtype=float)
+        quad = 0.5 * (c[0, 0] * xx**2 + (c[0, 1] + c[1, 0]) * xx * yy + c[1, 1] * yy**2)
+        values = residual * np.exp(1j * (g.carrier[0] * xx + g.carrier[1] * yy - quad))[..., None]
+        return GriddedField(
+            float(f.step),
+            np.asarray(values, dtype=np.complex128),
+            float(f.wavelength_um),
+            float(refractive_index),
+            c,
+        )
 
 
 @dataclass(frozen=True)
@@ -363,40 +412,32 @@ def _grid_waves(
     return waves, np.stack([rows, cols], axis=-1)
 
 
-def _sample(f: GridlessField, max_points: int) -> spectral.Sampled:
+def _sample(f: GridlessField, max_points: int) -> tuple[spectral.Grid, ComplexArray]:
     """The field on the grid of `spectral.choose_grid`, as `spectral.sample` but with the
     residual interpolated cubically (Clough–Tocher) onto the grid nodes: the linear interpolation
     there loses about 2e−3 of a Gaussian beam's power at 10 samples per waist, the cubic one
-    5e−5. Back on the samples bicubically with the field's phase ψ (`spectral.outgoing`)."""
+    5e−5. Back on the samples bicubically with the field's phase ψ (`GridSupport.to_field`)."""
     grid = spectral.choose_grid(f, max_points)
     x, y = grid.axes()
     xx, yy = np.meshgrid(x, y)
     q = np.stack([xx.ravel(), yy.ravel()], axis=-1)
     e = f.residual_at(q, method="cubic") * np.exp(1j * (f.phase_at(q) - q @ grid.carrier))[:, None]
-    residual = np.asarray(e.reshape(grid.ny, grid.nx, 3), dtype=np.complex128)
-
-    def back(res: Any, n: float, reflected: bool) -> Any:
-        return spectral.outgoing(f, spectral.at_samples(res, grid, f), n, reflected)
-
-    return spectral.Sampled(grid, residual, back)
+    return grid, np.asarray(e.reshape(grid.ny, grid.nx, 3), dtype=np.complex128)
 
 
 def _fft_spectrum(
     fb: FieldBundle, f: GridlessField, notes: list[str] | None, max_points: int
 ) -> SpectrumBundle:
     """H → S by an FFT of the field's residual on a grid (`graph.spectral`)."""
-    sampled = _sample(f, max_points)
-    spec = spectral.spectrum(sampled.residual)
-    waves, bins = _grid_waves(
-        spec, sampled.grid, float(f.wavelength_um), float(f.refractive_index), notes
-    )
+    g, residual = _sample(f, max_points)
+    spec = spectral.spectrum(residual)
+    waves, bins = _grid_waves(spec, g, float(f.wavelength_um), float(f.refractive_index), notes)
     if notes is not None:
-        g = sampled.grid
         notes.append(
             f"{fb.key.source}: H -> S by an FFT on {g.nx}×{g.ny} points, {len(waves.kx)} waves"
         )
     return SpectrumBundle(
-        fb.key, fb.plane, waves, fb.path, fb.branch, GridSupport(sampled, np.asarray(bins))
+        fb.key, fb.plane, waves, fb.path, fb.branch, GridSupport(g, np.asarray(bins), f)
     )
 
 
@@ -425,7 +466,7 @@ def _gridded_to_spectrum(
     if notes is not None:
         notes.append(f"{fb.key.source}: G -> S on {grid.nx}×{grid.ny} points")
     return SpectrumBundle(
-        fb.key, fb.plane, waves, fb.path, fb.branch, GridSupport(sampled, np.asarray(bins))
+        fb.key, fb.plane, waves, fb.path, fb.branch, GridSupport(grid, np.asarray(bins), f)
     )
 
 
@@ -433,6 +474,19 @@ def _field3(w: ports.PlaneWaves) -> Any:
     """(N, 3) local field of the waves, E_n from transversality."""
     e = np.asarray(w.field)
     return np.column_stack([e[:, 0], e[:, 1], w.ez()])
+
+
+def _grid_residual(sb: SpectrumBundle) -> ComplexArray:
+    """The residual (ny, nx, 3) of a grid spectrum on its grid (the inverse FFT of its waves)."""
+    support = sb.support
+    assert isinstance(support, GridSupport)
+    grid = support.grid
+    rows, cols = support.bins[:, 0], support.bins[:, 1]
+    kap_x, kap_y = grid.frequencies()
+    shift = np.exp(1j * (kap_x * grid.centre[0] + kap_y * grid.centre[1]))
+    spec = np.zeros((grid.ny, grid.nx, 3), dtype=np.complex128)
+    spec[rows, cols] = _field3(sb.waves) * shift[rows, cols][:, None]
+    return spectral.inverse(spec)
 
 
 def spectrum_to_field(sb: SpectrumBundle, notes: list[str] | None = None) -> FieldBundle:
@@ -473,17 +527,12 @@ def spectrum_to_field(sb: SpectrumBundle, notes: list[str] | None = None) -> Fie
             notes.append(f"{sb.key.source}: S -> H by the inverse PFT, {len(w.kx)} samples")
         return FieldBundle(sb.key, sb.plane, space, sb.path, sb.branch)
     if isinstance(support, GridSupport):
-        grid = support.sampled.grid
-        rows, cols = support.bins[:, 0], support.bins[:, 1]
-        if len(rows) != len(w.kx):
+        grid = support.grid
+        if len(support.bins) != len(w.kx):
             raise FieldError("the plane waves no longer match the spectrum's grid")
-        kap_x, kap_y = grid.frequencies()
-        shift = np.exp(1j * (kap_x * grid.centre[0] + kap_y * grid.centre[1]))
-        spec = np.zeros((grid.ny, grid.nx, 3), dtype=np.complex128)
-        spec[rows, cols] = _field3(w) * shift[rows, cols][:, None]
-        residual = spectral.inverse(spec)
+        residual = _grid_residual(sb)
         try:
-            out = support.sampled.back(residual, n, False)
+            out = support.to_field(residual, n)
         except spectral.SpectralError as e:
             raise FieldError(str(e)) from e
         if notes is not None:
@@ -596,15 +645,182 @@ def propagate(sb: SpectrumBundle, plane: Plane, notes: list[str] | None = None) 
         orders=None if w.orders is None else np.asarray(w.orders)[keep],
         solid_angle=None if w.solid_angle is None else np.asarray(w.solid_angle)[keep],
     )
-    support = None
+    support: Any = None
+    why = "tilted plane" if not parallel else "waves left out"
     if parallel and _is_pft(sb.support) and bool(keep.all()):
         support = _moved_support(sb.support, k_loc, delta, turn[:2, :2], k_new)
-    elif sb.support is not None and notes is not None:
+    elif parallel and isinstance(sb.support, GridSupport) and bool(keep.all()):
+        support, why = _moved_grid(sb, target, turn, delta)
+    if support is None and sb.support is not None and notes is not None:
         notes.append(
-            f"{sb.key.source}: the spectrum moved in S keeps no sampling for S -> H "
-            f"({'tilted plane' if not parallel else 'grid spectrum'})"
+            f"{sb.key.source}: the spectrum moved in S keeps no sampling for S -> H ({why})"
         )
     return SpectrumBundle(sb.key, target, waves, sb.path, sb.branch, support)
+
+
+def _moved_grid(
+    sb: SpectrumBundle, target: Plane, turn: FloatArray, delta: FloatArray
+) -> tuple[GridSupport | None, str]:
+    """The sampling of a grid spectrum on a parallel plane shifted by `delta` (source frame), or
+    None and why. The waves keep their bins (same carrier, step and size); the grid moves with
+    the light and the samples come from the field on the old plane carried there geometrically
+    (H -> R -> H, as `couplings.grating_field.onto_plane`): S -> H on the new plane is the inverse
+    FFT of the moved waves – exact as long as the beam stays inside the grid's window, which is
+    checked against the rule the grid was chosen by (samples' extent · `spectral.PAD`)."""
+    from fieldtracing.field import GridlessField
+
+    support = sb.support
+    assert isinstance(support, GridSupport)
+    if not np.allclose(turn, np.eye(3), rtol=0.0, atol=1e-12):
+        return None, "frame turned in the plane"
+    grid, f = support.grid, support.field
+    shift = np.asarray(delta[:2], dtype=float)
+    if abs(float(delta[2])) <= 1e-12:  # in the plane: new coordinates, the same field
+        if not isinstance(f, GridlessField):
+            if shift.any():
+                return None, "a gridded field shifted in its plane"
+            return support, ""
+        moved = GridlessField(
+            np.asarray(f.points) - shift,
+            np.asarray(f.phase),
+            np.asarray(f.gradient),
+            np.asarray(f.hessian),
+            np.asarray(f.amplitude),
+            float(f.wavelength_um),
+            float(f.refractive_index),
+        )
+        centre = np.asarray(grid.centre) - shift
+        return GridSupport(_regrid(grid, centre), support.bins, moved), ""
+    if not isinstance(f, GridlessField):
+        return None, "a gridded field moved along the normal"
+    try:
+        fb = spectrum_to_field(sb)
+        geometric: Any = rays_to_field(field_to_rays(fb), target).field
+    except FieldError as e:
+        return None, f"no geometric field on the new plane: {e}"
+    pts = np.asarray(geometric.points, dtype=float)
+    lo, hi = pts.min(axis=0), pts.max(axis=0)
+    window = np.array([grid.nx, grid.ny]) * grid.step
+    if np.any((hi - lo) * spectral.PAD > window):
+        return None, "the beam outgrows the grid of its spectrum"
+    return GridSupport(_regrid(grid, 0.5 * (lo + hi)), support.bins, geometric), ""
+
+
+def _regrid(grid: spectral.Grid, centre: Any, carrier: Any = None) -> spectral.Grid:
+    return spectral.Grid(
+        np.asarray(centre, dtype=float),
+        grid.step,
+        grid.nx,
+        grid.ny,
+        np.asarray(grid.carrier if carrier is None else carrier, dtype=float),
+    )
+
+
+def order_support(
+    support: Any, take: IntArray, flip: bool, shift: FloatArray, kvec: FloatArray, n_out: float
+) -> Any:
+    """The sampling of a spectrum after a block that maps the wave k∥ to F·k∥ + `shift` on the
+    same plane (R30c: an order of a grating, a stack with shift 0), F = diag(1, −1) for light
+    that leaves into the half space it came from (`flip`, frame (u, −v, −n)), else the identity;
+    `take` the incident waves that have an outgoing one, `kvec` (M, 2) their new k∥, `n_out` the
+    medium the light leaves into. A PFT spectrum keeps ψ̃, its gradient (−ρ: the light leaves
+    where it arrived) and Hessian on the shifted points; a grid spectrum keeps its bins on a grid
+    with the carrier F·k_c + shift and samples with ψ + shift·x (the residual on the same bins,
+    as `couplings.grating_field` does for fields: no window commensurate with the period is
+    needed). None stays None."""
+    if support is None:
+        return None
+    from fieldtracing.field import GridlessField
+
+    sign = np.array([1.0, -1.0]) if flip else np.ones(2)
+    sign3 = np.array([1.0, -1.0, -1.0]) if flip else np.ones(3)
+    hess_sign = np.outer(sign, sign)
+    shift = np.asarray(shift, dtype=float)
+    if isinstance(support, GridlessField):  # PFT: frequency domain, one sample per wave
+        return GridlessField(
+            np.ascontiguousarray(kvec, dtype=float),
+            np.asarray(support.phase)[take],
+            np.asarray(support.gradient)[take] * sign,
+            np.asarray(support.hessian)[take] * hess_sign,
+            np.asarray(support.amplitude)[take] * sign3,
+            float(support.wavelength_um),
+            float(n_out),
+            "frequency",
+        )
+    if not isinstance(support, GridSupport):
+        return None
+    grid = support.grid
+    bins = np.asarray(support.bins)[take].copy()
+    if flip:  # κ_v -> −κ_v
+        bins[:, 0] = (-bins[:, 0]) % grid.ny
+    moved = _regrid(grid, np.asarray(grid.centre) * sign, np.asarray(grid.carrier) * sign + shift)
+    f = support.field
+    if isinstance(f, GridlessField):
+        pts = np.asarray(f.points) * sign
+        sample: Any = GridlessField(
+            pts,
+            np.asarray(f.phase) + pts @ shift,
+            np.asarray(f.gradient) * sign + shift,
+            np.asarray(f.hessian) * hess_sign,
+            np.asarray(f.amplitude) * sign3,
+            float(f.wavelength_um),
+            float(n_out),
+        )
+    else:
+        from fieldtracing.field import GriddedField
+
+        sample = GriddedField(
+            float(f.step),
+            np.asarray(f.values),
+            float(f.wavelength_um),
+            float(n_out),
+            np.asarray(f.curvature, dtype=float) * hess_sign,
+        )
+    return GridSupport(moved, bins, sample)
+
+
+def overlapping_orders(spectra: list[SpectrumBundle]) -> list[str]:
+    """`exec.spectrum_rays` for orders that are not separated (plan S3): two spectra of one
+    coherence group with different diffraction orders (`waves.orders`) on parallel planes whose
+    significant waves overlap in k∥. Rays of either order then describe directions the other one
+    has as well – the orders' interference within a direction is lost in R."""
+    out: list[str] = []
+    marked = [
+        sb
+        for sb in spectra
+        if sb.continuous and sb.waves.orders is not None and len(sb.waves.kx) > 0
+    ]
+    boxes = []
+    for sb in marked:
+        w = sb.waves
+        assert w.solid_angle is not None
+        kz = np.real(w.port.kz(w.kx, w.ky))
+        amp = np.linalg.norm(np.asarray(w.field), axis=1) / (np.asarray(w.solid_angle) * kz)
+        big = amp >= SIGNIFICANT * float(amp.max() or 1.0)
+        k = np.column_stack([w.kx, w.ky])[big]
+        glob = k[:, 0:1] * sb.plane.u + k[:, 1:2] * sb.plane.v
+        boxes.append(glob)
+    for i in range(len(marked)):
+        for j in range(i + 1, len(marked)):
+            a, b = marked[i], marked[j]
+            if a.key != b.key or float(np.asarray(a.plane.normal) @ b.plane.normal) < 1 - 1e-9:
+                continue
+            oa = {tuple(o) for o in np.asarray(a.waves.orders).tolist()}
+            ob = {tuple(o) for o in np.asarray(b.waves.orders).tolist()}
+            if oa == ob:
+                continue
+            frame = np.stack([a.plane.u, a.plane.v])
+            pa, pb = boxes[i] @ frame.T, boxes[j] @ frame.T
+            if np.all(pa.max(axis=0) >= pb.min(axis=0)) and np.all(
+                pb.max(axis=0) >= pa.min(axis=0)
+            ):
+                out.append(
+                    f"exec.spectrum_rays: the orders {a.path[-1] if a.path else '?'} and "
+                    f"{b.path[-1] if b.path else '?'} overlap in their directions (the beam's "
+                    "angular spread reaches the next order): as rays their interference within a "
+                    "direction is lost"
+                )
+    return out
 
 
 def _is_pft(support: Any) -> bool:
@@ -661,8 +877,8 @@ def _landing(sb: SpectrumBundle) -> tuple[FloatArray, FloatArray] | None:
     if _is_pft(support):
         return -np.asarray(support.gradient, dtype=float), significant
     if isinstance(support, GridSupport):
-        grid = support.sampled.grid
-        magnitude = np.sum(np.abs(np.asarray(support.sampled.residual)) ** 2, axis=-1)
+        grid = support.grid
+        magnitude = np.sum(np.abs(_grid_residual(sb)) ** 2, axis=-1)
         rows, cols = np.nonzero(magnitude >= SIGNIFICANT**2 * float(magnitude.max() or 1.0))
         x, y = grid.axes()
         box = np.array([[x[cols].min(), y[rows].min()], [x[cols].max(), y[rows].max()]])
@@ -687,7 +903,7 @@ def sum_phase_step(sb: SpectrumBundle, corners: FloatArray) -> tuple[float, floa
     tan = tan[significant]
     shift = q[:, None, :2] - tan[None, :, :] * q[:, None, 2:]  # (C, N, 2): r − Δn·tan θ
     if isinstance(sb.support, GridSupport):
-        grid = sb.support.sampled.grid
+        grid = sb.support.grid
         dk = 2.0 * np.pi / (np.array([grid.nx, grid.ny]) * grid.step)
         reach = np.maximum(np.abs(shift - start[0]), np.abs(shift - start[1]))
         return float(np.max(reach * dk)), GRID_STEP_LIMIT
@@ -733,7 +949,7 @@ def grid_sum(
     signs = (axes[0, 1], axes[1, 0]) if swapped else (axes[0, 0], axes[1, 1])
     if not all(abs(abs(x) - 1.0) < 1e-12 for x in signs):
         return None
-    grid = support.sampled.grid
+    grid = support.grid
     rows, cols = support.bins[:, 0], support.bins[:, 1]
     kap_x = 2.0 * np.pi * np.fft.fftfreq(grid.nx, d=grid.step)
     kap_y = 2.0 * np.pi * np.fft.fftfreq(grid.ny, d=grid.step)

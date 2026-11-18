@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from functools import lru_cache
 from importlib import import_module
 from typing import Any
 
@@ -57,13 +58,44 @@ def registry() -> tuple[NodeTypeRegistry, dict[str, Any]]:
 
 
 def available() -> frozenset[str]:
-    """Representations the workflow can run: R, and H (fields, R18b) with fieldtracing."""
+    """Representations the workflow can run: R, and with fieldtracing H (fields, R18b) and S
+    (plane-wave spectra, R30a)."""
     execute = import_module("rtt_fusion.graph.execute")
     try:
         import_module("fieldtracing")
     except ImportError:
         return EXECUTABLE
-    return frozenset(getattr(execute, "WITH_FIELDS", EXECUTABLE))
+    return frozenset(getattr(execute, "WITH_SPECTRA", getattr(execute, "WITH_FIELDS", EXECUTABLE)))
+
+
+@lru_cache(maxsize=1)
+def _optional_natives() -> dict[str, frozenset[str]]:
+    """The representations the evaluators of the optional modules work in, by block type."""
+    _, extra = registry()
+    return {t: frozenset(getattr(ev, "representations", frozenset("R"))) for t, ev in extra.items()}
+
+
+def native_of(
+    graph: Graph, evaluators: dict[str, Any] | None = None
+) -> Callable[[str], frozenset[str]]:
+    """The planner's `Requirements.native` for a graph: what each block's evaluator takes natively
+    (`evaluators`, default those of the optional modules; R for others and muted blocks)."""
+    natives = (
+        _optional_natives()
+        if evaluators is None
+        else {
+            t: frozenset(getattr(ev, "representations", frozenset("R")))
+            for t, ev in evaluators.items()
+        }
+    )
+
+    def native(node_id: str) -> frozenset[str]:
+        node = graph.nodes.get(node_id)
+        if node is None or node.muted:
+            return frozenset("R")
+        return natives.get(node.type_id, frozenset("R"))
+
+    return native
 
 
 def catalogue(reg: NodeTypeRegistry) -> list[dict[str, Any]]:
@@ -85,10 +117,13 @@ def catalogue(reg: NodeTypeRegistry) -> list[dict[str, Any]]:
     return out
 
 
-def checked(graph: Graph, reg: NodeTypeRegistry) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Diagnostics of the graph check and of the planner (with what can run), and the plan."""
+def checked(
+    graph: Graph, reg: NodeTypeRegistry, evaluators: dict[str, Any] | None = None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Diagnostics of the graph check and of the planner (with what can run and what the blocks
+    take natively, `native_of`), and the plan."""
     diagnostics = [dict(d.__dict__) for d in validate(graph, reg)]
-    p = plan(graph, reg, Requirements(available=available()))
+    p = plan(graph, reg, Requirements(available=available(), native=native_of(graph, evaluators)))
     diagnostics += [dict(d.__dict__) for d in p.diagnostics]
     return diagnostics, p.to_dict()
 
@@ -270,5 +305,6 @@ __all__ = [
     "kept_fields",
     "model_document",
     "model_id",
+    "native_of",
     "registry",
 ]

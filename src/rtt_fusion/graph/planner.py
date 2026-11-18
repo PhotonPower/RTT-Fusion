@@ -12,7 +12,8 @@ object (`Plan`):
    accept, representations not available to the executor (`Requirements.available`) and those a
    validity hook rejects (the metrics of 7.2: Fresnel numbers, size parameter, …). A fixed
    transport is kept; "auto" is chosen by cost, but never P (no phase) while a coherent
-   representation is admissible (7.3).
+   representation is admissible (7.3), and S only between two blocks that both take it natively
+   (`NATIVE_ONLY`, `Requirements.native`; decision 3 of docs/plan-s-spektren.md).
 
 Costs are a provisional *ranking* (`REPRESENTATION_COST`, operator costs), not measured values;
 stage 3 replaces them with the solvers' `estimate`. With only R available (stage R15) every "auto"
@@ -113,6 +114,13 @@ CHAINS = _operator_chains()
 #: validity(link, representation) -> None if admissible, else the reason (the metrics of 7.2).
 Validity = Callable[[Link, str], "str | None"]
 
+#: native(node id) -> the representations the block's evaluator works in (without conversion)
+Native = Callable[[str], frozenset[str]]
+
+#: representations "auto" chooses only between two blocks that both take them natively (R30a,
+#: decision 3: a spectrum on a link pays off only where neither end converts it)
+NATIVE_ONLY = frozenset({"S"})
+
 
 @dataclass(frozen=True)
 class Requirements:
@@ -124,12 +132,17 @@ class Requirements:
             and analyses.
         max_paths: limit of the enumeration of fusion paths (stage 1).
         validity: optional hook rejecting a representation on a link, with a reason.
+        native: the representations each block takes natively (the executor's evaluators); with
+            it, "auto" admits the representations of `NATIVE_ONLY` only between two blocks that
+            both take them natively. None: no such knowledge, "auto" admits them anywhere
+            (abstract planning, as before R30a).
     """
 
     available: frozenset[str] = LIGHT_REPRESENTATIONS
     outputs: tuple[tuple[str, str], ...] | None = None
     max_paths: int = 10_000
     validity: Validity | None = None
+    native: Native | None = None
 
 
 @dataclass(frozen=True)
@@ -286,6 +299,14 @@ def plan(
                 continue
             if r not in req.available:
                 rejected.append(f"{r} not available yet")
+                continue
+            if (
+                lk.transport == "auto"
+                and r in NATIVE_ONLY
+                and req.native is not None
+                and not (r in req.native(lk.source[0]) and r in req.native(lk.target[0]))
+            ):
+                rejected.append(f"{r} only between blocks that take it natively")
                 continue
             reason = req.validity(lk, r) if req.validity is not None else None
             if reason:

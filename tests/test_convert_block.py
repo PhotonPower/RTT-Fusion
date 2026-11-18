@@ -1,4 +1,5 @@
-"""The conversion block fusion.convert: R <-> H in a graph, later representations reported."""
+"""The conversion block fusion.convert: R <-> H <-> S in a graph (S since R30a), later
+representations reported."""
 
 from __future__ import annotations
 
@@ -49,7 +50,17 @@ def test_rays_to_field_and_back() -> None:
     assert np.allclose(np.asarray(rays[0].alive), np.asarray(src[0].alive))
 
 
-def test_later_representations_are_reported() -> None:
-    g, reg, ev = _graph("S")
+@pytest.mark.parametrize("to", ["G", "P"])
+def test_later_representations_are_reported(to: str) -> None:
+    # S is converted since R30a (tests/test_spectrum_links.py); G and P come later
+    g, reg, ev = _graph(to)
     with pytest.raises(ExecutionError, match="exec.convert_unsupported"):
         Executor(g, reg, ev).evaluate("conv", "out")
+
+
+def test_rays_to_spectrum() -> None:
+    from rtt_fusion.graph.spectrum import SpectrumBundle
+
+    g, reg, ev = _graph("S")
+    spectra = Executor(g, reg, ev).evaluate("conv", "out")
+    assert spectra and all(isinstance(s, SpectrumBundle) for s in spectra)

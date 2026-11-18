@@ -438,11 +438,15 @@ _PLANE_PARAMS = (
     ParamSpec("drive", "number", 0.0, unit="mm", description="shift along the normal"),
 )
 
+#: what the light links of these blocks may carry: rays, fields and (R30a) plane-wave spectra; the
+#: evaluators take R (detector: R and H) and the executor converts the rest at their ports
+_LIGHT = "RHS"
+
 TYPES = (
     NodeType(
         "optics.collimated_source",
         Category.SOURCE,
-        (light_out("out", "RH"),),
+        (light_out("out", _LIGHT),),
         (
             ParamSpec("center", "point", [0.0, 0.0, 0.0], unit="mm"),
             ParamSpec("direction", "point", [0.0, 0.0, 1.0]),
@@ -468,7 +472,7 @@ TYPES = (
     NodeType(
         "optics.plane_mirror",
         Category.DOMAIN,
-        (light_in("in", "RH"), light_out("out", "RH"), data_in("drive", "drive", "drive")),
+        (light_in("in", _LIGHT), light_out("out", _LIGHT), data_in("drive", "drive", "drive")),
         (*_PLANE_PARAMS, ParamSpec("reflectance_amplitude", "number", -1.0)),
         (("out", ("in",)),),
         ports=(PortSpec("front", "in", "out", "front"),),
@@ -479,12 +483,12 @@ TYPES = (
         "optics.beam_splitter",
         Category.SPLITTER,
         (
-            light_in("in", "RH"),
-            light_out("r", "RH"),
-            light_out("t", "RH"),
-            light_in("r_in", "RH"),
-            light_in("t_in", "RH"),
-            light_out("merged", "RH"),
+            light_in("in", _LIGHT),
+            light_out("r", _LIGHT),
+            light_out("t", _LIGHT),
+            light_in("r_in", _LIGHT),
+            light_in("t_in", _LIGHT),
+            light_out("merged", _LIGHT),
         ),
         (*_PLANE_PARAMS, ParamSpec("r", "number", SQRT_HALF), ParamSpec("t", "number", SQRT_HALF)),
         (("r", ("in",)), ("t", ("in",)), ("merged", ("r_in", "t_in"))),
@@ -493,7 +497,7 @@ TYPES = (
     NodeType(
         "optics.thin_lens",
         Category.DOMAIN,
-        (light_in("in", "RH"), light_out("out", "RH")),
+        (light_in("in", _LIGHT), light_out("out", _LIGHT)),
         (
             ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
             ParamSpec("axis", "point", [0.0, 0.0, 1.0]),
@@ -508,10 +512,10 @@ TYPES = (
         "optics.interface",
         Category.DOMAIN,
         (
-            light_in("front_in", "RH", "front"),
-            light_out("front_out", "RH", "front"),
-            light_in("back_in", "RH", "back"),
-            light_out("back_out", "RH", "back"),
+            light_in("front_in", _LIGHT, "front"),
+            light_out("front_out", _LIGHT, "front"),
+            light_in("back_in", _LIGHT, "back"),
+            light_out("back_out", _LIGHT, "back"),
         ),
         (
             *_PLANE_PARAMS,
@@ -536,8 +540,8 @@ TYPES = (
             for side in ("front", "back")
             for line in ("a", "b")
             for spec in (
-                light_in(f"{side}_{line}_in", "RH", side),
-                light_out(f"{side}_{line}_out", "RH", side),
+                light_in(f"{side}_{line}_in", _LIGHT, side),
+                light_out(f"{side}_{line}_out", _LIGHT, side),
             )
         ),
         (*_PLANE_PARAMS, ParamSpec("r", "number", SQRT_HALF), ParamSpec("t", "number", SQRT_HALF)),
@@ -552,7 +556,7 @@ TYPES = (
     NodeType(
         "optics.aplanatic_lens",
         Category.DOMAIN,
-        (light_in("in", "RH"), light_out("out", "RH")),
+        (light_in("in", _LIGHT), light_out("out", _LIGHT)),
         (
             ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm"),
             ParamSpec("axis", "point", [0.0, 0.0, 1.0]),
@@ -566,7 +570,7 @@ TYPES = (
     NodeType(
         "optics.detector",
         Category.DETECTOR,
-        (light_in("in", "RH"), data_out("image", "result")),
+        (light_in("in", _LIGHT), data_out("image", "result")),
         (
             *_PLANE_PARAMS,
             ParamSpec("half_size", "numbers", [1.0, 1.0], unit="mm"),

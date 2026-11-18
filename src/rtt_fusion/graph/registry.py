@@ -276,7 +276,7 @@ def builtin_registry() -> NodeTypeRegistry:
             "fusion.convert",
             Category.CONVERSION,
             (light_in("in"), light_out("out")),
-            (ParamSpec("to", "choice", "S", options=("R", "H", "G", "S", "P")),),
+            (ParamSpec("to", "choice", "H", options=("R", "H", "G", "S", "P")),),
             (("out", ("in",)),),
             description="Conversion between representations (R → H, H ↔ G, G ↔ S, …)",
         )

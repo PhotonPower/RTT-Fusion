@@ -1,6 +1,6 @@
 # Plan R30: Spektren ebener Wellen (S) auf Verbindungen
 
-Stand: Entwurf zur Freigabe (2026-11-18). Grundlage: Darstellungen und Umwandlungen in
+Stand: freigegeben (2026-11-18, Entscheidungen unten). Grundlage: Darstellungen und Umwandlungen in
 [fusionsplan.md](fusionsplan.md) (6.2, 6.3), Stufe F5 im
 [Entwurf Gitter-Feldoperator](adr-entwurf-gitter-feldoperator.md) („S und G als
 Verbindungsdarstellungen, wenn ein zweiter Block Spektren tauscht“) und eine Bestandsaufnahme des
@@ -121,10 +121,11 @@ R30a und R30b sind die Voraussetzung; R30c und R30d sind unabhängig voneinander
 - **Leistung:** Viele Spektralpunkte × FourierGrating je Richtung bleiben teuer; L4 (S-Matrix je
   Löser, `apply_many`) ist die Antwort, nicht R30.
 
-## Offene Fragen an den Maintainer
+## Entscheidungen des Maintainers (2026-11-18)
 
-1. S2: begrenzte Strahlen hinter Gittern als kontinuierliche Spektren – einverstanden?
-2. S3: R → S nur über H (Fieldtracing nötig) oder auch direkt per Debye außerhalb des Fokus?
-3. S5: Soll „auto“ S überhaupt wählen, oder nur ein vom Nutzer festgelegter Transport „S“?
-4. Reihenfolge nach R30b: zuerst Gitter/Stapel (R30c, nützt dem Linnik-Beispiel) oder Streukörper
-   (R30d, nützt K3/K5)?
+| Nr. | Frage | Entscheidung |
+|---|---|---|
+| 1 | S2: begrenzte Strahlen hinter Gittern | **kontinuierliche Spektren** (Empfehlung übernommen) |
+| 2 | S3: Weg R → S | **über H**, Debye direkt nur im Fokus (Empfehlung übernommen) |
+| 3 | S5: wählt „auto“ S? | **Ja:** der Planer wählt S selbst zwischen zwei Blöcken, die S nativ können |
+| 4 | Reihenfolge nach R30b | **zuerst Gitter und Stapel (R30c)**, dann Streukörper (R30d) |

@@ -84,9 +84,9 @@ def wave_set(spectra: list[sp.SpectrumBundle], digits: int = 6) -> dict[Any, Com
     out: dict[Any, ComplexArray] = {}
     for sb in spectra:
         k, e = glob(sb)
-        for kk, ee in zip(k, e, strict=True):
-            key = tuple(np.round(kk, digits))
-            out[key] = out.get(key, 0) + ee
+        for j in range(len(k)):
+            key: tuple[float, ...] = tuple(float(x) for x in np.round(k[j], digits))
+            out[key] = np.asarray(out.get(key, 0) + e[j])
     return out
 
 

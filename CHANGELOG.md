@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-18
+
 ### Hinzugefügt
 
 - Konvertierungsblock `fusion.convert` rechnet: R → H (Strahlen zu einem Feld auf der Portebene) und

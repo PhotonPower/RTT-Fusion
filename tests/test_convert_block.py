@@ -5,7 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rtt_fusion.graph import Graph, Node, builtin_registry, conversion, optics
+from typing import Any
+
+from rtt_fusion.graph import Graph, Node, NodeTypeRegistry, builtin_registry, conversion, optics
 from rtt_fusion.graph.execute import ExecutionError, Executor
 from rtt_fusion.graph.light import RayBundle
 from rtt_fusion.graph.workflow import registry
@@ -14,7 +16,7 @@ pytest.importorskip("fieldtracing")
 from rtt_fusion.graph.field import FieldBundle  # noqa: E402
 
 
-def _graph(to: str) -> tuple[Graph, object, dict]:
+def _graph(to: str) -> tuple[Graph, NodeTypeRegistry, dict[str, Any]]:
     reg = builtin_registry()
     ev = {**optics.register(reg), **conversion.register(reg)}
     g = Graph()

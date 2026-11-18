@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
 ### Hinzugefügt
 
 - Gitterblock in C++: Die Schleife über die Strahlen (Tabellenbereich, Rayleigh-Anomalie,

@@ -236,7 +236,10 @@ class Executor:
         else:
             if evaluator is None:
                 raise ExecutionError(
-                    "exec.no_evaluator", f"no evaluator for {node.type_id}", node_id
+                    "exec.no_evaluator",
+                    f"no evaluator for {node.type_id} – this installation cannot compute the block "
+                    "(a planned type, or its plugin is not loaded)",
+                    node_id,
                 )
             self.calls[(node_id, socket)] = self.calls.get((node_id, socket), 0) + 1
             if self.context.on_node is not None:

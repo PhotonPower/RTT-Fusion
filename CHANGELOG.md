@@ -4,6 +4,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- Konvertierungsblock `fusion.convert` rechnet: R → H (Strahlen zu einem Feld auf der Portebene) und
+  H → R (`graph/conversion.py`, mit fieldtracing). Licht in der Zieldarstellung geht unverändert
+  durch; G, S und P melden `exec.convert_unsupported` mit dem Hinweis auf eine spätere Stufe.
+- `exec.no_evaluator` erklärt, dass die Installation den Block nicht rechnen kann (geplanter Typ
+  oder Plugin nicht geladen).
+
 ## [0.2.0] - 2026-11-18
 
 ### Hinzugefügt

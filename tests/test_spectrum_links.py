@@ -435,7 +435,8 @@ def test_auto_takes_s_only_between_native_blocks(
     # a fixed S is the user's choice, natively or not
     g.set_transport(g.links[0], "S")
     assert plan(g, registry("S", "S"), req).representation(g.links[0]) == "S"
-    # where R is admissible, "auto" stays R even between blocks that take S
+    # where R is admissible, "auto" stays R between blocks that take S if nothing says the light
+    # is a spectrum (R30f: a source of rays; spectra are kept only behind S)
     g.set_transport(g.links[0], "auto")
     p = plan(g, registry("RS", "RS"), Requirements(available=WITH_SPECTRA, native=req.native))
     assert p.representation(g.links[0]) == "R"
@@ -496,7 +497,8 @@ def test_used_representation_per_link() -> None:
     s_link = used["lens.out -> cam.in"]
     assert s_link["representation"] == "S" and s_link["chain"] == "R→H→S"
     assert s_link["reason"] == "lens gave rays; spectra on the link; cam takes them as they are"
-    # a spectrum from fusion.convert on a link planned R reaches the detector as it is
+    # a spectrum from fusion.convert reaches the detector as it is; since R30f the link on
+    # "auto" is planned S too (before: planned R, used S)
     ex = focus_graph("auto", n=9)
     ev = {**ex.evaluators, **conversion.register(ex.registry)}
     g = ex.graph
@@ -506,7 +508,7 @@ def test_used_representation_per_link() -> None:
     g.connect(("toS", "out"), ("cam", "in"))
     ex = Executor(g, ex.registry, ev, available=WITH_SPECTRA)
     ex.evaluate("cam", "image")
-    assert ex.plan is not None and ex.plan.representations["toS.out -> cam.in"] == "R"
+    assert ex.plan is not None and ex.plan.representations["toS.out -> cam.in"] == "S"
     assert ex.context.used["toS.out -> cam.in"] == {
         "representation": "S",
         "reason": "toS gave spectra; cam takes them as they are",

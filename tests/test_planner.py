@@ -255,3 +255,87 @@ def test_chains_follow_table_6_3(pair: tuple[str, str]) -> None:
     assert all(a.target == b.source for a, b in itertools.pairwise(ops))
     assert all(op.coherent for op in ops[:-1])
     assert cost == sum(op.cost for op in ops)
+
+
+# ------------------------------------------------------------------------------ R30f
+
+
+def native_chain(*types: str) -> Graph:
+    """src -> n1 -> n2 -> … -> det with the given block types in between, all links "auto"."""
+    g = Graph()
+    g.add(Node("src", "t.src"))
+    ids = ["src", *(f"n{i}" for i in range(1, len(types) + 1)), "det"]
+    for i, t in enumerate(types, 1):
+        g.add(Node(f"n{i}", t))
+    g.add(Node("det", "t.det"))
+    for a, b in itertools.pairwise(ids):
+        g.connect((a, "out"), (b, "in"))
+    return g
+
+
+def spectra_req(
+    natives: dict[str, str], made: dict[str, str] | None = None, **kw: object
+) -> Requirements:
+    return Requirements(
+        available=frozenset("RHS"),
+        native=lambda n: frozenset(natives.get(n, "RHS")),
+        produces=lambda n: (made or {}).get(n),
+        **kw,  # type: ignore[arg-type]
+    )
+
+
+def test_auto_keeps_spectra_between_native_blocks() -> None:
+    # R30f: a block that makes spectra (fusion.convert with to = S) feeds native blocks: every
+    # "auto" link behind it between native blocks is S outright (cost alone would keep R:
+    # R 1 < S 4), and no conversion S -> R -> S is planned
+    g = native_chain("t.dom", "t.dom")
+    p = plan(g, registry(), spectra_req({}, {"src": "S"}))
+    assert p.ok and reps(p, g) == ["S", "S", "S"] and not p.conversions
+    assert p.reasons[link_key(g.links[1])].startswith("spectra from n1; S kept")
+    # a source of rays: "auto" does not convert rays into spectra itself (R30f, conservative)
+    p = plan(g, registry(), spectra_req({}))
+    assert p.ok and reps(p, g) == ["R", "R", "R"]
+    # without knowledge of native blocks (abstract planning) nothing changes
+    p = plan(g, registry(), Requirements(available=frozenset("RHS")))
+    assert reps(p, g) == ["R", "R", "R"]
+    # a fixed S into a native block: the links behind it stay spectra, also from a source of
+    # rays (the conversion R -> S is the user's)
+    g.set_transport(g.links[0], "S")
+    p = plan(g, registry(), spectra_req({"src": "R"}))
+    assert reps(p, g) == ["S", "S", "S"] and not p.conversions
+    # into a block that takes S only through a conversion, no change: S -> R once, R behind it
+    g = native_chain("t.dom", "t.dom")
+    p = plan(g, registry(), spectra_req({"n2": "R"}, {"src": "S"}))
+    assert reps(p, g) == ["S", "R", "R"]
+    assert [(c.node, c.chain) for c in p.conversions] == [("n1", "SR")]
+
+
+def test_spectra_kept_only_where_everything_arriving_is_a_spectrum() -> None:
+    # a block that merges a spectrum with rays: the cost decides (R), as before
+    g = Graph()
+    for n, t in (("s1", "t.src"), ("s2", "t.src"), ("m", "t.merge"), ("det", "t.det")):
+        g.add(Node(n, t))
+    g.connect(("s1", "out"), ("m", "a"))
+    g.connect(("s2", "out"), ("m", "b"))
+    g.connect(("m", "out"), ("det", "in"))
+    p = plan(g, registry(), spectra_req({}, {"s1": "S"}))
+    assert reps(p, g) == ["S", "R", "R"]
+    p = plan(g, registry(), spectra_req({}, {"s1": "S", "s2": "S"}))
+    assert reps(p, g) == ["S", "S", "S"]
+    # a fixed H behind a native block: the spectrum stays S up to it, converted there (S -> H;
+    # the operator table 6.3 has no direct S -> H yet, its cheapest chain runs over R)
+    g = native_chain("t.dom")
+    g.set_transport(g.links[1], "H")
+    p = plan(g, registry(), spectra_req({}, {"src": "S"}))
+    assert reps(p, g) == ["S", "H"] and [c.chain for c in p.conversions] == ["SRH"]
+    # S rejected on a link by the validity hook: the cost decides there
+    g = native_chain("t.dom")
+
+    def no_s(link: Link, rep: str) -> str | None:
+        return "spectrum cut" if rep == "S" and link.target[0] == "det" else None
+
+    p = plan(g, registry(), spectra_req({}, {"src": "S"}, validity=no_s))
+    assert reps(p, g) == ["S", "R"]
+    # a block that makes rays (fusion.convert with to = R) behind a spectrum
+    p = plan(native_chain("t.dom"), registry(), spectra_req({}, {"src": "S", "n1": "R"}))
+    assert reps(p, native_chain("t.dom")) == ["S", "R"]

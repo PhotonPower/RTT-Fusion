@@ -22,7 +22,8 @@ References, independent of the code under test:
 - Port data: spectra (PFT, grid, gridded, discrete) bit for bit through files, S -> H after the
   round trip equal; the grating's S path across a process boundary equal to the local one.
 - Planner and diagnostics: existing "auto" plans (Linnik with a grating sample) unchanged; S on
-  the links between blocks that take it natively; S -> R of orders that overlap reported.
+  the links between blocks that take it natively, chosen by "auto" behind a spectrum (R30f);
+  S -> R of orders that overlap reported.
 """
 
 from __future__ import annotations
@@ -658,22 +659,24 @@ def _chain_graph() -> tuple[Executor, Graph]:
 
 
 def test_spectra_flow_between_native_blocks() -> None:
-    """Decision 3: between blocks that take S natively "auto" admits S; the cost ranking keeps R
-    on the links (R is cheaper wherever it is admissible), and a spectrum reaching a native block
-    on such a link stays a spectrum – the orders of the grating reach the stack and the detector
-    as spectra, without a conversion."""
+    """Decision 3: between blocks that take S natively "auto" admits S, and since R30f chooses it
+    outright behind a spectrum (before: R by cost, the spectrum kept anyway) – the orders of the
+    grating reach the stack and the detector as spectra, without a conversion, and the plan says
+    so."""
     ex, g = _chain_graph()
     image = ex.evaluate("cam", "image")
     p = ex.plan
     assert p is not None
     assert p.representations["src.out -> gr.in"] == "S"
-    assert p.representations["gr.out -> st.back_in"] == "R"
-    assert "among RHS" in p.reasons["gr.out -> st.back_in"]  # S admitted, R cheaper
+    assert p.representations["gr.out -> st.back_in"] == "S"
+    assert p.representations["st.front_out -> cam.in"] == "S"
+    assert p.reasons["gr.out -> st.back_in"].startswith("spectra from gr; S kept")
+    assert not p.conversions
     log = "\n".join(ex.context.log)
     assert "S -> H" not in log and "S -> R" not in log
     assert "image from the sum of" in log
     assert float(np.asarray(image.values).max()) > 0
-    g.set_transport(g.links[1], "S")  # fixed S: the same light
+    g.set_transport(g.links[1], "S")  # fixed S: the same light (and the same plan)
     ex2 = Executor(g, ex.registry, ex.evaluators, available=WITH_SPECTRA)
     assert np.allclose(ex2.evaluate("cam", "image").values, image.values, rtol=0, atol=0)
 

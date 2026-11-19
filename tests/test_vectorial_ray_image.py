@@ -13,6 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from rtt_fusion._types import ComplexArray, FloatArray
 from rtt_fusion.graph.imaging import coherent_image
 from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
 from rtt_fusion.graph.optics import hexapolar
@@ -53,7 +54,7 @@ def detector() -> Plane:
     return Plane.make(np.zeros(3), np.array([0.0, 0.0, -1.0]), np.array([0.0, 1.0, 0.0]))
 
 
-def reference(e1: np.ndarray, e2: np.ndarray, plane: Plane) -> np.ndarray:
+def reference(e1: ComplexArray, e2: ComplexArray, plane: Plane) -> FloatArray:
     u = (np.arange(PIXELS) + 0.5) / PIXELS * 2 * HALF - HALF
     uu, vv = np.meshgrid(u, u)
     x = uu * plane.u[0] + vv * plane.v[0]
@@ -71,7 +72,7 @@ def reference(e1: np.ndarray, e2: np.ndarray, plane: Plane) -> np.ndarray:
 Y = np.array([0.0, 1.0, 0.0], dtype=complex)
 
 
-def p_axis(sign: float) -> np.ndarray:
+def p_axis(sign: float) -> ComplexArray:
     """The polarisation in the plane of incidence, transverse to (±sin θ, 0, cos θ)."""
     return np.array([np.cos(THETA), 0.0, -sign * np.sin(THETA)], dtype=complex)
 

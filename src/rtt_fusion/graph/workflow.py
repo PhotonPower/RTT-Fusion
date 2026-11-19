@@ -37,6 +37,7 @@ OPTIONAL_MODULES = (
     "rtt_fusion.graph.meta",
     "rtt_fusion.graph.display",
     "rtt_fusion.graph.conversion",
+    "rtt_fusion.graph.datanodes",
 )
 
 #: the editable data fields of one node (a dict as in the model's file) – the providing plugin's

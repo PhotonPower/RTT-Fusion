@@ -4,6 +4,19 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Datenblock `biooptomd.layer` rechnet** (D13 Schritt 2, RTT-Fusion#106): liest ein
+  Laufverzeichnis von BioOptoMD (Manifest `biooptomd-layer.json`: Profil-CSV mit Δz, n_Lösung und
+  λ, je Rezeptorzustand eine `.npy` der Tracker-Reihe (n_replicas, n_frames, 7) in nm) und gibt
+  `profile` (N) und `dipoles` (Q) aus. Q (`adapters.biooptomd.DipoleSeries`) bleibt im
+  Sensorsystem von BioOptoMD; ins RTT-System rechnet erst ein Lichtknoten um
+  (`DipoleSeries.in_rtt_frame`, Spiegelregel DP8). `read_layer`/`write_layer` im Adapter
+  (`write_layer` ist die Vorlage für einen Export in BioOptoMD). Die Dateien gehen mit Größe und
+  Änderungszeit in den Cache-Schlüssel ein. Neue Diagnose `exec.data` für fehlende oder falsche
+  Datendateien. Tests W92: Rundreise bitgleich mit Replikaten und Frames, Spiegelregel
+  ausgeschrieben, neu geschriebener Lauf wird neu gelesen, Diagnosen.
+
 ## [0.3.3] - 2026-11-19
 
 ### Geändert

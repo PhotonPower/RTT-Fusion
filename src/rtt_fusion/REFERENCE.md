@@ -568,10 +568,10 @@ analysis: Irradiance image of a detector with many rays.
 - param `pixels` integer = 512 range 16…8192
 
 ### biooptomd.layer
-data: Refractive-index profile n(z) and dipole ensembles from BioOptoMD.
-- needs: no evaluator in this package (planned; data via `rtt_fusion.adapters.biooptomd`); native: – (no evaluator)
+data: Refractive-index profile n(z) (N) and dipole series per receptor state (Q, BioOptoMD's sensor frame) of a BioOptoMD run.
+- needs: nothing; reads a run directory (`adapters.biooptomd.read_layer`, manifest `biooptomd-layer.json`); evaluator in `rtt_fusion.graph.datanodes`; native: – (data block, no light)
 - sockets: `profile` out data:N; `dipoles` out data:Q
-- param `directory` file = "" – BioOptoMD output
+- param `directory` file = "" – BioOptoMD output; run directory with biooptomd-layer.json (or the manifest itself)
 
 ### display.beam
 analysis: Display: the light at a block output (probe), intensity on its port plane.
@@ -1040,7 +1040,10 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
   `Structure` per adapter (FourierGrating: `Structure(config)`; CliffordBem: `Structure(mesh,
   eps_particle, n_background, center_mm, z_front_mm, z_back_mm, tol)`); `front_port`,
   `back_port`; CliffordBem/SpeckleBem `scatter`, `scattered_plane_waves`; `adapters.biooptomd`
-  (`read_profile_csv`, `profile_layers`, `stack_along_z`, `dipoles_from_tracker`).
+  (`read_profile_csv`, `profile_layers`, `stack_along_z`, `dipoles_from_tracker`; run directory
+  `read_layer(path) -> Layer(profile, dipoles, source)`, `write_layer(dir, profile, dipoles)`,
+  manifest `biooptomd-layer.json`; Q = `DipoleSeries(series={state: (n_rep, n_frames, 7) nm},
+  dt_ps)` in BioOptoMD's sensor frame, `.in_rtt_frame(state, surface_z_mm, light_from)`).
 - `couplings.jones_table`: `JonesTable(orders, side, wavelengths_um, sigma_x, sigma_y,
   period_um, n_in, n_out, jones)`, `build_table(handle, wavelengths_um, sigma_x, sigma_y,
   orders, side)`, `point_table`, `direct_jones`, `jones_many`, `interpolate(table, order, λ, σx,
@@ -1103,6 +1106,7 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
 | exec.no_evaluator | no evaluator for the type | add `backend_rtt.EVALUATORS` (rtt.*), the module's `register`, or the plugin |
 | exec.socket_unknown, exec.cycle | bad output name; cycle (also a meta block observing itself) | names from section 3 |
 | exec.param | invalid parameter (e.g. polarisation along the beam, grating without table/config) | fix params |
+| exec.data | a data file of a data block is missing or invalid (e.g. BioOptoMD manifest, shape of a dipole series) | the message names file and field |
 | exec.field | H conversion/propagation not admissible (caustic at the port, tilted planes, …) | move the port plane, other transport |
 | exec.spectrum_support | continuous spectrum without sampling cannot become H or R (behind `fusion.condensed`) | keep S up to an S-native detector |
 | exec.mixed_representations | rays and fields on one detector input | same transport on all links into it |

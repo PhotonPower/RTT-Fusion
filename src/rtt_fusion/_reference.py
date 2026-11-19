@@ -32,8 +32,8 @@ _OPTICS = "nothing (numpy/scipy); H or S on its links: fieldtracing"
 #: type must have an entry (tests/test_llm_reference.py)
 NEEDS: dict[str, str] = {
     "analysis.camera_image": "no evaluator in this package (planned type: `exec.no_evaluator`)",
-    "biooptomd.layer": "no evaluator in this package (planned; data via "
-    "`rtt_fusion.adapters.biooptomd`)",
+    "biooptomd.layer": "nothing; reads a run directory (`adapters.biooptomd.read_layer`, "
+    "manifest `biooptomd-layer.json`); evaluator in `rtt_fusion.graph.datanodes`",
     "display.beam": "nothing; fields on its input: fieldtracing",
     "display.image": "nothing",
     "display.plot": "nothing",
@@ -210,7 +210,9 @@ def catalogue_markdown(registry: Any = None, evaluators: dict[str, Any] | None =
         if ev is None:
             native = "– (no evaluator)"
         else:
-            native = "".join(sorted(getattr(ev, "representations", frozenset("R"))))
+            native = "".join(sorted(getattr(ev, "representations", frozenset("R")))) or (
+                "– (data block, no light)"
+            )
             if hasattr(ev, "produces"):
                 native += " (`produces`: its output carries param `to`)"
         description = t.description.rstrip(".")

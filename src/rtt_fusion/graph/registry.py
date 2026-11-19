@@ -300,8 +300,17 @@ def builtin_registry() -> NodeTypeRegistry:
             "biooptomd.layer",
             Category.DATA,
             (data_out("profile", "N"), data_out("dipoles", "Q")),
-            (ParamSpec("directory", "file", "", label="BioOptoMD output"),),
-            description="Refractive-index profile n(z) and dipole ensembles from BioOptoMD",
+            (
+                ParamSpec(
+                    "directory",
+                    "file",
+                    "",
+                    label="BioOptoMD output",
+                    description="run directory with biooptomd-layer.json (or the manifest itself)",
+                ),
+            ),
+            description="Refractive-index profile n(z) (N) and dipole series per receptor state "
+            "(Q, BioOptoMD's sensor frame) of a BioOptoMD run",
         )
     )
     return r

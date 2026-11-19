@@ -43,5 +43,5 @@ python_version = "3.10"
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["scipy", "scipy.*", "fouriergrating", "fouriergrating.*", "bwpm", "bwpm.*", "fieldtracing", "fieldtracing.*", "raytatouille", "raytatouille.*", "cliffordbem", "cliffordbem.*", "specklebem", "specklebem.*", "hpfem", "hpfem.*", "mie_reference", "reference_cases"]
+module = ["scipy", "scipy.*", "fouriergrating", "fouriergrating.*", "bwpm", "bwpm.*", "fieldtracing", "fieldtracing.*", "raytatouille", "raytatouille.*", "cliffordbem", "cliffordbem.*", "specklebem", "specklebem.*", "hpfem", "hpfem.*", "bindoptix", "bindoptix.*", "mie_reference", "reference_cases"]
 ignore_missing_imports = true

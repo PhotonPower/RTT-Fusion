@@ -34,6 +34,11 @@ NEEDS: dict[str, str] = {
     "analysis.camera_image": "no evaluator in this package (planned type: `exec.no_evaluator`)",
     "biooptomd.layer": "nothing; reads a run directory (`adapters.biooptomd.read_layer`, "
     "manifest `biooptomd-layer.json`); evaluator in `rtt_fusion.graph.datanodes`",
+    "bindoptix.signal": "bindoptix (pure Python without its C++ core; `adapters.bindoptix`); "
+    "evaluator in `rtt_fusion.graph.datanodes`",
+    "data.field_map": "bindoptix (reads the `raytatouille-result` file)",
+    "data.occupancy": "bindoptix (reads the `raytatouille-result` file)",
+    "data.response_map": "bindoptix (reads the `raytatouille-result` file)",
     "display.beam": "nothing; fields on its input: fieldtracing",
     "display.image": "nothing",
     "display.plot": "nothing",

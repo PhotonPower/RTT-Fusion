@@ -557,7 +557,7 @@ Generated from the registry by `tools/gen_llm_reference.py`; do not edit by hand
 `python -m rtt_fusion.reference --blocks --live` prints it from the installed registry.
 
 <!-- BEGIN GENERATED: block catalogue (python tools/gen_llm_reference.py) -->
-33 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
+37 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
 
 ### analysis.camera_image
 analysis: Irradiance image of a detector with many rays.
@@ -567,11 +567,44 @@ analysis: Irradiance image of a detector with many rays.
 - param `rays` integer = 200000 range 1000… – rays per field and wavelength
 - param `pixels` integer = 512 range 16…8192
 
+### bindoptix.signal
+analysis: Detected photon rate per receptor, spot, time and detector region (BindOptiX signal model from F, M, Q, B).
+- needs: bindoptix (pure Python without its C++ core; `adapters.bindoptix`); evaluator in `rtt_fusion.graph.datanodes`; native: – (data block, no light)
+- sockets: `excitation` in data:field_map; `response` in data:response_map; `dipoles` in data:Q; `occupancy` in data:occupancy; `rates` out data:result
+- param `epsilon_per_molar_cm` number = 80000.0 [1/(M·cm)] range 0… – molar extinction coefficient at excitation
+- param `quantum_yield` number = 0.9 range 0…1 – intrinsic quantum yield q₀ in the host medium
+- param `excitation_um` number = 0.633 [µm] range 0…
+- param `emission_um` number = 0.67 [µm] range 0…
+- param `power_mw` number = 1.0 [mW] range 0… – incident power at the input port
+- param `anchors_um` numbers = [[0.0, 0.0, 0.0]] [µm] – anchor (x, y, z) per spot of the occupancy, sensor frame; one triple for all spots
+- param `regions` text = "" – label=region, … : detector regions of the response table bound to detectors (empty: the only region)
+- param `port_irradiance_w_m2_per_mw` number = 0.0 [W/m² per mW] range 0… – irradiance at the spot per mW at the input port (0: the map is per mW already)
+- param `port_irradiance_status` choice = "P" of L|K|P – L literature, K calibration, P placeholder
+- param `port_irradiance_reference` text = "" – source of L or K
+
 ### biooptomd.layer
 data: Refractive-index profile n(z) (N) and dipole series per receptor state (Q, BioOptoMD's sensor frame) of a BioOptoMD run.
 - needs: nothing; reads a run directory (`adapters.biooptomd.read_layer`, manifest `biooptomd-layer.json`); evaluator in `rtt_fusion.graph.datanodes`; native: – (data block, no light)
 - sockets: `profile` out data:N; `dipoles` out data:Q
 - param `directory` file = "" – BioOptoMD output; run directory with biooptomd-layer.json (or the manifest itself)
+
+### data.field_map
+data: Excitation field map F from a file (FieldMap; hp-FEM, BindOptiX).
+- needs: bindoptix (reads the `raytatouille-result` file); native: – (data block, no light)
+- sockets: `field_map` out data:field_map
+- param `file` file = "" – raytatouille-result file
+
+### data.occupancy
+data: Occupancy B of the receptor states over time from a file (BindOptiX).
+- needs: bindoptix (reads the `raytatouille-result` file); native: – (data block, no light)
+- sockets: `occupancy` out data:occupancy
+- param `file` file = "" – raytatouille-result file
+
+### data.response_map
+data: Emitter response table M from a file (EmitterResponseTable; hp-FEM).
+- needs: bindoptix (reads the `raytatouille-result` file); native: – (data block, no light)
+- sockets: `response_map` out data:response_map
+- param `file` file = "" – raytatouille-result file
 
 ### display.beam
 analysis: Display: the light at a block output (probe), intensity on its port plane.
@@ -1043,7 +1076,10 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
   (`read_profile_csv`, `profile_layers`, `stack_along_z`, `dipoles_from_tracker`; run directory
   `read_layer(path) -> Layer(profile, dipoles, source)`, `write_layer(dir, profile, dipoles)`,
   manifest `biooptomd-layer.json`; Q = `DipoleSeries(series={state: (n_rep, n_frames, 7) nm},
-  dt_ps)` in BioOptoMD's sensor frame, `.in_rtt_frame(state, surface_z_mm, light_from)`).
+  dt_ps)` in BioOptoMD's sensor frame, `.in_rtt_frame(state, surface_z_mm, light_from)`);
+  `adapters.bindoptix` (`read(port, path)` for `field_map`/`response_map`/`occupancy`,
+  `bind_regions(text, regions)`, `signal(...) -> SignalResult(times_s, spots, labels, rates)`;
+  needs `bindoptix`, pure Python without its core).
 - `couplings.jones_table`: `JonesTable(orders, side, wavelengths_um, sigma_x, sigma_y,
   period_um, n_in, n_out, jones)`, `build_table(handle, wavelengths_um, sigma_x, sigma_y,
   orders, side)`, `point_table`, `direct_jones`, `jones_many`, `interpolate(table, order, λ, σx,

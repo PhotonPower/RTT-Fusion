@@ -6,6 +6,21 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- **BindOptiX als Datenknoten** (D13 Schritt 3, RTT-Fusion#106): Block `bindoptix.signal`
+  (Eingänge `excitation` F, `response` M, `dipoles` Q, `occupancy` B; Ausgang `rates`) rechnet mit
+  dem Signalmodell von BindOptiX (`bindoptix.signal.spot_rates_s`) die mittlere erkannte
+  Photonenrate je Rezeptor, Spot, Zeit und Detektorbereich (`adapters.bindoptix.SignalResult`,
+  in `display.plot` als Kurven über der Zeit). Q trägt alle Zustände, ein Eingang genügt; Q geht
+  unverändert im Sensorsystem hinein (DP8). Detektorbereiche der Antwortkarte werden über den
+  Parameter `regions` („label=bereich, …“) gebunden, unbekannte oder doppelte Namen sind
+  `exec.data`; eine Karte mit einem Bereich braucht keine Bindung. Eine Feldkarte, die auf I₀
+  normiert ist, wird mit `port_irradiance_w_m2_per_mw` und Status L/K/P je mW am Eingang
+  umgerechnet. Dazu die Dateiblöcke `data.field_map`, `data.response_map`, `data.occupancy`
+  (Umschlag `raytatouille-result`, gelesen von BindOptiX). BindOptiX wird erst bei Bedarf
+  importiert (ohne C++-Kern nur NumPy und SciPy); fehlt es, ist das `exec.solver`. Tests W93
+  (`tests/test_adapter_bindoptix.py`, ohne BindOptiX übersprungen): Rate gegen das ausgeschriebene
+  Signalmodell (1e−12), Mischung nach der Belegung (DP7), Q im Sensorsystem bei einem Feld linear
+  in z (DP8), Bindung der Bereiche, Diagnosen, Kurven.
 - **Datenblock `biooptomd.layer` rechnet** (D13 Schritt 2, RTT-Fusion#106): liest ein
   Laufverzeichnis von BioOptoMD (Manifest `biooptomd-layer.json`: Profil-CSV mit Δz, n_Lösung und
   λ, je Rezeptorzustand eine `.npy` der Tracker-Reihe (n_replicas, n_frames, 7) in nm) und gibt

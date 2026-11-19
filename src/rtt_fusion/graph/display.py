@@ -100,6 +100,11 @@ def plot_view(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> 
         )
     if isinstance(value, View) and value.image is not None:
         value = value.image
+    if hasattr(value, "to_curves"):  # e.g. adapters.bindoptix.SignalResult: rates over time
+        curves, x_label, y_label = value.to_curves()
+        return View(
+            "curves", title, curves=[Curve(*c) for c in curves], x_label=x_label, y_label=y_label
+        )
     if isinstance(value, Image):
         v = np.asarray(value.values)
         ny, nx = v.shape

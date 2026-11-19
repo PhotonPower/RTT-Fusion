@@ -379,3 +379,64 @@ def test_w88_elliptical_gaussian_round_trip_keeps_stokes() -> None:
     total0, total1 = weight @ st0, weight @ st1
     assert np.abs(total1 - total0).max() < 1e-12 * total0[0]
     assert field_power(back) == pytest.approx(field_power(fb), rel=1e-12)
+
+
+# ------------------------------------------------------------------------------ W90
+
+
+def _source_rays(**params: Any) -> RayBundle:
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    base = {"radius": 0.2, "rings": 2, "wavelengths_um": [LAM]}
+    g.add(Node("src", "optics.collimated_source", params={**base, **params}))
+    out: RayBundle = Executor(g, reg, ev).evaluate("src", "out")[0]
+    return out
+
+
+def test_w90_ellipticity_gives_the_stokes_parameters_of_the_ellipse() -> None:
+    """W90 (a) `ellipticity_deg` χ on a tilted beam: Stokes in (p̂, d × p̂) are (1, cos 2χ, 0,
+    sin 2χ) (Born/Wolf 1.4.2, tan χ = minor/major axis), the field transverse."""
+    d = np.array([np.sin(np.radians(30)), 0.0, np.cos(np.radians(30))])
+    p = np.array([0.0, 1.0, 0.0])
+    for chi in (-45.0, -20.0, 0.0, 12.5, 45.0):
+        rays = _source_rays(direction=list(d), polarisation=list(p), ellipticity_deg=chi)
+        e = rays.field_vectors()
+        assert np.abs(e @ d).max() < 1e-12
+        st = stokes(e, p, np.cross(d, p))
+        c = np.radians(2 * chi)
+        assert np.abs(st - [1.0, np.cos(c), 0.0, np.sin(c)]).max() < 1e-12
+
+
+def test_w90_circular_is_the_complex_vector() -> None:
+    """W90 (b) χ = 45° along z with p̂ = x̂ is the complex polarisation (1, i, 0)/√2 of R31."""
+    a = _source_rays(polarisation=[1.0, 0.0, 0.0], ellipticity_deg=45.0).field_vectors()
+    b = _source_rays(polarisation=[1.0, 1j, 0.0]).field_vectors()
+    assert np.abs(a - b).max() < 1e-12
+
+
+def test_w90_circular_light_through_a_fresnel_rhomb_leaves_linear() -> None:
+    """W90 (c) the rhomb of W87 backwards: circular light (χ = ±45°, any major axis) leaves
+    linear at ±45° to the plane of incidence: a retardance 2δ turns S3 into S2, |S2| = |sin 2δ|,
+    |S3| = |cos 2δ| (δ = 45.0° at 54.6°, Born/Wolf 1.5.4)."""
+    sin2 = np.sin(THETA) ** 2
+    delta = 2 * np.arctan(np.cos(THETA) * np.sqrt(sin2 - 1 / N_GLASS**2) / sin2)
+    s_axis, p_axis = np.array([0.0, 1.0, 0.0]), np.array([1.0, 0.0, 0.0])
+    for chi in (45.0, -45.0):
+        g, reg, ev = rhomb([1.0, 0.0, 0.0])
+        g.nodes["src"].params["ellipticity_deg"] = chi
+        out: RayBundle = Executor(g, reg, ev).evaluate("f2", "front_out")[0]
+        st = stokes(out.field_vectors(), p_axis, s_axis)
+        assert np.abs(st[:, 0] - 1).max() < 1e-12
+        assert np.abs(np.abs(st[:, 2]) - abs(np.sin(2 * delta))).max() < 1e-12
+        assert np.abs(np.abs(st[:, 3]) - abs(np.cos(2 * delta))).max() < 1e-12
+        assert np.abs(st[:, 2]).min() > 0.99999
+
+
+def test_w90_ellipticity_is_checked() -> None:
+    from rtt_fusion.graph.execute import ExecutionError
+
+    with pytest.raises(ExecutionError):
+        _source_rays(ellipticity_deg=50.0)
+    with pytest.raises(ExecutionError):
+        _source_rays(polarisation=[1.0, 1j, 0.0], ellipticity_deg=10.0)

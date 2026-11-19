@@ -4,6 +4,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-19
+
+### Hinzugefügt
+
+- `optics.collimated_source.ellipticity_deg` χ (−45° … 45°, Vorgabe 0): elliptische und
+  zirkulare Polarisation als gewöhnlicher Zahlparameter, damit auch in JSON-Dokumenten und im
+  Knotendialog von Raytatouille Fusion. `polarisation` ist dann die große Halbachse p̂, das Feld
+  cos χ·p̂ + i sin χ·(d × p̂) (tan χ = kleine/große Halbachse; χ > 0: S3 > 0, das Feld dreht von p̂
+  nach d × p̂, Zeitkonvention e^(−iωt)). Ein komplexes `polarisation` zusammen mit χ ≠ 0 oder
+  |χ| > 45° ist `exec.param`. Tests W90: Stokes-Parameter (1, cos 2χ, 0, sin 2χ) am schrägen
+  Strahl, χ = 45° gleich (1, i, 0)/√2, zirkulares Licht durch den Fresnel-Rhombus wird linear.
+
 ## [0.3.1] - 2026-11-19
 
 ### Korrigiert

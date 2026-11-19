@@ -10,7 +10,12 @@ BioOptoMD:
   `z_nm, n_replica_0, …`, z = bin centres above the surface, bin width Δz; real n at the
   wavelength of the polarisabilities of the run;
 - dipoles (`DipoleAndDistanceTracker`, §6.1): time series (n_replicas, n_frames, 7) =
-  (R_F [nm], μ̂, d [nm]).
+  (R_F [nm], μ̂, d [nm]);
+- a run directory (D13): the manifest `biooptomd-layer.json` naming the profile CSV with its bin
+  width, solvent index and wavelength, and one .npy of the tracker series per receptor state
+  (`read_layer`, `write_layer`). BioOptoMD has no export of the series yet; `write_layer` is the
+  reference for one. Q (`DipoleSeries`) keeps the series in BioOptoMD's frame; only a node that
+  computes light converts it (`DipoleSeries.in_rtt_frame`, `dipoles_from_tracker`).
 
 BioOptoMD conventions (docs/UNITS_AND_CONVENTIONS.md, commit `4a4c492`): lengths in nm, sensor
 surface at z = 0, solution at z > 0, surface normal +ẑ. Here: lengths in mm, light along +z of
@@ -24,6 +29,7 @@ reimplemented so that this module needs no CUDA build.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -151,3 +157,162 @@ def dipoles_from_tracker(
     )
     mu = a[:, 3:6] * np.array([1.0, 1.0, sign])
     return Dipoles(pos, mu / np.linalg.norm(mu, axis=1, keepdims=True))
+
+
+# ------------------------------------------------------------------ directory of a run (D13)
+
+#: the manifest of a BioOptoMD run directory (format "biooptomd-layer", version 1)
+MANIFEST = "biooptomd-layer.json"
+LAYER_FORMAT, LAYER_VERSION = "biooptomd-layer", 1
+
+
+@dataclass(frozen=True)
+class DipoleSeries:
+    """Data port Q (D13, Fusion plan 6.2): BioOptoMD's tracker series per receptor state,
+    unchanged – series[state] (n_replicas, n_frames, 7) = (R_F [nm], μ̂, d [nm]) in BioOptoMD's
+    sensor frame (surface z = 0, solution z > 0), frames `dt_ps` apart. Only a node that computes
+    light converts it into the RTT frame (`in_rtt_frame`, the mirror rule DP8 in one place)."""
+
+    series: dict[str, FloatArray]
+    dt_ps: float | None = None
+    source: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.series:
+            raise ValueError("no receptor state")
+        for state, s in self.series.items():
+            a = np.asarray(s)
+            if a.ndim != 3 or a.shape[-1] != 7:
+                raise ValueError(
+                    f"state {state!r}: shape {a.shape}, want (n_replicas, n_frames, 7)"
+                )
+            if not np.isfinite(a).all():
+                raise ValueError(f"state {state!r}: NaN or infinity")
+            if np.any(np.linalg.norm(a[..., 3:6], axis=-1) < 1e-12):
+                raise ValueError(f"state {state!r}: zero dipole orientation")
+
+    @property
+    def states(self) -> list[str]:
+        return list(self.series)
+
+    def in_rtt_frame(
+        self, state: str, surface_z_mm: float, light_from: str = "substrate"
+    ) -> Dipoles:
+        """The emitters of one state (all replicas and frames) in the RTT frame."""
+        return dipoles_from_tracker(self.series[state], surface_z_mm, light_from)
+
+
+@dataclass(frozen=True)
+class Layer:
+    """A BioOptoMD run directory: the index profile (data port N) and/or the dipoles (Q)."""
+
+    profile: Profile | None
+    dipoles: DipoleSeries | None
+    source: str = ""
+
+
+def _manifest_path(path: str | Path) -> Path:
+    p = Path(path)
+    return p if p.suffix == ".json" else p / MANIFEST
+
+
+def layer_files(path: str | Path) -> list[Path]:
+    """The manifest and the files it names (for cache keys); missing files are left out."""
+    manifest = _manifest_path(path)
+    try:
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return [manifest]
+    base = manifest.parent
+    names = [doc.get("profile", {}).get("file")]
+    names += list(doc.get("dipoles", {}).get("states", {}).values())
+    return [manifest] + [base / n for n in names if isinstance(n, str)]
+
+
+def read_layer(path: str | Path) -> Layer:
+    """Reads a run directory (or its manifest `biooptomd-layer.json`):
+
+    {"format": "biooptomd-layer", "version": 1, "source": "...",
+     "profile": {"file": "n_profile.csv", "dz_nm": 0.05, "n_solvent": 1.333,
+                 "wavelength_um": 0.633},
+     "dipoles": {"dt_ps": 10.0, "states": {"free": "dipoles_free.npy", ...}}}
+
+    The profile is the CSV of `export_refractive_index`, each state an .npy of the tracker series
+    (n_replicas, n_frames, 7) in nm. Either part may be missing, not both."""
+    manifest = _manifest_path(path)
+    try:
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+    except OSError as e:
+        raise ValueError(f"no BioOptoMD manifest {manifest}: {e.strerror}") from e
+    except ValueError as e:
+        raise ValueError(f"{manifest}: not JSON ({e})") from e
+    if doc.get("format") != LAYER_FORMAT:
+        raise ValueError(f"{manifest}: format {doc.get('format')!r}, want {LAYER_FORMAT!r}")
+    if doc.get("version") != LAYER_VERSION:
+        raise ValueError(f"{manifest}: version {doc.get('version')!r}, want {LAYER_VERSION}")
+    base, source = manifest.parent, str(doc.get("source", ""))
+    profile = dipoles = None
+    if "profile" in doc:
+        p = doc["profile"]
+        try:
+            profile = read_profile_csv(
+                base / p["file"],
+                float(p["dz_nm"]),
+                float(p["n_solvent"]),
+                float(p["wavelength_um"]),
+            )
+        except KeyError as e:
+            raise ValueError(f"{manifest}: profile without {e.args[0]!r}") from e
+        except OSError as e:
+            raise ValueError(f"{manifest}: profile {p['file']}: {e.strerror}") from e
+    if "dipoles" in doc:
+        q = doc["dipoles"]
+        series = {}
+        for state, name in dict(q.get("states", {})).items():
+            try:
+                series[str(state)] = np.load(base / name, allow_pickle=False).astype(np.float64)
+            except OSError as e:
+                raise ValueError(f"{manifest}: dipoles of {state!r} ({name}): {e}") from e
+        dt = q.get("dt_ps")
+        dipoles = DipoleSeries(series, None if dt is None else float(dt), source)
+    if profile is None and dipoles is None:
+        raise ValueError(f"{manifest}: neither 'profile' nor 'dipoles'")
+    return Layer(profile, dipoles, source)
+
+
+def write_layer(
+    directory: str | Path,
+    profile: Profile | None = None,
+    dipoles: DipoleSeries | None = None,
+    source: str = "",
+) -> Path:
+    """Writes a run directory that `read_layer` reads (the reference for an export in BioOptoMD);
+    returns the manifest."""
+    d = Path(directory)
+    d.mkdir(parents=True, exist_ok=True)
+    doc: dict[str, Any] = {"format": LAYER_FORMAT, "version": LAYER_VERSION, "source": source}
+    if profile is not None:
+        n = np.atleast_2d(np.asarray(profile.n))
+        np.savetxt(
+            d / "n_profile.csv",
+            np.column_stack([profile.z_nm, n.T]),
+            delimiter=",",
+            header="z_nm," + ",".join(f"n_replica_{i}" for i in range(n.shape[0])),
+            comments="# ",
+        )
+        doc["profile"] = {
+            "file": "n_profile.csv",
+            "dz_nm": profile.dz_nm,
+            "n_solvent": profile.n_solvent,
+            "wavelength_um": profile.wavelength_um,
+        }
+    if dipoles is not None:
+        states = {}
+        for i, (state, s) in enumerate(dipoles.series.items()):
+            name = f"dipoles_{i}.npy"
+            np.save(d / name, np.asarray(s, dtype=np.float64), allow_pickle=False)
+            states[state] = name
+        doc["dipoles"] = {"dt_ps": dipoles.dt_ps, "states": states}
+    manifest = d / MANIFEST
+    manifest.write_text(json.dumps(doc, indent=1), encoding="utf-8")
+    return manifest

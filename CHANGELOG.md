@@ -50,6 +50,20 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 - `SpectrumBundle` als Port-Daten (`portdata`, Blöcke anderer Prozesse): die Abtastung eines
   Gitterspektrums (`GridSupport`) ist jetzt reine Daten (Gitter, Bins, Stützstellen) statt einer
   Funktion.
+- Streukörper mit S, Stufe R30d: `fusion.particle` nimmt Spektren nativ (Auswerter R und S) und
+  gibt das rückgestreute Fernfeld als Spektrum ab. Das Einfallsspektrum geht ohne inneres R → S
+  an CliffordBem: im Spektrum auf dessen Port verschoben (`particle.incident_waves`, exakte Phase
+  je Welle, Achse = Normale des Spektrums). Das Fernfeld wird ein kontinuierliches Spektrum im
+  gespiegelten Rahmen mit der Abtastung einer Punktquelle im Teilchen, 100 Wellenlängen davor
+  (`particle.scattered_spectrum`), sodass S → H dort die Kugelwelle E∞ e^(ikr)/r ist und S → R
+  Strahlen vom Teilchen weg liefert. Strahlen am Eingang rechnen wie bisher (Debye je Strahl,
+  Strahlen vom Mittelpunkt). Abnahme W84–W85 (`tests/test_particle_spectra.py`): W29–W31 mit
+  S-Verbindung, Fernfeld eines Dipols, K3 ohne Strahlen zwischen Fokus und Teilchen gegen
+  CliffordBem allein.
+- Diagnose `exec.spectrum_support` (`spectrum.SupportError`): S → H oder S → R eines
+  kontinuierlichen Spektrums ohne Abtastung (hinter einer verdichteten Gruppe) meldet den Block
+  und den Ausweg, statt als „diskrete Wellen“ zu scheitern (offener Punkt aus R30c).
+- `spectrum.subset` (Teilmenge der Wellen mit ihrer Abtastung) und `spectrum.towards`.
 
 ### Geändert
 
@@ -72,6 +86,17 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   parallele Ebenen und diskrete Wellen exakt im Spektrum.
 - `couplings.grating_field`: die interpolierte Übertragung als `interpolated_transfer` (auch für
   Spektren), `transfer_waves` und `spectrum_through` für Wellen ohne Gitter.
+- Licht-Sockets von `fusion.particle` nehmen R, H und S (vorher R und H). Bestehende Pläne mit
+  „auto“ bleiben unverändert (R, keine Umwandlungen); nur die Begründung nennt S als zulässig
+  zwischen Teilchen und nativen Blöcken („among RHS“).
+- Detektor mit S: bevor ein PFT-Spektrum für das Bild über H geht (die Summe der Wellen würde
+  falten), fallen Wellen weg, deren Strahlen mehr als `spectrum.REACH` = 10 halbe Diagonalen des
+  Fensters an dessen Mitte vorbeigehen (mit Vermerk und Leistungsanteil). Sie erreichen das
+  Fenster nicht; ohne das ließen die fast streifenden Richtungen eines Fernfelds den Planer von
+  Fieldtracing Wellenausbreitung über die ganze Ebene wählen (Speicher).
+- `field._onto` (Detektor gekippt gegen die Feldebene): Stützstellen, deren Strahlen die Ebene
+  nicht vorwärts kreuzen, fallen mit Vermerk weg, statt das Bild mit „rays do not all cross the
+  port plane forward“ abzubrechen.
 
 ## [0.2.1] - 2026-11-18
 

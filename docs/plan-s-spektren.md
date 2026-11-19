@@ -331,3 +331,104 @@ Stapel gegen Airy je Welle 1,9·10⁻¹³, verdichtete Platte gegen die Airy-Tei
 **Offen.** S → H hinter einer verdichteten Gruppe; die Phase des Übertrags eines dicken Stapels
 steckt im Residuum, nicht in ψ̃ (für die inverse PFT eine Näherung wie beim Feldoperator); die
 Anzeige „geplant R, genutzt S“ (R30e).
+
+## Nachtrag R30d (Umsetzung, 2026-11-19)
+
+**Gebaut.** `fusion.particle` nimmt Spektren nativ (Auswerter R und S, Sockets RHS) und gibt das
+rückgestreute Fernfeld als Spektrum ab; Strahlen am Eingang rechnen wie bisher (Debye je Strahl,
+Strahlen vom Mittelpunkt). Eingang (`particle.incident_waves`): das Spektrum im Spektrum auf den
+vorderen Port von CliffordBem verschoben (S4, exakte Phase e^(ik·Δr) je Welle, ohne inneres
+R → S), Achse des Teilchens = Normale des Spektrums, diskrete Wellen bleiben diskret.
+Ausgang (`particle.scattered_spectrum`): die Wellen des Ports (Richtung −1) auf den Mittelpunkt
+bezogen, im gespiegelten Rahmen (u, −v, −n) wie hinter einem Gitter (R30c), mit der Abtastung
+einer Punktquelle im Mittelpunkt (ψ̃ = 0, −ρ = 0, Hesse-Matrix 0; das Residuum ist das
+Fernfeld) und mit `spectrum.propagate` auf eine Ebene `OUT_WAVELENGTHS` = 100 Wellenlängen vor
+dem Teilchen verschoben (ψ̃ = k·Δr, −ρ = Strahlversatz, Hesse-Matrix regulär). S → H dort ist die
+inverse PFT der Kugelwelle E∞ e^(ikr)/r, S → R gibt Strahlen, die vom Teilchen weglaufen.
+Abnahme W84–W85 in `tests/test_particle_spectra.py` (Messwerte in [testfaelle.md](testfaelle.md)):
+
+| Prüfung | Referenz | Toleranz | gemessen |
+|---|---|---|---|
+| W84 (a) Einfallsspektrum einer S-Verbindung (NA 0,8): \|Faktor\| / Phase / Feld | Richards–Wolf (`couplings.focus`) wie W29 | 1e−3 / 1e−6 / 2e−3 | 6,5e−5 / 4e−12 / 9,3e−4 |
+| W84 (a) dasselbe gegen den Debye-Weg je Strahl; Leistung gegen die Strahlen | W29 (`particle.rays_to_spectrum`) | 1e−9; 1e−3 | 5e−13; 0 |
+| W84 (a) diskrete Welle auf den Port verschoben | Phase der ebenen Welle | 1e−12 | 0 |
+| W84 (b) ebene Welle (diskretes S) auf die Kugel, Netzstufe 6 / 8 / Richardson | Mie | – / 5e−2 / 5e−3 | −6,1e−2 / −3,6e−2 / −3,3e−3 (Strahlweg W31: 7e−3) |
+| W84 (b) dieselbe Rückstreuung über den Strahlweg (Fernfeld-Quadratur) | W31 | 1e−9 | 5e−15 |
+| W85 (a) Dipol-Fernfeld als S, S → H in 0,1 und 1 mm | Kugelwelle E∞ e^(ikr)/r | 1e−9 | 3,4e−12 |
+| W85 (a) dasselbe gegen das exakte Dipolfeld, Abweichung / (1/(kD)) | Nahfeldterm | 1 ± 0,02 | 0,9991 |
+| W85 (a) Leistung; Richtung der Stützstellen; Strahlen durch den Mittelpunkt | (4π/3) k⁴\|p\|²; Wellenvektoren | 1e−12; 1e−9; 1e−9 | 2e−16; 3e−16; 2e−13 |
+| W85 (a) Leistung der Strahlen in der NA (S → H → R) | Leistung der Wellen | 1e−2 | 3,9e−3 (Delaunay-Flächen) |
+| W85 (b) K3 mit S auf beiden Verbindungen: Anteil in der NA (3,92 %) | CliffordBem allein (`BeamField.focused`) wie W30 | 5e−3 | 4,3e−4 (Strahlweg: 2,2e−3) |
+| W85 (b) derselbe Anteil gegen den Strahlweg | W30 | 5e−3 | 1,8e−3 |
+| W85 (b) Bild 1 mm vor dem Teilchen je Einfallsleistung | \|E∞\|²/r² von CliffordBem allein | 1e−2 der Spitze | 5,5e−3 |
+
+**Entscheidungen und Abweichungen.**
+
+1. **Ausgangsebene 100 λ vor dem Teilchen, nicht die gespiegelte Ebene des Einfalls.** Die
+   inverse PFT der Punktquellen-Abtastung ist für jede Entfernung D > 0 genau die Kugelwelle
+   (W85: 3·10⁻¹²); was ihr zum vollen Feld fehlt, der Nahfeldterm (1/(kD)) und die evaneszenten
+   Wellen, erreicht ohnehin kein Objektiv. D muss also nur positiv sein und vor dem nächsten
+   Block liegen. Die Ebene, aus der das Einfallsspektrum kam (durch den Schwerpunkt der Strahlen
+   hinter der letzten Fläche), kann im Pfeil einer gekrümmten Fläche liegen, und ein Detektor
+   zwischen ihr und dem Teilchen bräuchte eine Ausbreitung von H rückwärts, die der Planer von
+   Fieldtracing nicht kann (`math domain error` im ersten Versuch). 100 λ sind 60 µm bei 0,6 µm.
+2. **Strahlen bleiben Strahlen, Spektren bleiben Spektren.** Mit R am Eingang bleibt der
+   Debye-Weg (Entscheidung 2: Debye direkt nur im Fokus) und die Ausgabe Strahlen vom
+   Mittelpunkt, mit S am Eingang wird die Ausgabe S. H auf der Verbindung in das Teilchen wird wie
+   bisher zu Strahlen (der Auswerter nimmt R und S; H → S im Block wäre möglich, änderte aber die
+   Ergebnisse bestehender Graphen mit festem H).
+3. **Eingang.** Die Abtastung des Einfalls wird nicht gebraucht und vor dem Verschieben
+   weggelassen (`propagate` rechnete sonst für ein Gitterspektrum eine geometrische Abtastung auf
+   der neuen Ebene). Am Port evaneszente Wellen fallen mit `exec.spectrum_cut` weg (CliffordBem
+   nimmt nur laufende). Ein Spektrum in einem anderen Medium als `n_medium` lehnt der Block ab
+   (`exec.particle`): die Grenzfläche dazwischen ist nicht modelliert.
+4. **W29 mit S ist der Debye-Weg** (5·10⁻¹³): die PFT des geometrischen Felds eines fokussierten
+   Bündels hat ihren stationären Punkt in der Richtung des Strahls, mit dessen Amplitude.
+5. **W31 mit S:** Das Spektrum zählt die Leistung mit der Fernfeld-Quadratur (Gauß–Legendre),
+   `ray_powers` des Strahlwegs mit den Delaunay-Flächen der Richtungskosinus (Netzstufe 6:
+   1 % weniger). Mit derselben Quadratur sind beide Wege gleich (5·10⁻¹⁵); extrapoliert liegt S
+   näher an Mie (3,3·10⁻³ statt 7·10⁻³). Zusätzlich geprüft: extrapoliert 5·10⁻³.
+6. **Detektor hinter dem Teilchen.** Weit vom Teilchen faltet die Summe der Wellen immer (die
+   fast streifenden Richtungen landen bei D·tan θ, bis etwa 550·D), das Bild geht über H. Das
+   Feld der ganzen Halbkugel ließ den Planer von Fieldtracing „mixed“ wählen (F_min = 0,55 an den
+   äußersten Stützstellen bei 68 mm) und Gigabytes anlegen. Deshalb fallen vor S → H im Detektor
+   die Wellen eines PFT-Spektrums weg, deren Strahlen mehr als `REACH` = 10 halbe Diagonalen an
+   der Mitte des Fensters vorbeigehen (`spectrum.towards`, mit Vermerk und Leistungsanteil; Dipol,
+   Detektor 1 mm davor, Fenster ±0,6 mm: 720 von 3200 Wellen, 9 % der Leistung); danach geometrisch. Bestehende Bilder ändern sich nicht (alle
+   Wellen von W79/W80 erreichen das Fenster; `test_spectrum_detector.py` unverändert grün).
+   Ebenso lässt `field._onto` (gekippter Detektor) Stützstellen weg, deren Strahlen die Ebene
+   nicht vorwärts kreuzen, statt abzubrechen.
+7. **Offener Punkt aus R30c (S → H ohne Abtastung).** Es gab keinen Absturz, aber eine falsche
+   Meldung („diskrete Wellen“) als `exec.field`. Jetzt `spectrum.SupportError` und in der
+   Ausführung `exec.spectrum_support` mit dem Block, aus dem das Spektrum kommt, und dem Ausweg (H
+   oder R auf die Verbindung in diesen Block; der Detektor nimmt das Spektrum weiter als Summe).
+   Ein Rückfall auf ein Feld bräuchte eine Abtastung aus den Wellen selbst (Spektralphase mit
+   Gradient und Hesse-Matrix aus den Nachbarn, also Phasenentfaltung auf verstreuten k-Punkten) –
+   nicht billig, deshalb nur die klare Meldung.
+8. **Planer und bestehende Pläne.** Die Sockets nehmen RHS, der Auswerter S nativ: „auto“ lässt S
+   zwischen Teilchen und nativen Blöcken (Detektor, Gitter, Stapel, verdichtete Gruppe) zu, die
+   Kostenrangfolge behält R. Geprüft auf `main` und hier: K3 (Quelle → Linse → Teilchen →
+   Detektor), Gitter → Teilchen → Stapel → Detektor und K3 mit festem H haben dieselben
+   Darstellungen und Umwandlungen; nur die Begründung der Verbindungen zwischen Teilchen und
+   nativen Blöcken lautet „among RHS“ statt „among RH“. **Keine Planänderung.** Ein Spektrum, das
+   auf einer „auto“-Verbindung ankommt, bleibt ein Spektrum (wie seit R30b/R30c).
+9. **SpeckleBem-Block zurückgestellt.** Die Bedingung der Stufe („sobald L4 ihn mit vielen
+   Einfällen hat“) ist nicht erfüllt: `specklebem.apply_many` ist eine Schleife über `apply`, und
+   `scatter` löst je einfallender ebener Welle einmal (`set_excitation` + GMRES, 0,2–22 s je
+   Lösung nach plan-l4-operatoren.md). Ein fokussierter Strahl mit rund 2800 Wellen wären 2800
+   Lösungen. Nötig ist ein Einfall aus einem beliebigen Spektrum als eine Anregung (D12,
+   `AngularSpectrumBeam` kann bisher nur Gauß) oder Mehrfach-RHS mit behaltener LU (O3,
+   optional). SpeckleBem ist zudem nur in der CI gebaut (Commit `4f04efe`), nicht lokal.
+
+**Offen.**
+
+- **H → R und elliptische Polarisation:** `field.field_to_rays` behält von einem elliptisch
+  polarisierten Feld nur den linearen Anteil (Projektion auf die reelle Polarisationsrichtung).
+  Die Rückstreuung der Kugel ist neben den Achsen elliptisch (S1 und S2 mit verschiedener
+  Phase); ein gegen die Spektrumsebene um 1,5 mrad gekippter Detektor (H → R → H in `_onto`)
+  verliert deshalb an den Diagonalen bis 13 %. Der Strahlweg des Teilchens behält die Leistung,
+  macht die Polarisation aber linear. Beides bestand vor R30d; eine komplexe Polarisation in
+  `prt` würde es beheben (Frage an den Maintainer, betrifft R18).
+- Mit Strahlen am Eingang und festem S (oder H) auf der Ausgangsverbindung scheitert R → H an
+  den Strahlen, die alle im Mittelpunkt starten (wie vor R30d mit H).
+- SpeckleBem-Block (Punkt 9); die Anzeige der genutzten Darstellung (R30e).

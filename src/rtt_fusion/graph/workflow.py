@@ -163,17 +163,28 @@ def with_used(
     reg: NodeTypeRegistry | None = None,
 ) -> dict[str, Any]:
     """The plan with what the blocks used at run time on links on "auto" (`Context.used`, by
-    link key of the run's graph): `links[key]["used"]`, `["used_reason"]`, and – with the model
-    – `connections_used` per connection and direction like `connections`. The GUI shows it at
-    the link where it differs from the planned representation (R→H)."""
+    link key of the run's graph): `links[key]["used"]`, `["used_reason"]`, `["used_chain"]` (the
+    conversions on the link, e.g. "H→S", R30e), and – with the model – `connections_used` per
+    connection and direction like `connections`, `connections_used_reason` the same with the
+    chain and the reason ("H→S – …"). The GUI shows it at the link where it differs from the
+    planned representation (R→H, R→S) and in the tooltip."""
     out = {**plan, "links": {k: dict(v) for k, v in plan.get("links", {}).items()}}
     for key, u in used.items():
         if key in out["links"]:
             out["links"][key]["used"] = str(u.get("representation", ""))
             out["links"][key]["used_reason"] = str(u.get("reason", ""))
+            if u.get("chain"):
+                out["links"][key]["used_chain"] = str(u["chain"])
     if graph is not None and model is not None and reg is not None:
         out["connections_used"] = connection_plan(graph, model, reg, {"links": used})
+        detail = {k: {"representation": _used_text(u)} for k, u in used.items()}
+        out["connections_used_reason"] = connection_plan(graph, model, reg, {"links": detail})
     return out
+
+
+def _used_text(u: dict[str, str]) -> str:
+    """The chain and the reason of an entry of `Context.used`: "H→S – …"."""
+    return " – ".join(str(x) for x in (u.get("chain"), u.get("reason")) if x)
 
 
 def model_document(

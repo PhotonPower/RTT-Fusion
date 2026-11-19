@@ -482,3 +482,58 @@ def test_spectrum_link_into_a_ray_block() -> None:
     for name in ("position", "direction", "opl"):
         a, b = np.asarray(getattr(via_s[0], name)), np.asarray(getattr(via_h[0], name))
         assert np.abs(a - b).max() < 1e-6 * max(1.0, float(np.abs(b).max())), name
+
+
+# ------------------------------------------------------------------------------ used on links
+
+
+def test_used_representation_per_link() -> None:
+    # R30e: what a link carried in the run (`Context.used`), for the GUI's "planned R, used S"
+    ex = focus_graph("S", n=9)
+    ex.evaluate("cam", "image")
+    used = ex.context.used
+    assert "src.out -> lens.in" not in used  # plain rays on an R link: nothing to show
+    s_link = used["lens.out -> cam.in"]
+    assert s_link["representation"] == "S" and s_link["chain"] == "R→H→S"
+    assert s_link["reason"] == "lens gave rays; spectra on the link; cam takes them as they are"
+    # a spectrum from fusion.convert on a link planned R reaches the detector as it is
+    ex = focus_graph("auto", n=9)
+    ev = {**ex.evaluators, **conversion.register(ex.registry)}
+    g = ex.graph
+    g.add(Node("toS", "fusion.convert", params={"to": "S"}))
+    g.disconnect(g.links[1])
+    g.connect(("lens", "out"), ("toS", "in"))
+    g.connect(("toS", "out"), ("cam", "in"))
+    ex = Executor(g, ex.registry, ev, available=WITH_SPECTRA)
+    ex.evaluate("cam", "image")
+    assert ex.plan is not None and ex.plan.representations["toS.out -> cam.in"] == "R"
+    assert ex.context.used["toS.out -> cam.in"] == {
+        "representation": "S",
+        "reason": "toS gave spectra; cam takes them as they are",
+        "chain": "S",
+    }
+    assert "lens.out -> toS.in" not in ex.context.used
+
+
+def test_used_representation_into_a_ray_block() -> None:
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    g.add(Node("src", "optics.collimated_source", params={"radius": 0.3, "rings": 6}))
+    g.add(Node("lens", "optics.thin_lens", params={"point": [0, 0, 1], "focal_length": 50.0}))
+    g.connect(("src", "out"), ("lens", "in"), "S")
+    ex = Executor(g, reg, ev, available=WITH_SPECTRA)
+    ex.evaluate("lens", "out")
+    used = ex.context.used["src.out -> lens.in"]
+    assert used["representation"] == "S" and used["chain"] == "R→H→S→H→R"
+    assert used["reason"].endswith("converted to rays at the port of lens")
+
+
+def test_with_used_carries_the_chain() -> None:
+    from rtt_fusion.graph.workflow import with_used
+
+    plan_dict = {"links": {"a.out -> b.in": {"representation": "R", "reason": "cheapest"}}}
+    used = {"a.out -> b.in": {"representation": "S", "reason": "why", "chain": "S"}}
+    shown = with_used(plan_dict, used)["links"]["a.out -> b.in"]
+    assert (shown["used"], shown["used_reason"], shown["used_chain"]) == ("S", "why", "S")
+    assert "used" not in plan_dict["links"]["a.out -> b.in"]  # the plan itself is unchanged

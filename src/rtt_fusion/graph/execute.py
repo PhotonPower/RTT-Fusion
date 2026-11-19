@@ -106,7 +106,9 @@ class Context:
     #: local frame (a BEM factorisation, a built table), kept across runs; keys without the pose
     operators: Any = None
     #: what blocks decided at run time for links on "auto" (link key -> {"representation",
-    #: "reason"}), e.g. a detector that computes fields near a focus; the GUI shows it at the link
+    #: "reason"}), e.g. a detector that computes fields near a focus; since R30e also what the
+    #: executor's conversions made of the light on a link (with "chain", e.g. "H→S"); the GUI
+    #: shows it at the link
     used: dict[str, dict[str, str]] = field(default_factory=dict)
     _span: tuple[float, float] = (0.0, 1.0)
 
@@ -413,6 +415,7 @@ class Executor:
                 if isinstance(item, FieldBundle) and rays_wanted:
                     item = field_to_rays(item)
                 out.append(item)
+            self._record_used(value, out, rep, consumer, lk)
         except SupportError as e:
             raise ExecutionError("exec.spectrum_support", str(e), where) from e
         except FieldError as e:
@@ -420,6 +423,88 @@ class Executor:
         finally:
             self.context.log.extend(f"{where}: {line}" for line in notes)
         return out
+
+    def _record_used(
+        self, before: list[Any], after: list[Any], rep: str, consumer: Node, lk: Any
+    ) -> None:
+        """What a light link carried in this run, for the GUI (`Context.used`, R30e): the
+        representation on the link (`representation`; on a link planned R a spectrum or field a
+        block made reaches the next block as it is, so "planned R, used S"), the steps from the
+        source's output to what the consumer computes with (`chain`, e.g. "H→S" or "S→H→R") and
+        a sentence (`reason`). Recorded where the light is not plain rays on an R link, and on
+        every link planned S; nothing for data or empty lists."""
+        kinds_in = [_kind(b) for b in before]
+        if not kinds_in or "" in kinds_in:
+            return
+        kinds_out = [_kind(b) for b in after]
+        carried = [_on_link(k, rep) for k in kinds_in]
+        if rep != "S" and kinds_in == carried == kinds_out == [rep] * len(kinds_in):
+            return
+        steps = zip(kinds_in, carried, kinds_out, strict=True)
+        chains = sorted({_chain(a, c, b) for a, c, b in steps})
+        source = self.graph.nodes.get(lk.source[0])
+        name = (source.name or source.id) if source is not None else lk.source[0]
+        parts = [f"{name} gave {_names(kinds_in)}"]
+        if carried != kinds_in:
+            parts.append(f"{_names(carried)} on the link")
+        target = consumer.name or consumer.id
+        if kinds_out == carried:
+            parts.append(f"{target} takes them as they are")
+        else:
+            parts.append(f"converted to {_names(kinds_out)} at the port of {target}")
+        self.context.used[link_key(lk)] = {
+            "representation": _joined(carried),
+            "reason": "; ".join(parts),
+            "chain": ", ".join(chains),
+        }
+
+
+#: light items by representation (`Executor._record_used`)
+_KIND_NAMES = {"R": "rays", "H": "fields", "S": "spectra"}
+
+
+def _kind(item: Any) -> str:
+    """R, H or S for a ray bundle, a field or a spectrum; "" for anything else."""
+    if isinstance(item, RayBundle):
+        return "R"
+    if isinstance(item, FieldBundle):
+        return "H"
+    if isinstance(item, SpectrumBundle):
+        return "S"
+    return ""
+
+
+def _on_link(kind: str, rep: str) -> str:
+    """The representation light of `kind` has on a link planned `rep`: `_convert` turns rays and
+    fields into spectra on S and rays and spectra into fields on H at the source's end; on R
+    everything stays as it came (the consumer's port converts what it cannot take)."""
+    if rep == "S" and kind in ("R", "H"):
+        return "S"
+    if rep == "H" and kind in ("R", "S"):
+        return "H"
+    return kind
+
+
+def _chain(*kinds: str) -> str:
+    """The steps of a conversion, e.g. "R→H→S": repeated steps once, R and S always through H
+    (plan S3)."""
+    steps: list[str] = []
+    for k in kinds:
+        if steps and steps[-1] == k:
+            continue
+        if steps and {steps[-1], k} == {"R", "S"}:
+            steps.append("H")
+        steps.append(k)
+    return "→".join(steps)
+
+
+def _joined(kinds: list[str]) -> str:
+    """The representations of a list of light items in the order R, H, S, e.g. "S" or "R+S"."""
+    return "+".join(k for k in "RHS" if k in kinds)
+
+
+def _names(kinds: list[str]) -> str:
+    return " and ".join(_KIND_NAMES[k] for k in "RHS" if k in kinds)
 
 
 def _environment(shared: dict[str, Any] | None) -> str:

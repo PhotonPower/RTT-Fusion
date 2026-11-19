@@ -432,3 +432,66 @@ Abnahme W84–W85 in `tests/test_particle_spectra.py` (Messwerte in [testfaelle.
 - Mit Strahlen am Eingang und festem S (oder H) auf der Ausgangsverbindung scheitert R → H an
   den Strahlen, die alle im Mittelpunkt starten (wie vor R30d mit H).
 - SpeckleBem-Block (Punkt 9); die Anzeige der genutzten Darstellung (R30e).
+
+## Nachtrag R30e (Umsetzung, 2026-11-19)
+
+**Gebaut.** RTT-Fusion: `Executor._convert` trägt nach jeder Umwandlung an einem Port in
+`Context.used` ein, was die Lichtverbindung getragen hat (`Executor._record_used`):
+`representation` – die Darstellung *auf der Verbindung*, also nach der Umwandlung am Ausgang der
+Quelle (R, H → S auf einer S-Verbindung; R, S → H auf einer H-Verbindung) und vor der am Port des
+Verbrauchers; auf einer mit R geplanten Verbindung kommen Felder und Spektren unverändert an –,
+`chain` – die Schritte vom Ausgang der Quelle bis zu dem, womit der Verbraucher rechnet, R und S
+immer über H („R→H→S“, „H→S“, „S→H→R“, „S“) – und `reason` („lens gave rays; spectra on the link;
+cam takes them as they are“ bzw. „… converted to rays at the port of lens“). Eingetragen wird,
+wo nicht nur Strahlen über eine R-Verbindung gehen, und auf jeder S-Verbindung. Der Detektor
+nahe einem Fokus überschreibt den Eintrag seiner Verbindung danach wie bisher (R→H).
+`workflow.with_used` gibt die Kette als `links[key]["used_chain"]` und je Verbindung und Richtung
+eines Modells als `connections_used_reason` („Kette – Grund“) weiter. Tests in
+`tests/test_spectrum_links.py`: Fokus mit S (R→H→S, nativ am Detektor), `fusion.convert` →
+Detektor auf „auto“ (geplant R, getragen S), S in einen Strahlenblock (R→H→S→H→R),
+`with_used`.
+
+CAD (Raytatouille-Fusion #138, Branch `feat/r30e-spectra`):
+
+- **Transportmenü** einer Verbindung bzw. Richtung: jede Darstellung mit Beschreibung („S –
+  plane-wave spectra“), die aktuelle abgehakt, nicht rechenbare ausgegraut mit Grund im Tooltip.
+  Was rechenbar ist, schreibt das Workflow-Plugin beim Prüfen und nach dem Lauf als `available`
+  (`workflow.available()`) ins Dokument, der Raytracer beim Anlegen eines Modells; ohne den
+  Schlüssel (ältere Dokumente) bleibt alles wählbar.
+- **Anzeige:** Auf einer Verbindung auf „auto“ steht nach dem Lauf geplant→getragen, wo es
+  abweicht (R→H wie bisher, neu R→S); der Tooltip nennt in der Zeile „last run“ Darstellung, Kette
+  und Grund, auch bei festem Transport (dort bleibt das Schild beim Stern, z. B. „S*“). Die Zeile
+  erscheint, wo die Darstellung vom Plan abweicht, wo umgewandelt wurde oder wo ein Spektrum floss
+  (auch nativ). Gilt solange das Ergebnis des Blocks am Ende aktuell ist (wie R→H).
+- **Diagnosen:** Das Workflow-Plugin liest die Zeilen `<Ort>: exec.spectrum_*: …` aus
+  `Context.log` (Ort = Verbindung oder Block; eine Blockmeldung hinter einer Verbindung zählt für
+  die Verbindung) und `exec.spectrum_support` aus dem `ExecutionError`, hängt sie an den Plan
+  (`links[key]["notes"]`, `node_notes`, `connections_notes` je Richtung) und nennt die erste
+  Warnung in der Statuszeile. Der Editor setzt ein ⚠ hinter die Darstellung bzw. in den Kopf des
+  Blocks, die Meldungen in den Tooltip.
+- Die Prüfung eines Socket-Graphen im Raytracer plant über `workflow.checked` (S verfügbar,
+  native Darstellungen der Blöcke) statt mit {R, H} ohne `native`.
+- Handbuch (Kapitel Node-Workflow): Darstellungen R/H/S/G/T/P, wann S lohnt und welche Blöcke es
+  nativ nehmen, „auto“ wählt S nur, wo R nicht zulässig ist, Umwandlungen an den Ports, Anzeige
+  R→S und „last run“, Transportmenü, Meldungen `exec.spectrum_cut`/`_rays`/`_support`; Anhang
+  Workflow-Blöcke: Sockets RHS, `fusion.convert` mit `to = S` (Standard H).
+
+**Entscheidungen und Abweichungen.**
+
+1. **„Genutzt“ heißt: auf der Verbindung**, nicht „womit der Verbraucher rechnet“. Die
+   Umwandlung am Port eines Blocks, der S nicht nimmt (S → R vor einer Linse), steht schon als
+   Umwandlung im Plan; wichtig ist die Abweichung vom Plan selbst – auf „auto“ mit R geplant, aber
+   ein Spektrum geflossen. Womit der Verbraucher rechnet, steht im letzten Glied der Kette.
+2. **Diagnosen bleiben Zeilen im Protokoll** (Entscheidung 7 aus R30a); die CAD-Seite liest
+   sie aus dem Text. Ein `Diagnostic` je Umwandlung mit Ort wäre sauberer, ändert aber alle
+   Aufrufer von `notes`; zurückgestellt, bis eine zweite GUI sie braucht.
+3. Das Schild zeigt geplant→getragen nur auf „auto“; ein fester Transport behält sein Schild mit
+   Stern (der Planer hält ihn), die Kette steht im Tooltip.
+
+**Offen.**
+
+- **Abnahme am Linnik mit Si-Gitter** (`auflicht_si_gitter`: Bild mit S am Gitter = mit H, Toleranz
+  nach GF5): nicht gerechnet – braucht FourierGrating mit vielen Lösungen je Welle und gehört auf
+  den Server. Die Planprüfung aus R30c (Pläne mit „auto“ unverändert) gilt weiter.
+- Die Meldungen von Blöcken in anderen Prozessen kommen als Protokollzeilen herüber; ihr Ort ist
+  der Block in diesem Prozess, wie ihn die Zeile nennt.

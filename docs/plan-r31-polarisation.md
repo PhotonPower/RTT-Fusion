@@ -89,7 +89,7 @@ zirkularer Polarisation die Phase der größten Komponente), `light.split_along`
 | W87 Fresnel-Rhombus, Feld je Strahl | Maxwell-Randbedingungen | 1e−12 | 0,78 (Leistung 2 %, S3 = 0) | 5e−16 (S3/S0 = 1) |
 | W88 elliptischer Gauß-Strahl H → R → H, Stokes je Stützstelle | vorher | 1e−12 | S3 → 0, Leistung 0,876 | < 1e−12 |
 | W89 lineare Polarisation: Aufteilung, Grenzflächenfaktor | Formeln von R18–R30 | 1e−15 / 1e−14 | – | erfüllt |
-| W89 bestehende Tests (Ausgänge aller Auswertungen, 165 Tests) | Lauf auf `main` | 1e−12 | – | NUMBERS |
+| W89 bestehende Tests (Ausgänge aller Auswertungen und Umwandlungen, 236 Tests der betroffenen Dateien) | Lauf auf `main` (6cc2f48) | 1e−12 | – | linear polarisierte Strahlen ≤ 2,7e−11 (Restelliptizität ~1e−7), Bilder rein linearer Fälle ≤ 1,3e−15; geändert nur mit elliptischem Licht (Rückstreuung der Kugel, S → R hinter Gittern und Fokus, Tabelle zwischen den Gitterpunkten: 1,5e−5) |
 
 **Entscheidungen und Abweichungen.**
 
@@ -107,7 +107,14 @@ zirkularer Polarisation die Phase der größten Komponente), `light.split_along`
 4. **Debye-Weg des Teilchens mit der Phase der Amplitude.** Bisher ging nur |a| ein; für die
    Strahlen einer Linse (reelle Amplituden) gleich, nach einem Spiegel oder H → R jetzt richtig.
 5. **Bestehende Tests unverändert** (nur ein Kommentar in `test_particle_spectra.py` zur
-   gekippten Ebene und die neue Prüfung W86 (b) im Fixture `k3`).
+   gekippten Ebene und die neue Prüfung W86 (b) im Fixture `k3`). Geprüft zusätzlich mit einer
+   Aufzeichnung aller Ausgänge von `Executor.evaluate`, `field_to_rays`, `rays_to_field`,
+   `field_image`, `coherent_image` und der Umwandlungen des Teilchens in 236 Tests vor und nach
+   R31 (Werte in der Tabelle). Abweichungen gibt es nur, wo Licht elliptisch ist; dort ist das
+   neue Ergebnis das richtige (die Projektion fehlt).
+6. **Laufzeit:** keine neuen Felder; `split_field` kostet so viel wie die alte Aufteilung
+   (10⁵ Strahlen: 53 statt 55 ms), Grenzfläche und verdichtete Gruppe ein Produkt P·prt statt
+   G·prt. Die geprüften Testdateien liefen vorher und nachher gleich lang (Rechner unter Last).
 
 **Offen.**
 

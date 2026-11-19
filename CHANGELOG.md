@@ -64,6 +64,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   kontinuierlichen Spektrums ohne Abtastung (hinter einer verdichteten Gruppe) meldet den Block
   und den Ausweg, statt als „diskrete Wellen“ zu scheitern (offener Punkt aus R30c).
 - `spectrum.subset` (Teilmenge der Wellen mit ihrer Abtastung) und `spectrum.towards`.
+- Genutzte Darstellung je Verbindung, Stufe R30e: `Executor._convert` trägt in `Context.used` ein,
+  was eine Lichtverbindung im Lauf getragen hat (`representation`, z. B. S auf einer mit R
+  geplanten Verbindung, wenn ein Spektrum aus `fusion.convert` einen Detektor erreicht), die
+  Umwandlungen vom Ausgang der Quelle bis zu dem, womit der Verbraucher rechnet (`chain`, z. B.
+  „H→S“ oder „S→H→R“), und einen Satz (`reason`) – überall, wo nicht nur Strahlen über eine
+  R-Verbindung gehen, und auf jeder S-Verbindung. `workflow.with_used` gibt die Kette als
+  `links[key]["used_chain"]` und je Verbindung eines Modells als `connections_used_reason` weiter;
+  die CAD-GUI zeigt R→S an der Verbindung und die Kette im Tooltip.
 
 ### Geändert
 

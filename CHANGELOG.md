@@ -22,7 +22,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   dieselben Bilder (≤ 9e−16). W52 (Geist eines Singletts knotenweise gegen den ganzen
   Raytatouille-Pfad, der keine Polarisation trägt) weicht um 1,7e−5 ab statt < 1e−9: Die
   Polarisation dreht sich über die Pupille, und zwischen Nachbarstrahlen wird sie linear
-  interpoliert (Toleranz 1e−4, `docs/plan-r31-polarisation.md`, Nachtrag R32).
+  interpoliert (Toleranz 1e−4, `docs/plan-r31-polarisation.md`, Nachtrag R32). W43 (Michelson mit
+  gekipptem Spiegel, R) weicht um 1,8e−6 ab: Die Felder der beiden Arme stehen 4 mrad schräg und
+  interferieren nicht mehr vollständig (Toleranz 1e−5; mit H wie bisher 1e−9).
 
 ## [0.3.2] - 2026-11-19
 

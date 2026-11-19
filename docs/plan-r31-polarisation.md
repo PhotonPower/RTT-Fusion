@@ -135,6 +135,7 @@ großen Halbachse) spielt damit für das Bild keine Rolle mehr, nur das Produkt.
 | W91 Zweistrahlinterferenz, parallel / gekreuzt / zirkular gleich und gegenläufig / elliptisch gegen linear | I = cos θ (\|e₁\|² + \|e₂\|² + 2 Re(e₁·ē₂ e^(2ikx sin θ))) | 1e−9 der Spitze | gekreuzt, zirkular, elliptisch: falsch (Sichtbarkeit 1) | erfüllt |
 | W91 prt im Bild (gedrehtes Feld, \|prt·jones\| = 0,5) | Formel, Leistung 0,25 | 1e−9 | falsch | erfüllt |
 | Beispielsysteme mit Raytatouille (Michelson, Linnik, Geisterplatten, K1, Kalkspat, Paraboloid, Singlett) | Lauf auf `main` (2f4db25) | – | – | ≤ 9e−16 |
+| W43 Michelson mit 2 mrad gekipptem Testspiegel, knotenweise gegen den ganzen Pfad, R | ganzer Pfad | 1e−5 (vorher 1e−9; H unverändert 1e−9) | < 1e−9 | 1,8e−6: die Arme treffen um 4 mrad verschieden auf, ihre p-Felder stehen 4 mrad schräg, der Interferenzterm ist um bis zu 1 − cos(4 mrad) ≈ 8e−6 kleiner (physikalisch richtig) |
 | W52 Geist eines Singletts knotenweise gegen den ganzen Pfad (der ganze Pfad trägt keine Polarisation) | ganzer Pfad | 1e−4 (vorher 1e−9) | < 1e−9 | 1,7e−5; mit eingefrorener Polarisation 4,7e−10 |
 
 Die Abweichung in W52 ist die lineare Interpolation sich drehender Feldvektoren: Die Polarisation

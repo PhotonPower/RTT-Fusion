@@ -121,3 +121,24 @@ zirkularer Polarisation die Phase der größten Komponente), `light.split_along`
 
 - Vektorielles R-Bild (Bündel einer Kohärenzgruppe mit verschiedener Polarisation).
 - Komplexe `polarisation` der Quelle im JSON-Format des Modells (bisher nur aus Python).
+
+## Nachtrag R32 (vektorielles Strahlbild, 2026-11-19)
+
+Entscheidung 2 oben (skalares R-Bild) ist aufgehoben: `imaging.coherent_image` interpoliert je
+Strahl den Feldvektor a·prt·jones (mit sqrt(I₀ · dA_Quelle/dA_Detektor)) linear über der
+Triangulierung der Treffpunkte und multipliziert mit exp(i k₀ OPL); Felder einer Kohärenzgruppe
+addieren sich als Vektoren, das Bild ist Σ_Gruppen |E|². Die Aufteilung a·ê (Vorzeichen, Phase der
+großen Halbachse) spielt damit für das Bild keine Rolle mehr, nur das Produkt.
+
+| Prüfung | Referenz | Toleranz | vor R32 | gemessen |
+|---|---|---|---|---|
+| W91 Zweistrahlinterferenz, parallel / gekreuzt / zirkular gleich und gegenläufig / elliptisch gegen linear | I = cos θ (\|e₁\|² + \|e₂\|² + 2 Re(e₁·ē₂ e^(2ikx sin θ))) | 1e−9 der Spitze | gekreuzt, zirkular, elliptisch: falsch (Sichtbarkeit 1) | erfüllt |
+| W91 prt im Bild (gedrehtes Feld, \|prt·jones\| = 0,5) | Formel, Leistung 0,25 | 1e−9 | falsch | erfüllt |
+| Beispielsysteme mit Raytatouille (Michelson, Linnik, Geisterplatten, K1, Kalkspat, Paraboloid, Singlett) | Lauf auf `main` (2f4db25) | – | – | ≤ 9e−16 |
+| W52 Geist eines Singletts knotenweise gegen den ganzen Pfad (der ganze Pfad trägt keine Polarisation) | ganzer Pfad | 1e−4 (vorher 1e−9) | < 1e−9 | 1,7e−5; mit eingefrorener Polarisation 4,7e−10 |
+
+Die Abweichung in W52 ist die lineare Interpolation sich drehender Feldvektoren: Die Polarisation
+dreht sich über die Pupille um bis zu 6°, zwischen Nachbarstrahlen um ~0,5°, und dazwischen ist
+|E| um ~Δ²/8 zu klein. Ein Nachnormieren auf die interpolierte Länge wäre an echten Nullstellen
+des Felds (Vorzeichenwechsel von a) falsch; dichtere Strahlen verkleinern den Fehler.
+

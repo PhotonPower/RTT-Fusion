@@ -184,7 +184,8 @@ fusion paths, diagnostics, cost). `Executor.check()` plans before every run (`Ex
   circular) makes it elliptical: ê = cos χ·p̂ + i sin χ·(d × p̂); χ > 0 means S3 > 0 under
   e^(−iωt). JSON and the GUI use χ; from Python `polarisation` may also be complex (`[1, 1j, 0]`,
   then χ must be 0).
-- The R image (`imaging.coherent_image`) is scalar (|a| and phase); H and S images are vectorial.
+- All images are vectorial: R (`imaging.coherent_image`, R32) interpolates a·prt·jones per ray,
+  fields of one coherence key add as vectors, so crossed polarisations do not interfere (as H, S).
 
 ## 2 Recipes
 
@@ -1005,7 +1006,7 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
   fields, plane, hu, hv, nx, ny, ...)`, `spectrum_power(sb)` (W), `overlapping_orders(spectra)`,
   `SupportError`; constants `SUM_BUDGET`, `SUM_BLOCK`, `CUT_WARNING`, `MIN_FRESNEL`.
 - `imaging`: `Image(values, extent, ray_power, groups, note)` (`.power`, `.pixel_area`),
-  `coherent_image(bundles, plane, hu, hv, nx, ny)` (R, scalar).
+  `coherent_image(bundles, plane, hu, hv, nx, ny)` (R, vectorial since R32).
 
 ### 4.10 Block modules (`EVALUATORS`; `register(reg) -> evaluators` adds the types)
 

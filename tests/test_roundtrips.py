@@ -383,4 +383,8 @@ def test_w52_ghost_through_curved_surfaces() -> None:
         }
     ]
     whole = _rtt_image(explicit, detector=image.id, rtt_execution="paths")
-    assert np.abs(node_wise.values - whole.values).max() <= 1e-9 * whole.values.max()
+    # the whole path carries no polarisation; node-wise the field turns by up to 6° over the
+    # pupil (curved surfaces) and the vectorial image (R32) interpolates it linearly between
+    # neighbouring rays (~0.5° apart: |E| low by ~Δ²/8). Measured 1.7e-5; with the polarisation
+    # frozen per ray 4.7e-10 (before R32, scalar image: below 1e-9)
+    assert np.abs(node_wise.values - whole.values).max() <= 1e-4 * whole.values.max()

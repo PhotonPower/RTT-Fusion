@@ -1,19 +1,27 @@
-"""Coherent image of ray bundles on a detector plane (stage R15, concept section 5).
+"""Coherent image of ray bundles on a detector plane (stage R15, concept section 5; vectorial
+since R32).
 
-Each bundle (one coherence group) becomes a scalar field on the pixel grid,
-E(u, v) = A(u, v) · exp(i (k₀ · OPL(u, v) + φ)), with
+Each bundle (one coherence group) becomes a vector field on the pixel grid,
+E(u, v) = A(u, v) · exp(i k₀ · OPL(u, v)), with
 - OPL interpolated linearly between the ray hits (it is smooth where the bundle has no caustic;
   interpolating the phase itself would wrap),
-- A = |a| · sqrt(I₀ · dA_source / dA_detector) from energy conservation along the ray tube: the
-  ray density is taken from a triangulation of the start coordinates and its image on the detector
-  (the geometric part of Fieldtracing ADR 0004; Jacobian per triangle, averaged at the vertices),
-- φ the phase of the collected amplitude factor a (beam splitter, mirror).
-Fields of the same coherence key add; intensities of different keys add. Outside the convex hull of
-a bundle's hits its field is 0.
+- A the complex field vector a·prt·jones of the rays (`RayBundle.field_vectors`, R31: amplitude
+  factors of beam splitters and mirrors, Fresnel and grating matrices, elliptical polarisation)
+  times sqrt(I₀ · dA_source / dA_detector) from energy conservation along the ray tube: the ray
+  density is taken from a triangulation of the start coordinates and its image on the detector
+  (the geometric part of Fieldtracing ADR 0004; Jacobian per triangle, averaged at the vertices);
+  A is interpolated linearly as well (it holds no propagation phase, so it is smooth).
+Fields of the same coherence key add as vectors, the image is Σ_keys |E|²: light of orthogonal
+polarisations does not interfere, as in the field (H) and spectrum (S) images. Before R32 the
+image was scalar (|a| with the mean phase of a), so crossed polarisations made fringes. Outside the
+convex hull of a bundle's hits its field is 0.
 
 Validity (R15): bundles without caustics between source and detector, and an OPL that is close to
 linear between neighbouring rays (exact for plane and gently curved waves; the error of the linear
-interpolation grows with the wavefront curvature times the square of the ray spacing).
+interpolation grows with the wavefront curvature times the square of the ray spacing). The field
+vector is interpolated linearly as well: where the polarisation turns between neighbouring rays by
+Δ (curved surfaces, high NA), |E| between them is low by about Δ²/8 (1.7e-5 of the peak for the
+ghost of a singlet, W52, with 0.5° between rays); denser rays reduce it.
 """
 
 from __future__ import annotations
@@ -105,15 +113,16 @@ def coherent_image(
             jac, _, area_src = _vertex_jacobian(src, det)
         except QhullError:
             continue
-        amp = np.asarray(moved.amplitude)[alive]
-        a = np.abs(amp) * np.sqrt(b.irradiance * jac)
+        try:
+            mesh = Delaunay(det)
+        except QhullError:
+            continue
+        vec = np.asarray(moved.field_vectors())[alive]  # a·prt·jones (R31)
+        a = vec * np.sqrt(b.irradiance * jac)[:, None]
         opl = np.asarray(moved.opl)[alive]
-        phi0 = float(np.angle(np.mean(amp))) if np.any(np.abs(amp) > 0) else 0.0
-        ray_power += float(b.irradiance * area_src * np.mean(np.abs(amp) ** 2))
-        interp_a = LinearNDInterpolator(det, a, fill_value=0.0)
-        interp_opl = LinearNDInterpolator(det, opl, fill_value=np.nan)
-        a_px = interp_a(uu, vv)
-        opl_px = interp_opl(uu, vv)
+        ray_power += float(b.irradiance * area_src * np.mean(np.sum(np.abs(vec) ** 2, axis=1)))
+        a_px = LinearNDInterpolator(mesh, a, fill_value=0.0)(uu, vv)  # (ny, nx, 3)
+        opl_px = LinearNDInterpolator(mesh, opl, fill_value=np.nan)(uu, vv)
         covered.append(int(np.isfinite(opl_px).sum()))
         spot = [
             min(spot[0], float(det[:, 0].min())),
@@ -121,14 +130,13 @@ def coherent_image(
             min(spot[2], float(det[:, 1].min())),
             max(spot[3], float(det[:, 1].max())),
         ]
-        e = np.where(
-            np.isfinite(opl_px), a_px * np.exp(1j * (b.k0 * np.nan_to_num(opl_px) + phi0)), 0.0
-        )
-        e = np.asarray(e, dtype=complex)
+        inside = np.isfinite(opl_px)
+        phase = np.exp(1j * b.k0 * np.nan_to_num(opl_px))
+        e = np.asarray(np.where(inside[..., None], a_px * phase[..., None], 0.0), dtype=complex)
         fields[b.key] = fields[b.key] + e if b.key in fields else e
     values = np.zeros((ny, nx))
     for e in fields.values():
-        values = values + np.abs(e) ** 2
+        values = values + np.sum(np.abs(e) ** 2, axis=-1)
     note = _undersampled(covered, spot, half_u, half_v, nx, ny)
     return Image(values, (-half_u, half_u, -half_v, half_v), ray_power, list(fields), note)
 

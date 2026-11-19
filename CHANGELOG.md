@@ -4,6 +4,26 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-19
+
+### Geändert
+
+- **Vektorielles Strahlbild (R32).** `imaging.coherent_image` (die Darstellung R an
+  `optics.detector`, `rtt.detector` und `display.beam`) interpoliert je Strahl den komplexen
+  Feldvektor a·prt·jones statt |a| mit einer mittleren Phase je Bündel; Felder einer
+  Kohärenzgruppe addieren sich als Vektoren, das Bild ist Σ |E|². Licht orthogonaler
+  Polarisation interferiert damit nicht mehr (vorher Streifen mit Sichtbarkeit 1), elliptisches
+  und zirkulares Licht interferiert mit dem Überlapp seiner Polarisationen – wie in den Feld- (H)
+  und Spektrumsbildern (S). Für Licht einer gemeinsamen linearen Polarisation bleibt das Bild
+  gleich. `Image.ray_power` nimmt |a·prt·jones|². Tests W91: Zweistrahlinterferenz gegen
+  I = cos θ (|e₁|² + |e₂|² + 2 Re(e₁·ē₂ e^(2ikx sin θ))) für parallele, gekreuzte, gleich und
+  gegenläufig zirkulare und elliptische Polarisation (1e−9), prt im Bild.
+- Die Beispielsysteme mit Raytatouille (Michelson, Linnik, Geisterplatten, K1, Kalkspat) geben
+  dieselben Bilder (≤ 9e−16). W52 (Geist eines Singletts knotenweise gegen den ganzen
+  Raytatouille-Pfad, der keine Polarisation trägt) weicht um 1,7e−5 ab statt < 1e−9: Die
+  Polarisation dreht sich über die Pupille, und zwischen Nachbarstrahlen wird sie linear
+  interpoliert (Toleranz 1e−4, `docs/plan-r31-polarisation.md`, Nachtrag R32).
+
 ## [0.3.2] - 2026-11-19
 
 ### Hinzugefügt

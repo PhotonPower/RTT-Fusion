@@ -75,6 +75,15 @@ def convert(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
 # fields and spectra arrive as they are (the engine does not turn them into rays before the block)
 convert.representations = frozenset("RHS")  # type: ignore[attr-defined]
 
+
+def produces(node: Node) -> str:
+    """What the block's output carries whatever comes in: its `to` (the planner keeps a spectrum
+    from `to = S` a spectrum on "auto" links into blocks that take S natively, R30f)."""
+    return str(node.params.get("to", "H"))
+
+
+convert.produces = produces  # type: ignore[attr-defined]
+
 EVALUATORS: dict[str, Evaluator] = {"fusion.convert": convert}
 
 

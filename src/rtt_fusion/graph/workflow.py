@@ -18,7 +18,7 @@ from importlib import import_module
 from typing import Any
 
 from rtt_fusion.graph import embedded, io
-from rtt_fusion.graph.execute import EXECUTABLE
+from rtt_fusion.graph.execute import EXECUTABLE, produced_by
 from rtt_fusion.graph.model import Graph, Node
 from rtt_fusion.graph.planner import Requirements, plan
 from rtt_fusion.graph.registry import NodeTypeRegistry, builtin_registry
@@ -69,9 +69,15 @@ def available() -> frozenset[str]:
 
 
 @lru_cache(maxsize=1)
+def _optional_evaluators() -> dict[str, Any]:
+    """The evaluators of the optional modules, by block type."""
+    return registry()[1]
+
+
+@lru_cache(maxsize=1)
 def _optional_natives() -> dict[str, frozenset[str]]:
     """The representations the evaluators of the optional modules work in, by block type."""
-    _, extra = registry()
+    extra = _optional_evaluators()
     return {t: frozenset(getattr(ev, "representations", frozenset("R"))) for t, ev in extra.items()}
 
 
@@ -98,6 +104,20 @@ def native_of(
     return native
 
 
+def produces_of(
+    graph: Graph, evaluators: dict[str, Any] | None = None
+) -> Callable[[str], str | None]:
+    """The planner's `Requirements.produces` for a graph (R30f): the representation a block's
+    light outputs carry whatever comes in (`fusion.convert`: its `to`), from the evaluators'
+    attribute `produces` (`evaluators`, default those of the optional modules)."""
+    table = _optional_evaluators() if evaluators is None else evaluators
+
+    def produces(node_id: str) -> str | None:
+        return produced_by(graph.nodes.get(node_id), table)
+
+    return produces
+
+
 def catalogue(reg: NodeTypeRegistry) -> list[dict[str, Any]]:
     """The block library for the editor: type, category, description, sockets, parameters,
     through-paths and the light ports (one dot per port, R24)."""
@@ -121,9 +141,14 @@ def checked(
     graph: Graph, reg: NodeTypeRegistry, evaluators: dict[str, Any] | None = None
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Diagnostics of the graph check and of the planner (with what can run and what the blocks
-    take natively, `native_of`), and the plan."""
+    take natively, `native_of`; what they make whatever comes in, `produces_of`), and the plan."""
     diagnostics = [dict(d.__dict__) for d in validate(graph, reg)]
-    p = plan(graph, reg, Requirements(available=available(), native=native_of(graph, evaluators)))
+    req = Requirements(
+        available=available(),
+        native=native_of(graph, evaluators),
+        produces=produces_of(graph, evaluators),
+    )
+    p = plan(graph, reg, req)
     diagnostics += [dict(d.__dict__) for d in p.diagnostics]
     return diagnostics, p.to_dict()
 
@@ -317,5 +342,6 @@ __all__ = [
     "model_document",
     "model_id",
     "native_of",
+    "produces_of",
     "registry",
 ]

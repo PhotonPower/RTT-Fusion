@@ -253,9 +253,9 @@ def test_w79_far_from_the_focus_the_detector_goes_through_h() -> None:
 
 
 def test_auto_plans_with_native_detectors() -> None:
-    # a detector takes S natively, but "auto" takes S only where the block in front takes it too
-    # and R is not cheaper: the existing plans stay R; a spectrum from fusion.convert reaches the
-    # detector as it is (as fields did on R links since R30a) and is summed there
+    # a detector takes S natively, but "auto" takes S only where the block in front takes it too:
+    # the existing plans stay R; a spectrum from fusion.convert reaches the detector as it is and
+    # is summed there – since R30f on a link planned S (before: planned R)
     from rtt_fusion.graph import conversion
 
     ex = focus_graph("auto", rings=12, n=9)
@@ -269,7 +269,8 @@ def test_auto_plans_with_native_detectors() -> None:
     g.connect(("toS", "out"), ("cam", "in"))
     ex = Executor(g, ex.registry, ev, available=WITH_SPECTRA)
     im: Image = ex.evaluate("cam", "image")
-    assert ex.plan is not None and set(ex.plan.representations.values()) == {"R"}
+    assert ex.plan is not None and ex.plan.representations["toS.out -> cam.in"] == "S"
+    assert ex.plan.representations["lens.out -> toS.in"] == "R"
     assert any("image from the sum of" in line for line in ex.context.log)
     assert not any("S -> H" in line for line in ex.context.log)
     assert im.values.max() > 0

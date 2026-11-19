@@ -4,6 +4,22 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Geändert
+
+- Planer, Stufe R30f (Entscheidung des Maintainers, `docs/plan-s-spektren.md`): „auto“ wählt S
+  ohne Kostenvergleich auf Verbindungen zwischen zwei Blöcken, die S nativ nehmen, wenn das Licht
+  am Quellblock ein Spektrum ist – hinter einer Verbindung mit S, hinter `fusion.convert` mit
+  `to = S` und durch eine Kette nativer Blöcke (Gitter, Stapel, verdichtete Gruppe, Teilchen)
+  dahinter. Der Plan sagt damit S, wo ein Spektrum fließt (bisher R mit der Anzeige „R→S“), und
+  plant keine Umwandlung S → R → S. Strahlen werden nicht von selbst zu Spektren; bei gemischten
+  Eingängen, vor Blöcken ohne S und wo die Gültigkeit S ablehnt, gilt die Kostenrangfolge wie
+  bisher. Ergebnisse ändern sich nicht; Pläne mit Strahlen (Linnik, Beispiele, K3) bleiben gleich.
+- Neu: `Requirements.produces` (was ein Block abgibt, was auch immer ankommt), aus dem Attribut
+  `produces` der Auswerter (`fusion.convert`: sein `to`), `Executor.produces`,
+  `workflow.produces_of`; `workflow.checked` gibt es dem Planer mit.
+- Tests mit der beabsichtigten Planänderung angepasst: `fusion.convert(S)` → Detektor,
+  Gitter → Stapel → Detektor hinter einem Spektrum und K3 mit S in das Teilchen planen S.
+
 ## [0.3.0] - 2026-11-19
 
 ### Hinzugefügt

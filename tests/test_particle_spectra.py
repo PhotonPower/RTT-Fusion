@@ -314,8 +314,8 @@ def k3() -> dict[str, Any]:
     for transport in ("S", "R"):
         g, ex = focused()
         # no ray of the rim lost by rounding: the axis is z, the spectrum's plane parallel to the
-        # detector (a tilted one is resampled through rays, which keep only the linear part of
-        # the elliptically polarised backscatter off the axes – an open point of H -> R)
+        # detector (a tilted one is resampled through rays, which keep the elliptically
+        # polarised backscatter off the axes since R31: W86 (b))
         g.nodes["lens"].params["aperture_radius"] = NA * F * (1 + 1e-6)
         g.add(
             Node(
@@ -336,6 +336,20 @@ def k3() -> dict[str, Any]:
         }
         if transport == "S":
             out["image"] = ex.evaluate("cam", "image")
+            # W86 (b): the same image on a detector tilted by 1.5 mrad about its u axis (x), the
+            # field resampled H -> R -> H onto a plane parallel to it (R31)
+            tilt = 1.5e-3
+            g.add(
+                Node(
+                    "cam_t",
+                    "optics.detector",
+                    params={**det, "normal": [0, np.sin(tilt), -np.cos(tilt)], "pixels": [9, 9]},
+                )
+            )
+            g.connect(("p", "out"), ("cam_t", "in"))
+            ex_t = Executor(g, ex.registry, ex.evaluators, available=WITH_SPECTRA, operators=store)
+            out["image_tilted"] = ex_t.evaluate("cam_t", "image")
+            out["tilted_log"] = list(ex_t.context.log)
     m0 = cb.make_icosphere(level)
     mesh = cb.TriangleMesh(np.asarray(m0.points) * R, m0.triangles)
     k_um = 2 * np.pi / LAM
@@ -405,6 +419,37 @@ def test_w85_k3_detector_in_the_far_field(k3: dict[str, Any]) -> None:
     ref = (per_um2 * 1e6).reshape(ny, nx)  # per mm², as the graph's powers
     error = np.abs(values - ref).max() / ref.max()
     assert error < 1e-2  # measured 5.5e-3 (interpolation of the field between its samples)
+
+
+def _far_field_image(k3: dict[str, Any], plane: Plane, n: int) -> FloatArray:
+    """|E∞|²/r² of CliffordBem alone on the pixel centres of a 1.2 mm detector on `plane`, per
+    incident power (as `test_w85_k3_detector_in_the_far_field`)."""
+    u = (np.arange(n) + 0.5) / n * 1.2 - 0.6
+    uu, vv = np.meshgrid(u, u)
+    pts = plane.origin + uu.reshape(-1, 1) * plane.u + vv.reshape(-1, 1) * plane.v
+    rel = (pts - [0, 0, F]) * 1e3  # µm, the frame of CliffordBem (centre at the origin)
+    dist = np.linalg.norm(rel, axis=1)
+    e = k3["far"](rel / dist[:, None])
+    per_um2 = np.sum(np.abs(e) ** 2, axis=1) / dist**2 / (2 * k3["beam_power"])
+    return np.asarray((per_um2 * 1e6).reshape(n, n))
+
+
+def test_w86_k3_backscatter_on_a_tilted_detector(k3: dict[str, Any]) -> None:
+    """R31, the case of R30d: the elliptically polarised backscatter of the sphere on a detector
+    tilted by 1.5 mrad (resampled H -> R -> H) against |E∞|²/r² of CliffordBem alone and against
+    the untilted detector. Before R31 the rays kept only the linear part: up to 13 % less at the
+    diagonals."""
+    assert any("resampled onto a plane parallel" in line for line in k3["tilted_log"])
+    tilt = 1.5e-3
+    plane = Plane.make([0, 0, F - 1.0], [0, np.sin(tilt), -np.cos(tilt)])
+    values = np.asarray(k3["image_tilted"].values) / k3["S"]["incident"]
+    ref = _far_field_image(k3, plane, values.shape[0])
+    error = np.abs(values - ref).max() / ref.max()
+    assert error < 1e-2  # as the untilted detector (W85 (b): 5.5e-3); measured
+    untilted = np.asarray(k3["image"].values) / k3["S"]["incident"]
+    assert np.abs(values - untilted).max() < 1e-2 * untilted.max()  # measured
+    ratio = values / ref
+    assert ratio.min() > 0.98  # before R31: 0.87 at the diagonals
 
 
 # ------------------------------------------------------------------------------ planner

@@ -3,4 +3,4 @@
 Conventions (docs/konventionen.md): mm, µm, rad; fields ∝ exp(i(k·r − ωt)); Fresnel Convention A.
 """
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"

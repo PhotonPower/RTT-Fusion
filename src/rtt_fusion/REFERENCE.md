@@ -10,7 +10,8 @@ rtt-fusion 0.3.x (PyPI `rtt-fusion`, import `rtt_fusion`, MIT). This file ships 
   executor converts at the ports. Rigorous solvers (FourierGrating RCWA, CliffordBem BEM) are blocks.
 - **Core:** numpy + scipy only. Works out of the box: `optics.*`, `meta.*`, `display.*`, rays (R),
   planner, checks, file format, `fg.grating` from a stored Jones table.
-- **Optional modules** (not on PyPI, from GitHub, section 0.1): `fieldtracing` → H and S
+- **Optional modules** (section 0.1; fieldtracing, fouriergrating and raytatouille on PyPI, the
+  others from GitHub): `fieldtracing` → H and S
   (fields, spectra, `fusion.convert`, wave-optical images); `fouriergrating` → `fg.stack`,
   `fg.grating` from a configuration, `adapters.fouriergrating`; `cliffordbem` → `fusion.particle`;
   `raytatouille` → `rtt.*` blocks; `specklebem`, `hpfem`, `bwpm` → their adapters only. Binary
@@ -31,11 +32,17 @@ frames, signs, 1.8 polarisation) · 2 Recipes, runnable (2.1 rays, 2.2 model, fi
 
 ## 0.1 Installing the optional modules
 
-Pinned commits of this release (`requirements-modules.txt` of the repository); each needs a C++
-toolchain to build (FourierGrating: Eigen 3.4, fetched if missing).
+From PyPI (binary wheels; the import names stay `fieldtracing`, `fouriergrating`, `raytatouille`):
 
 ```bash
-pip install rtt-fusion
+pip install rtt-fusion photonpower-fieldtracing fouriergrating raytatouille
+```
+
+The others only from GitHub. Below are the commits the CI of this release tests against
+(`requirements-modules.txt` of the repository; the first three are the alternative to PyPI). Each
+needs a C++ toolchain to build (FourierGrating: Eigen 3.4, fetched if missing).
+
+```bash
 pip install "fieldtracing @ git+https://github.com/PhotonPower/Fieldtracing.git@ea6da7b2d457ee8938fc079b21ed87d1b78504cf"
 pip install "fouriergrating @ git+https://github.com/PhotonPower/FourierGrating.git@174ef93d4e3b41ece7bb2f9a70055909e247ee25"
 pip install "cliffordbem @ git+https://github.com/PhotonPower/CliffordBem.git@41e64e627b82f96766c7cfe4f7d663864a5e5cfe"

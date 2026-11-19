@@ -52,6 +52,7 @@
 | D2 | Ort des Prototyps | dieses Repository `PhotonPower/RTT-Fusion` (2026-11-06) |
 | D10 | Reihenfolge der Löser | FourierGrating zuerst, CliffordBem als zweiter Löser (2026-11-06) |
 | D11 | BWPM | eigenes Repository `PhotonPower/BWPM` (2026-11-05) |
+| D13 | Datenports für Biosensoren über der Zeit | `field_map`, `occupancy`, `response_map` wie N und Q; Q als Tracker-Reihe im Sensorsystem von BioOptoMD, Umrechnung beim Lichtknoten; Adapter in `rtt_fusion.adapters`; Detektorbereiche über einen Parameter ([Fusionsplan 6.2](fusionsplan.md), RTT-Fusion#106; Maintainer, 2026-11-19) |
 | E1 | Fusion-ADR | Entwurf freigegeben; `rtt-fusion` entsteht in **C++** (Maintainer, 2026-11-06). Vorschläge zu Nummer, Zeitpunkt und eigenem ADR für die tabellierte Interaktion im Entwurf, Abschnitt „Folgen“ |
 | E2 | ADR-Entwurf tabellierte Beugungsinteraktion und Nachtrag zum Fusion-ADR (Basis) | freigegeben (Maintainer, 2026-11-07) |
 | E3 | Konzept Node-Workflow: Entscheidungen W1–W9, Erweiterungen der Adapter-Schnittstelle A1–A6, Vorschläge L1–L12, Stufen R14–R20 | freigegeben (Maintainer, 2026-11-11); L11: Übernahme hierher als `docs/fusionsplan.md` (Maintainer, 2026-11-11) |

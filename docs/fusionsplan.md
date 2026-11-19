@@ -8,7 +8,7 @@
 > angelegt (Fieldtracing, AGENTS.md Regel 8); Entscheidungen fallen dort nach dessen Prozess.
 > Stand Raytatouille: Commit `6078e55` (nach 0.9.0, M8 offen), gelesen am 2026-11-05.
 > Inventar der Module (Abschnitt 2.1) aus den Repositories des Maintainers, gelesen am 2026-11-05;
-> BindOptiX ergänzt am 2026-11-09 (K8, D13, Anhang A.1).
+> BindOptiX ergänzt am 2026-11-09 (K8, D13, Anhang A.1); D13 entschieden am 2026-11-19 (6.2, 9).
 
 ## 1. Ziel
 
@@ -202,17 +202,39 @@ ihnen ist ein geprüfter Operator. Neue Darstellungen brauchen ein ADR.
 | **P radiometrisch** | Strahlen oder Gitter mit Stokes-Vektor bzw. Strahldichte, ohne Phase | inkohärent | neu, erst mit M9 (Streumodelle, SpeckleBem-BSDF) |
 | **Q Quellen** | Dipol-Emitter: Ort, elektrisches/magnetisches Moment, Wellenlänge; Ensembles | inkohärent über Emitter, kohärent je Emitter | neu (BioOptoMD → CliffordBem, hp-FEM) |
 | **N Struktur** | Brechzahlprofil n(z) bzw. Schichtstapel, mit Streuung über Frames | – (Daten, kein Licht) | neu (BioOptoMD → Coatings, FourierGrating, CliffordBem) |
+| **F Feldkarte** (`field_map`) | komplexes E ∈ ℂ³ auf geschachtelten Volumengittern je mW, optional Absorptionsdichte und ΔT; e^(−iωt) | – (Daten) | D13 (hp-FEM, später CliffordBem, `rtt-field` → BindOptiX, Voxelspaetzle) |
+| **Belegung** (`occupancy`) | Anteile der Rezeptorzustände über Ort und Zeit, Ereignisliste für Zellen; gewichtet die Q-Ensembles je Zustand | – (Daten) | D13 (BindOptiX → Signal, label-freie Sensoren) |
+| **Antwortkarte** (`response_map`) | Tabelle in M: Zerfalls- und Detektionstensoren eines Emitters (symmetrisch 3×3 je Ort) je benanntem Detektorbereich | – (Daten) | D13 (Kette K5, hp-FEM → BindOptiX) |
 
 Q und N sind **Datenports**: Sie verbinden kein Licht, sondern liefern Quellen und Strukturen
 einseitig an ein Gebiet. Der Planer behandelt sie als Abhängigkeiten im Ausführungs-DAG, nicht als
 Pfadabschnitte. Kugelwellen (T-Matrix) braucht nach dem Inventar zunächst kein Modul, weil beide
 BEM-Codes Winkelspektren als Einfall nehmen; sie bleiben ein späterer Inhalt von M.
 
-**Vorgeschlagen (D13):** zwei weitere Datenports für Biosensoren über der Zeit, **F Feldkarte**
-(komplexes E auf geschachtelten Volumengittern je mW, optional Absorptionsdichte und ΔT; Richtung
-Licht → Biologie) und **B Belegung** (Anteile der Rezeptorzustände über Ort und Zeit, Ereignisliste
-für Zellen; gewichtet die Q-Ensembles je Zustand), dazu die Antwortkarte eines Emitters als Tabelle
-in M (Zerfalls- und Detektionstensoren, symmetrisch 3×3 je Ort). Entwurf: `PhotonPower/BindOptiX`, `docs/adr-entwurf-datenports.md`.
+**Entschieden (D13, Maintainer, 2026-11-19, RTT-Fusion#106):** Feldkarte, Belegung und
+Antwortkarte sind Datenports wie N und Q, ohne neue Lichtdarstellung; Socket-Namen nach L6
+(`field_map`, `occupancy`, `response_map`), Dateiformat der Umschlag `raytatouille-result` mit den
+Typen `FieldMap`, `Occupancy` und `EmitterResponseTable`; Inhalt, Einheiten, Normierung und
+Vorzeichen nach dem ADR-Entwurf `PhotonPower/BindOptiX`, `docs/adr-entwurf-datenports.md`
+(Prüfungen DP1–DP8). Dazu:
+
+- **Vertrag für Q.** Q trägt die Tracker-Reihe von BioOptoMD unverändert: Feld
+  (n_replicas, n_frames, 7) = (R_F [nm], μ̂, d [nm]) im Sensorsystem von BioOptoMD (Oberfläche
+  z = 0, Lösung z > 0, Normale +ẑ), je Rezeptorzustand ein Ensemble, mit den Metadaten des Laufs
+  (Quelle, Zeitschritt). Replikate und Frames bleiben erhalten (die Mischung nach der Belegung
+  braucht sie). Ins RTT-System (mm, Spiegelung nach `light_from`) rechnet erst der Knoten um, der
+  Licht damit rechnet, und zwar über `adapters.biooptomd.dipoles_from_tracker`; die Spiegelregel
+  (DP8) steht damit an einer Stelle.
+- **Adapter** liegen in `rtt_fusion.adapters` (BindOptiX: `adapters/bindoptix.py`, Import erst
+  bei Bedarf wie `adapters/hpfem.py`); BindOptiX ist MIT, ein eigenes Paket (D9) ist nicht nötig.
+- **Detektorbereiche** einer Antwortkarte (z. B. `substrate_na_lt_1.45`) werden über einen
+  Parameter des verbrauchenden Knotens an Detektoren bzw. Ausgänge des Graphen gebunden, nicht über
+  den Namen; ein fehlender oder doppelt vergebener Name ist eine Diagnose. Nur eine Karte mit genau
+  einem Bereich braucht den Parameter nicht.
+- **Reihenfolge:** (1) diese Entscheidung, (2) Evaluator für `biooptomd.layer` mit Q nach dem
+  Vertrag, (3) Datenknoten `bindoptix.signal` (Eingänge `field_map`, `response_map`, Q je Zustand,
+  `occupancy`; Ausgang `result`) mit `tests/test_adapter_bindoptix.py`, (4) K5, (5) Meta-Block
+  `bindoptix.time_loop` mit R20 und Pilot K8.
 
 ### 6.3 Umwandlungen
 
@@ -411,7 +433,7 @@ Fieldtracing für die Feldbausteine gezeigt haben.
 | D10 | Reihenfolge der Löser | FourierGrating und CliffordBem zuerst (K1–K3); BWPM parallel neu (B0–B4), dann K4; BioOptoMD über Datenports (K5); hp-FEM als Gegenprobe (K7) und für Nahfelder; SpeckleBem mit M9 (K6) |
 | D11 | Ort der BWPM | eigenes Repository mit den Regeln von Fieldtracing, Konventionen von Raytatouille von Anfang an (6.6) |
 | D12 | Erweiterungen in den Modulen (Spektrum als Einfall in CliffordBem und SpeckleBem, absolute Leistung) | als Issues in den jeweiligen Repositories, nach Freigabe des Maintainers; dieses Projekt liest dort nur |
-| D13 | Datenports für Biosensoren über der Zeit (F, B; Antwortkarte als M) | ADR-Entwurf aus BindOptiX (`PhotonPower/BindOptiX`, `docs/adr-entwurf-datenports.md`); F und B als Datenports wie N und Q, Antwortkarte ohne neue Darstellung |
+| D13 | Datenports für Biosensoren über der Zeit (F, B; Antwortkarte als M) | **entschieden** (Maintainer, 2026-11-19, RTT-Fusion#106): `field_map`, `occupancy`, `response_map` als Datenports wie N und Q, Antwortkarte ohne neue Darstellung; Q trägt die Tracker-Reihe im Sensorsystem, Umrechnung beim Lichtknoten; Adapter in `rtt_fusion.adapters`; Detektorbereiche über einen Parameter (6.2) |
 
 ## 10. Risiken
 

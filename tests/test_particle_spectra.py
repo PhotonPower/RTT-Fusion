@@ -382,7 +382,8 @@ def test_w85_k3_in_the_graph_without_rays(k3: dict[str, Any]) -> None:
     assert "incident waves (spectrum)" in log and "S -> R" not in log
     plan = s["executor"].plan
     assert plan.representations["lens.out -> p.in"] == "S"
-    assert plan.representations["p.out -> cam.in"] == "R"  # "auto": R, but the spectrum stays
+    assert plan.representations["p.out -> cam.in"] == "S"  # "auto" behind a spectrum (R30f)
+    assert [c.node for c in plan.conversions] == ["lens"]  # R -> S at the lens, no S -> R
     assert sb.plane.normal @ [0, 0, 1] == pytest.approx(-1.0, abs=1e-12)  # the axis of the lens
     # the scattered spectrum's plane: 100 wavelengths in front of the particle, facing back
     in_front = (np.array([0.0, 0.0, F]) - sb.plane.origin) @ -np.asarray(sb.plane.normal)

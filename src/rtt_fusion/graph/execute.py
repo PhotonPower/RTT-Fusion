@@ -26,11 +26,14 @@ H -> S, G -> S); a consumer that does not take S gets a field (S -> H) if it tak
 on the plane where it was made – like fields, spectra are not moved between port planes here;
 the block moves them itself (`spectrum.propagate`, plan S4) or evaluates them in space. "auto"
 admits S only between two blocks that both take S natively (decision 3 of the plan,
-`Requirements.native`). Diagnostics of the conversions (`exec.spectrum_cut`,
-`exec.spectrum_rays`: bundle not large against λ, or – since R30c – diffraction orders of one
-coherence group whose spectra overlap, so that rays lose their interference) are warnings in
-`Context.log`. A continuous spectrum without a sampling (behind a condensed group) cannot become
-a field or rays: `exec.spectrum_support` (R30d), an error that names the block and the way out.
+`Requirements.native`), and – since R30f – chooses it there outright where the light reaching the
+source block is a spectrum (`Requirements.produces`, `Executor.produces`: `fusion.convert` with
+`to = S` makes spectra), so the plan says S where a spectrum flows. Diagnostics of the
+conversions (`exec.spectrum_cut`, `exec.spectrum_rays`: bundle not large against λ, or – since
+R30c – diffraction orders of one coherence group whose spectra overlap, so that rays lose their
+interference) are warnings in `Context.log`. A continuous spectrum without a sampling (behind
+a condensed group) cannot become a field or rays: `exec.spectrum_support` (R30d), an error that
+names the block and the way out.
 """
 
 from __future__ import annotations
@@ -176,7 +179,7 @@ class Executor:
         self.plan = plan(
             self.graph,
             self.registry,
-            Requirements(available=self.available, native=self.native),
+            Requirements(available=self.available, native=self.native, produces=self.produces),
         )
         self.context.plan = self.plan
         for d in self.plan.diagnostics:
@@ -206,6 +209,12 @@ class Executor:
             return frozenset("R")
         evaluator = self.evaluators.get(node.type_id)
         return frozenset(getattr(evaluator, "representations", frozenset("R")))
+
+    def produces(self, node_id: str) -> str | None:
+        """The representation a block's light outputs carry whatever comes in (attribute
+        `produces` of the evaluator, a function of the node: `fusion.convert` gives its `to`);
+        None: the block passes on what it gets (R30f), as does a muted block."""
+        return produced_by(self.graph.nodes.get(node_id), self.evaluators)
 
     # ------------------------------------------------------------------ internals
     def _key(self, node_id: str, socket: str, stack: tuple[str, ...] = ()) -> str:
@@ -461,6 +470,15 @@ class Executor:
 
 #: light items by representation (`Executor._record_used`)
 _KIND_NAMES = {"R": "rays", "H": "fields", "S": "spectra"}
+
+
+def produced_by(node: Node | None, evaluators: dict[str, Any]) -> str | None:
+    """`Executor.produces` for a node and a table of evaluators (also `workflow.produces_of`)."""
+    if node is None or node.muted:
+        return None
+    made = getattr(evaluators.get(node.type_id), "produces", None)
+    out = None if made is None else made(node)
+    return None if out is None else str(out)
 
 
 def _kind(item: Any) -> str:

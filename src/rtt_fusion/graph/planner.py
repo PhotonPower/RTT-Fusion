@@ -14,6 +14,13 @@ object (`Plan`):
    transport is kept; "auto" is chosen by cost, but never P (no phase) while a coherent
    representation is admissible (7.3), and S only between two blocks that both take it natively
    (`NATIVE_ONLY`, `Requirements.native`; decision 3 of docs/plan-s-spektren.md).
+3. **Spectra stay spectra (R30f).** Where the light reaching a block is a spectrum – behind a
+   link that carries S, or out of a block that makes S (`Requirements.produces`: `fusion.convert`
+   with `to = S`) – a block that takes S natively gives S again. An "auto" link from such a block
+   to another block that takes S natively is then S outright, not by cost: R there would mean
+   S -> R in the one block and R -> S (or the spectrum kept anyway, as the executor does) in the
+   next. Light that reaches the block as rays or fields, or as a mix, keeps the choice by cost
+   (R where admissible): "auto" does not convert rays into spectra on its own.
 
 Costs are a provisional *ranking* (`REPRESENTATION_COST`, operator costs), not measured values;
 stage 3 replaces them with the solvers' `estimate`. With only R available (stage R15) every "auto"
@@ -121,6 +128,11 @@ Native = Callable[[str], frozenset[str]]
 #: decision 3: a spectrum on a link pays off only where neither end converts it)
 NATIVE_ONLY = frozenset({"S"})
 
+#: produces(node id) -> the representation a block's light outputs carry whatever comes in
+#: (`fusion.convert`: its `to`), or None: the block passes on what it gets in a representation it
+#: takes natively (a grating fed S gives S)
+Produces = Callable[[str], "str | None"]
+
 
 @dataclass(frozen=True)
 class Requirements:
@@ -136,6 +148,10 @@ class Requirements:
             it, "auto" admits the representations of `NATIVE_ONLY` only between two blocks that
             both take them natively. None: no such knowledge, "auto" admits them anywhere
             (abstract planning, as before R30a).
+        produces: the representation each block's light outputs carry whatever comes in (R30f;
+            `fusion.convert` with `to = S` makes spectra); None or a None result: the block
+            passes on what it gets. With `native`, "auto" keeps a spectrum a spectrum between
+            blocks that take S natively (stage 3 of the method above).
     """
 
     available: frozenset[str] = LIGHT_REPRESENTATIONS
@@ -143,6 +159,7 @@ class Requirements:
     max_paths: int = 10_000
     validity: Validity | None = None
     native: Native | None = None
+    produces: Produces | None = None
 
 
 @dataclass(frozen=True)
@@ -338,50 +355,16 @@ def plan(
                     )
                 )
 
-    # forward: cheapest upstream cost of delivering representation r on a link
-    up: dict[str, dict[str, float]] = {}
-    for lk in order:
-        key = link_key(lk)
-        deps = [d for d in through.get(lk.source[0], {}).get(lk.source[1], ())]
-        costs: dict[str, float] = {}
-        for r in domain[key]:
-            total = REPRESENTATION_COST[r]
-            for d in deps:
-                feeder = into.get((lk.source[0], d))
-                if feeder is None:
-                    continue
-                total += min(
-                    (up[link_key(feeder)][y] + CHAINS[(y, r)][0] for y in up[link_key(feeder)]),
-                    default=math.inf,
-                )
-            costs[r] = total
-        up[key] = costs
-
-    # backward: fix each link given the choices downstream
-    chosen: dict[str, str] = {}
-    for lk in reversed(order):
-        key = link_key(lk)
-        consumers = [
-            nxt
-            for out_name, ins in through.get(lk.target[0], {}).items()
-            if lk.target[1] in ins
-            for nxt in out_of.get((lk.target[0], out_name), [])
-            if link_key(nxt) in chosen
-        ]
-        if not domain[key]:
-            continue  # reported above
-        best_r, best_c = domain[key][0], math.inf
-        for r in domain[key]:
-            c = up[key][r] + sum(CHAINS[(r, chosen[link_key(n)])][0] for n in consumers)
-            if c < best_c:
-                best_r, best_c = r, c  # with no finite cost the preferred one stays; see below
-        chosen[key] = best_r
-        if lk.transport != "auto":
-            result.reasons[key] = f"fixed by the user ({lk.transport})"
-        elif len(domain[key]) == 1:
-            result.reasons[key] = f"only {best_r} admissible"
-        else:
-            result.reasons[key] = f"lowest cost {best_c:g} among {''.join(domain[key])}"
+    # choice by cost; then (R30f) "auto" links between native blocks that spectra reach are S
+    # outright, and the choice is repeated until no further link turns S (each round fixes at
+    # least one more link, so at most one round per link)
+    kept: dict[str, str] = {}  # link key -> the block whose spectra the link carries
+    while True:
+        chosen = _choose(order, domain, into, out_of, through, kept, result.reasons)
+        more = _spectra_kept(order, domain, chosen, into, through, req, kept)
+        if not more:
+            break
+        kept.update(more)
     result.representations = {
         link_key(lk): chosen[link_key(lk)] for lk in light if link_key(lk) in chosen
     }
@@ -444,6 +427,108 @@ def plan(
                 )
             )
     return result
+
+
+def _choose(
+    order: list[Link],
+    domain: dict[str, list[str]],
+    into: dict[tuple[str, str], Link],
+    out_of: dict[tuple[str, str], list[Link]],
+    through: dict[str, dict[str, tuple[str, ...]]],
+    kept: dict[str, str],
+    reasons: dict[str, str],
+) -> dict[str, str]:
+    """Stage 2 by cost: the representation per link (and its reason into `reasons`); the links
+    in `kept` are S (they carry the spectra of the block named there, R30f)."""
+    dom = {k: (["S"] if k in kept else v) for k, v in domain.items()}
+    # forward: cheapest upstream cost of delivering representation r on a link
+    up: dict[str, dict[str, float]] = {}
+    for lk in order:
+        key = link_key(lk)
+        deps = [d for d in through.get(lk.source[0], {}).get(lk.source[1], ())]
+        costs: dict[str, float] = {}
+        for r in dom[key]:
+            total = REPRESENTATION_COST[r]
+            for d in deps:
+                feeder = into.get((lk.source[0], d))
+                if feeder is None:
+                    continue
+                total += min(
+                    (up[link_key(feeder)][y] + CHAINS[(y, r)][0] for y in up[link_key(feeder)]),
+                    default=math.inf,
+                )
+            costs[r] = total
+        up[key] = costs
+
+    # backward: fix each link given the choices downstream
+    chosen: dict[str, str] = {}
+    for lk in reversed(order):
+        key = link_key(lk)
+        consumers = [
+            nxt
+            for out_name, ins in through.get(lk.target[0], {}).items()
+            if lk.target[1] in ins
+            for nxt in out_of.get((lk.target[0], out_name), [])
+            if link_key(nxt) in chosen
+        ]
+        if not dom[key]:
+            continue  # reported above
+        best_r, best_c = dom[key][0], math.inf
+        for r in dom[key]:
+            c = up[key][r] + sum(CHAINS[(r, chosen[link_key(n)])][0] for n in consumers)
+            if c < best_c:
+                best_r, best_c = r, c  # with no finite cost the preferred one stays; see below
+        chosen[key] = best_r
+        if lk.transport != "auto":
+            reasons[key] = f"fixed by the user ({lk.transport})"
+        elif key in kept:
+            reasons[key] = (
+                f"spectra from {kept[key]}; S kept between blocks that take it natively "
+                f"(among {''.join(domain[key])})"
+            )
+        elif len(dom[key]) == 1:
+            reasons[key] = f"only {best_r} admissible"
+        else:
+            reasons[key] = f"lowest cost {best_c:g} among {''.join(dom[key])}"
+    return chosen
+
+
+def _spectra_kept(
+    order: list[Link],
+    domain: dict[str, list[str]],
+    chosen: dict[str, str],
+    into: dict[tuple[str, str], Link],
+    through: dict[str, dict[str, tuple[str, ...]]],
+    req: Requirements,
+    kept: dict[str, str],
+) -> dict[str, str]:
+    """The "auto" links not yet S that carry spectra (R30f): S admissible (so both blocks take it
+    natively), and the source block makes S (`Requirements.produces`) or passes on what it gets
+    while everything that reaches the output on light links is a spectrum. Links into a block
+    that does not take S, rays or fields at the input and mixed inputs are left to the cost
+    (conservative: "auto" never turns rays into spectra itself). Light order, so a chain of
+    native blocks behind a spectrum turns S in one round. Returns link key -> source block."""
+    if req.native is None:
+        return {}  # abstract planning: who passes spectra on is unknown
+    spectral = {k for k, r in chosen.items() if r == "S"}
+    more: dict[str, str] = {}
+    for lk in order:
+        key = link_key(lk)
+        if key in spectral or lk.transport != "auto" or "S" not in domain.get(key, ()):
+            continue
+        node, socket = lk.source
+        if "S" not in req.native(node) or "S" not in req.native(lk.target[0]):
+            continue
+        made = req.produces(node) if req.produces is not None else None
+        feeders = [
+            into[(node, d)] for d in through.get(node, {}).get(socket, ()) if (node, d) in into
+        ]
+        if made == "S" or (
+            made is None and feeders and all(link_key(f) in spectral for f in feeders)
+        ):
+            more[key] = node
+            spectral.add(key)
+    return {k: v for k, v in more.items() if k not in kept}
 
 
 def _outputs(

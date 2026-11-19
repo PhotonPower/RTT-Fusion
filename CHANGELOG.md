@@ -4,6 +4,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-19
+
+### Korrigiert
+
+- Referenz für Agenten, Abschnitt 0.1: fieldtracing (`photonpower-fieldtracing`), fouriergrating
+  und raytatouille gibt es auf PyPI; nur die übrigen Module kommen von GitHub.
+
 ### Hinzugefügt
 
 - Befehlsreferenz für Sprachmodelle und Agenten im Paket: `src/rtt_fusion/REFERENCE.md`

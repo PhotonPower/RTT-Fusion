@@ -68,7 +68,13 @@ from rtt_fusion.graph.field import (
     rays_to_field,
 )
 from rtt_fusion.graph.imaging import coherent_image
-from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle, rotation_between
+from rtt_fusion.graph.light import (
+    CoherenceKey,
+    Plane,
+    RayBundle,
+    rotation_between,
+    split_field,
+)
 from rtt_fusion.graph.model import Node
 from rtt_fusion.graph.optics import hexapolar
 from rtt_fusion.graph.planner import link_key
@@ -920,11 +926,11 @@ def _trace_run(
 ) -> list[Any]:
     """Traces a bundle along the events of the path `run` of `compiled`, starting where the rays
     are, and combines OPL, field and polarisation (the field a·prt·jones goes on as a scalar
-    along a real direction plus the rest in prt). `fields_wanted`: stop before the last event
-    (the detector) and return fields. `first`: the bundle comes from the source – the medium
-    there is taken from the first segment. `keep_all` (rays): the bundle keeps every ray of `b`,
-    the ones lost on the way marked dead – the image triangulates over the source grid and must
-    not bridge the gaps (as along a whole path)."""
+    along the complex unit polarisation plus the rest in prt, R31). `fields_wanted`: stop before
+    the last event (the detector) and return fields. `first`: the bundle comes from the source –
+    the medium there is taken from the first segment. `keep_all` (rays): the bundle keeps every
+    ray of `b`, the ones lost on the way marked dead – the image triangulates over the source grid
+    and must not bridge the gaps (as along a whole path)."""
     import raytatouille as rt
 
     alive = np.flatnonzero(np.asarray(b.alive) & (np.abs(np.asarray(b.amplitude)) > 0))
@@ -990,8 +996,8 @@ def _trace_run(
         if b.source_frame is not None
         else None
     )
-    # the full field a·P_B·prt·jones·sqrt(s_B), split into a scalar along a real polarisation
-    # direction (the ray image R uses only that) and the rest in prt (fields H use both)
+    # the full field a·P_B·prt·jones·sqrt(s_B), split into a scalar along the complex unit
+    # polarisation (the ray image R uses only that, R31) and the rest in prt (fields H use both)
     prt_total = np.einsum("nij,njk->nik", p_b, prt_in)
     jones = (
         np.asarray(b.jones, dtype=complex)
@@ -1054,14 +1060,11 @@ def _full(b: RayBundle, part: RayBundle, src: Any) -> RayBundle:
 
 
 def _scalar_along(f: Any) -> Any:
-    """Complex amplitude of field vectors f (N, 3) along a real unit direction (exact for linear
-    polarisation): the phase of the largest component is taken out, the real part normalised."""
-    big = np.argmax(np.abs(f), axis=1)
-    alpha = np.angle(f[np.arange(len(f)), big])
-    e = np.real(f * np.exp(-1j * alpha)[:, None])
-    norm = np.linalg.norm(e, axis=1)
-    e = e / np.where(norm > 0, norm, 1.0)[:, None]
-    return np.sum(f * e, axis=1)
+    """Complex amplitude of field vectors f (N, 3) along their complex unit polarisation
+    (`light.split_field`, R31): |a| = |f|, for linear polarisation the amplitude along the real
+    direction as before R31."""
+    a, _ = split_field(f)
+    return a
 
 
 def _input_representation(ctx: Context, node: Node) -> str:

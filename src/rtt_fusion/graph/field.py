@@ -14,7 +14,8 @@ Operators (table 6.3):
   J and μ from the mesh of the start coordinates (`fieldtracing.mesh.mesh_jacobian_cloud`), the
   Hessian of ψ fitted on that mesh as in `fieldtracing.rtt_bridge.field_from_rays`.
 - `field_to_rays` (H → R): one ray per sample along the local wave vector, OPL = ψ/k₀, the field
-  as scalar amplitude times a real polarisation direction (exact for linear polarisation).
+  as scalar amplitude times a complex unit polarisation (`light.split_field`, R31: elliptical
+  polarisation is kept; before R31 a real direction, exact only for linear polarisation).
 - `field_image`: the field propagated to a detector plane with Fieldtracing's planner
   (`fieldtracing.chain.plan_propagation`: geometric, Debye, SFT, … by its selection rules) and
   summed per coherence group. Detector and field plane must be parallel (tilted planes later).
@@ -35,7 +36,7 @@ from scipy.spatial import Delaunay, QhullError
 
 from rtt_fusion._types import ComplexArray, FloatArray
 from rtt_fusion.graph.imaging import Image
-from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
+from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle, split_field
 
 if TYPE_CHECKING:
     from fieldtracing.field import GriddedField, GridlessField
@@ -156,16 +157,13 @@ def field_to_rays(fb: FieldBundle) -> RayBundle:
     k_local = f.local_wave_vector() / f.k
     direction = k_local @ rot
     u_glob = np.asarray(f.amplitude) @ rot
-    big = np.argmax(np.abs(u_glob), axis=1)
-    alpha = np.angle(u_glob[np.arange(len(pts)), big])
-    e = np.real(u_glob * np.exp(-1j * alpha)[:, None])
-    norm = np.linalg.norm(e, axis=1)
-    e = e / np.where(norm > 0, norm, 1.0)[:, None]
-    amplitude = np.sum(u_glob * e, axis=1)
-    # polarisation matrix: the rotation (u, v, n) of the field plane -> (e, k × e, k), so that
-    # prt·jones = e with jones = u and the orientation of the plane's axes is carried on
+    # the field as a complex amplitude times a complex unit polarisation (R31): elliptical
+    # polarisation is kept, linear polarisation gives a real e as before
+    amplitude, e = split_field(u_glob)
+    # polarisation matrix: the unitary map (u, v, n) of the field plane -> (e, k × e*, k), so
+    # that prt·jones = e with jones = u and the orientation of the plane's axes is carried on
     jones = fb.plane.u.astype(np.complex128)
-    b = np.cross(direction, e)
+    b = np.cross(direction, np.conj(e))
     prt = (
         np.einsum("ni,j->nij", e, fb.plane.u)
         + np.einsum("ni,j->nij", b, fb.plane.v)

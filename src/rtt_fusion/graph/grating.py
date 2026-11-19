@@ -45,7 +45,7 @@ from rtt_fusion.couplings import jones_table as jt
 from rtt_fusion.graph import embedded
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.field import FieldBundle, FieldError, field_to_rays, field_tolerance
-from rtt_fusion.graph.light import Plane, RayBundle, rotation_between
+from rtt_fusion.graph.light import Plane, RayBundle, rotation_between, split_field
 from rtt_fusion.graph.model import (
     Category,
     Node,
@@ -515,16 +515,12 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
 
 
 def split_prt(p: Any, e_in: Any, prt_in: Any) -> tuple[Any, Any]:
-    """A ray's new field P·E as a complex scalar amplitude along a real polarisation direction
-    (for the ray image R) and the rest in prt, so that a·prt·jones is the full field (for fields
-    H): (c, prt_out) with the new amplitude a·c."""
+    """A ray's new field P·E as a complex scalar amplitude (for the ray image R) along a complex
+    unit polarisation (`light.split_field`, R31; before R31 a real direction, which kept only the
+    linear part of an elliptical field in the amplitude) and the rest in prt, so that
+    a·prt·jones is the full field (for fields H): (c, prt_out) with the new amplitude a·c."""
     f_out = np.einsum("nij,nj->ni", p, e_in)
-    big = np.argmax(np.abs(f_out), axis=1)
-    alpha = np.angle(f_out[np.arange(len(f_out)), big])
-    e_ref = np.real(f_out * np.exp(-1j * alpha)[:, None])
-    norm = np.linalg.norm(e_ref, axis=1)
-    e_ref = e_ref / np.where(norm > 0, norm, 1.0)[:, None]
-    c = np.sum(f_out * e_ref, axis=1)
+    c, _ = split_field(f_out)
     safe = np.where(np.abs(c) > 1e-300, c, 1.0)
     prt_out = np.einsum("nij,njk->nik", p, prt_in) / safe[:, None, None]
     return c, prt_out

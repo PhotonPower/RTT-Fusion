@@ -11,13 +11,15 @@ Richards–Wolf picture of a converging beam (fusion plan 6.3, "R -> H -> S" col
 focus): direction k̂_j, solid angle ΔΩ_j from the triangulated direction cosines (dΩ = dσ/cos θ,
 a third of the adjacent triangles per ray), power P_j of the ray from its tube at the source,
     A_j = −i (k/2π) sqrt(P_j/ΔΩ_j) · ê_j · exp(i k₀ OPL_j(F)),   field_j = A_j ΔΩ_j,
-with ê_j the ray's polarisation and OPL_j(F) its optical path to the closest approach to the
-particle centre F. Then E(r) = Σ field_j exp(ik k̂_j·(r − F)) and `ports.spectrum_power` equals
-k·Σ P_j (the flux convention of `ports`).
+with ê_j the ray's complex unit polarisation times the phase of its amplitude (R31) and OPL_j(F)
+its optical path to the closest approach to the particle centre F. Then
+E(r) = Σ field_j exp(ik k̂_j·(r − F)) and `ports.spectrum_power` equals k·Σ P_j (the flux
+convention of `ports`).
 
 S -> R (`spectrum_to_rays`): the inverse – a ray per plane wave starting at F along k̂_j with the
-power (2π/k)² |field_j|²/ΔΩ_j and the phase of the far field E∞ = −i (2π/k) A (CliffordBem's
-Weyl expansion E = (ik/2π) ∫ E∞ e^{ik k̂·(r−c)} dΩ); the source coordinates of the new rays are
+power (2π/k)² |field_j|²/ΔΩ_j, the phase and the complex polarisation of the far field
+E∞ = −i (2π/k) A (elliptical off the axes, kept since R31; CliffordBem's Weyl expansion
+E = (ik/2π) ∫ E∞ e^{ik k̂·(r−c)} dΩ); the source coordinates of the new rays are
 their direction cosines, so that downstream ray tubes carry the right power.
 
 Collimated light (all rays parallel, e.g. Köhler illumination of the sample) is one plane wave
@@ -52,7 +54,7 @@ from scipy.spatial import Delaunay, QhullError
 from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.field import FieldError
-from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
+from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle, split_field
 from rtt_fusion.graph.model import (
     Category,
     Node,
@@ -97,7 +99,7 @@ def ray_powers(bundle: RayBundle, alive: Any) -> FloatArray:
     """Power of every living ray: irradiance·|amplitude·prt·jones|²·(source area of the ray)."""
     src = np.asarray(bundle.source_xy)[alive]
     areas = _vertex_areas(src)
-    field = np.asarray(bundle.amplitude)[alive][:, None] * bundle.field_direction()[alive]
+    field = bundle.field_vectors()[alive]
     cos_in = np.broadcast_to(np.asarray(bundle.source_cos, dtype=float), (bundle.size,))[alive]
     return np.asarray(
         bundle.irradiance * np.sum(np.abs(field) ** 2, axis=1) * areas * cos_in, dtype=float
@@ -129,7 +131,7 @@ def rays_to_spectrum(
         t = np.sum((centre - pos) * d_glob, axis=1)
         miss = np.linalg.norm(pos + t[:, None] * d_glob - centre, axis=1)
         j = int(np.argmin(miss))
-        e0 = bundle.field_direction()[alive][j] * np.asarray(bundle.amplitude)[alive][j]
+        e0 = bundle.field_vectors()[alive][j]
         e0 = (
             e0
             * np.sqrt(bundle.irradiance)
@@ -151,7 +153,9 @@ def rays_to_spectrum(
     d_glob = np.asarray(bundle.direction)[alive]
     t = np.sum((centre - pos) * d_glob, axis=1)  # to the closest approach to F
     opl_f = np.asarray(bundle.opl)[alive] + n * t
-    e = bundle.field_direction()[alive]
+    # the complex polarisation of the ray with the phase of its amplitude (R31; before, the phase
+    # of the amplitude was dropped – the same for the rays of a lens, whose amplitudes are real)
+    e = bundle.field_vectors()[alive]
     e = e / np.maximum(np.linalg.norm(e, axis=1), 1e-300)[:, None]
     e_loc = e @ rot.T
     amp = (
@@ -194,18 +198,16 @@ def spectrum_to_rays(
     power = (2 * np.pi / k) ** 2 * np.sum(np.abs(a) ** 2, axis=1) * w
     d_glob = d @ rot
     e_glob = e_inf @ rot
-    big = np.argmax(np.abs(e_glob), axis=1)
-    alpha = np.angle(e_glob[np.arange(len(d)), big])
-    e_ref = np.real(e_glob * np.exp(-1j * alpha)[:, None])
-    norm = np.linalg.norm(e_ref, axis=1)
-    e_ref = e_ref / np.where(norm > 0, norm, 1.0)[:, None]
+    # the far field per direction as a phase times a complex unit polarisation (R31: the
+    # elliptical polarisation of the backscatter off the axes is kept)
+    a_far, e_ref = split_field(e_glob)
+    phase = a_far / np.where(np.abs(a_far) > 0, np.abs(a_far), 1.0)
     sigma = d_glob @ rot[:2].T  # direction cosines in the local u, v axes
     cos_t = np.abs(d[:, 2])
     area_sigma = w * cos_t  # dσ = cos θ dΩ
     scale = np.sqrt(power / np.maximum(area_sigma, 1e-300))
     jones = np.array([1.0, 0.0, 0.0], dtype=complex)
     prt = np.einsum("ni,j->nij", e_ref, jones).astype(complex)
-    phase = np.exp(1j * alpha)
     return RayBundle(
         key=template.key,
         wavelength_um=template.wavelength_um,

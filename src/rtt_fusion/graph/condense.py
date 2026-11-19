@@ -34,7 +34,7 @@ import numpy as np
 from rtt_fusion import ports
 from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError, Executor, _hash
-from rtt_fusion.graph.light import Plane, RayBundle, rotation_between
+from rtt_fusion.graph.light import Plane, RayBundle, physical_split, rotation_between
 from rtt_fusion.graph.model import Node
 from rtt_fusion.graph.pose import placement
 from rtt_fusion.graph.registry import NodeTypeRegistry
@@ -290,13 +290,9 @@ def apply(table: Table, b: RayBundle, iso: Any, name: str) -> RayBundle:
     physical = c_s[:, None, None] * np.einsum("ni,nj->nij", s, s) + c_p[:, None, None] * np.einsum(
         "ni,nj->nij", p_out, p_in
     )
-    field = moved.field_direction()
-    carried = np.einsum("nij,nj->ni", geometric, field)
-    norm2 = np.sum(np.abs(carried) ** 2, axis=1)
-    factor = np.sum(np.einsum("nij,nj->ni", physical, field) * np.conj(carried), axis=1) / np.where(
-        norm2 > 0, norm2, 1.0
-    )
-    prt = np.asarray(moved.prt) if moved.prt is not None else np.tile(np.eye(3), (len(k), 1, 1))
+    # the s/p coefficients of the table in prt (R31: mixed s/p light exact), the scalar factor
+    # along the geometrically carried polarisation as for an interface
+    factor, prt_out = physical_split(physical, geometric, moved)
     alive = np.asarray(moved.alive) & inside
     return moved.evolve(
         position=np.asarray(moved.position) + shift,
@@ -304,7 +300,7 @@ def apply(table: Table, b: RayBundle, iso: Any, name: str) -> RayBundle:
         opl=np.asarray(moved.opl) + d_opl,
         amplitude=np.asarray(moved.amplitude) * np.where(alive, factor, 0.0),
         alive=alive,
-        prt=np.einsum("nij,njk->nik", geometric, prt).astype(complex),
+        prt=prt_out,
         index=1.0,
         path=(*b.path, name),
     )

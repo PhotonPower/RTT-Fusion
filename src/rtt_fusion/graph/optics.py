@@ -22,7 +22,7 @@ from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.field import FieldBundle, FieldError, field_image, field_tolerance
 from rtt_fusion.graph.imaging import coherent_image
-from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
+from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle, physical_split
 from rtt_fusion.graph.model import (
     Category,
     Node,
@@ -293,10 +293,12 @@ def _fresnel(
     b: RayBundle, plane: Plane, n1: float, n2: float, reflect: bool, name: str
 ) -> RayBundle:
     """Light of `b` (in medium n1) at an interface to n2: reflected or transmitted, Fresnel
-    coefficients for s and p (R27). The scalar amplitude is power-normalised (transmission:
-    t·sqrt(n2 cos θt / (n1 cos θi))) and taken along the geometrically carried polarisation – exact
-    for s or p light and at normal incidence; prt carries the geometry. Total internal reflection:
-    the transmitted rays are lost."""
+    coefficients for s and p (R27). The coefficients are power-normalised (transmission:
+    t·sqrt(n2 cos θt / (n1 cos θi))); since R31 the physical Jones matrix goes into prt
+    (`physical_split`), so mixed s/p light and the phase difference of total internal reflection
+    are exact; the scalar amplitude takes |P·ê| with the phase along the geometrically carried
+    polarisation (for s or p light the factor of R27). Total internal reflection: the transmitted
+    rays are lost."""
     moved, _ = plane.intersect(b)
     k = np.asarray(moved.direction)
     n = plane.normal
@@ -336,18 +338,13 @@ def _fresnel(
     physical = c_s[:, None, None] * np.einsum("ni,nj->nij", s_vec, s_vec) + c_p[
         :, None, None
     ] * np.einsum("ni,nj->nij", p_out, p_in)
-    field = moved.field_direction()
-    carried = np.einsum("nij,nj->ni", geometric, field)
-    out_field = np.einsum("nij,nj->ni", physical, field)
-    norm2 = np.sum(np.abs(carried) ** 2, axis=1)
-    factor = np.sum(out_field * np.conj(carried), axis=1) / np.where(norm2 > 0, norm2, 1.0)
-    prt = np.asarray(moved.prt) if moved.prt is not None else np.tile(np.eye(3), (len(k), 1, 1))
+    factor, prt_out = physical_split(physical, geometric, moved)
     alive = np.asarray(moved.alive) & (~tir if not reflect else True)
     return moved.evolve(
         direction=k_out,
         amplitude=np.asarray(moved.amplitude) * np.where(alive, factor, 0.0),
         alive=alive,
-        prt=np.einsum("nij,njk->nik", geometric, prt).astype(complex),
+        prt=prt_out,
         index=n2 if not reflect else n1,
         path=(*b.path, name),
         source_frame=moved.source_frame,

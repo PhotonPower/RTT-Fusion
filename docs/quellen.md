@@ -25,3 +25,4 @@
 | airy-stokes | Born/Wolf, Principles of Optics, 7. Aufl., Abschn. 1.5 (Fresnel-Formeln) und 7.6.1 (Mehrstrahlinterferenz an der Platte, Airy); Stokes-Beziehungen r′ = −r, t t′ = 1 − r² (verlustfrei); verlustfreier reziproker Vierpol: S unitär und symmetrisch | Standardformeln | W50, W51, W83 |
 | rtt-reference-s1 | Raytatouille `tests/reference/m0/feature_tour.rtt.json`, `m4/calcite_walkoff.rtt.json`, `m3/fresnel_bk7.rtt.json`, `m4/ghost_singlet.rtt.json` (MIT), kopiert nach `tests/data/raytatouille/` | übernommen | W57, W52b |
 | hpfem | hp-FEM `docs/python.md` (Gitter, Konventionen), `python/hpfem/grating.py` (`jones`, Commit `dce07d5`) | gelesen | hp-FEM-Adapter |
+| born-wolf-tir | Born/Wolf, Principles of Optics, 7. Aufl., Abschn. 1.5.4 (Totalreflexion: Phasensprünge δ_s, δ_p, tan(δ/2) = cos θ sqrt(sin²θ − n²)/sin²θ mit n = n₂/n₁; Fresnel-Rhombus: zwei Reflexionen bei 54,6° in Glas n = 1,51 geben 90°) | Standardformeln | W87 |

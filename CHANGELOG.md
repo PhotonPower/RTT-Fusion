@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-19
+
 ### Hinzugefügt
 
 - Spektren ebener Wellen (S) auf Verbindungen, Stufe R30a (`graph/spectrum.py`, Plan

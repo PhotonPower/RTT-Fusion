@@ -29,7 +29,8 @@ admits S only between two blocks that both take S natively (decision 3 of the pl
 `Requirements.native`). Diagnostics of the conversions (`exec.spectrum_cut`,
 `exec.spectrum_rays`: bundle not large against λ, or – since R30c – diffraction orders of one
 coherence group whose spectra overlap, so that rays lose their interference) are warnings in
-`Context.log`.
+`Context.log`. A continuous spectrum without a sampling (behind a condensed group) cannot become
+a field or rays: `exec.spectrum_support` (R30d), an error that names the block and the way out.
 """
 
 from __future__ import annotations
@@ -56,6 +57,7 @@ from rtt_fusion.graph.pose import Isometry, bind_exported, placement, posed
 from rtt_fusion.graph.registry import NodeTypeRegistry
 from rtt_fusion.graph.spectrum import (
     SpectrumBundle,
+    SupportError,
     field_to_spectrum,
     overlapping_orders,
     spectrum_to_field,
@@ -411,6 +413,8 @@ class Executor:
                 if isinstance(item, FieldBundle) and rays_wanted:
                     item = field_to_rays(item)
                 out.append(item)
+        except SupportError as e:
+            raise ExecutionError("exec.spectrum_support", str(e), where) from e
         except FieldError as e:
             raise ExecutionError("exec.field", str(e), where) from e
         finally:

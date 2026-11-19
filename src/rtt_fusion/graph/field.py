@@ -254,7 +254,17 @@ def _onto(fb: FieldBundle, plane: Plane, notes: list[str]) -> tuple[FieldBundle,
     if abs(float(n @ plane.normal)) < 1.0 - 1e-12:
         # tilted planes: resample geometrically onto a plane parallel to the target (H -> R -> H)
         n_t = plane.normal if float(n @ plane.normal) > 0 else -plane.normal
-        fb = rays_to_field(field_to_rays(fb), Plane.make(fb.plane.origin, n_t))
+        rays = field_to_rays(fb)
+        # samples whose rays run along the plane or away from it (a wide field, e.g. the far
+        # field of a scatterer with nearly grazing directions) do not reach it: left out (R30d)
+        forward = np.asarray(rays.direction) @ n_t > 1e-9
+        if not forward.all():
+            notes.append(
+                f"{fb.key.source}: {int((~forward).sum())} of {len(forward)} samples left out "
+                "(their rays do not cross the tilted plane forward)"
+            )
+            rays = rays.evolve(alive=np.asarray(rays.alive) & forward)
+        fb = rays_to_field(rays, Plane.make(fb.plane.origin, n_t))
         n = fb.plane.normal
         notes.append(f"{fb.key.source}: field resampled onto a plane parallel to the detector")
     return fb, float((plane.origin - fb.plane.origin) @ n)

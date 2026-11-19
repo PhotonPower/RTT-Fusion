@@ -29,6 +29,7 @@ uses a·prt·jones (`graph.field`).
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -178,7 +179,7 @@ class Plane:
 CIRCULAR = 1e-9
 
 
-def split_field(f: ComplexArray) -> tuple[ComplexArray, ComplexArray]:
+def split_field(f: Any) -> tuple[ComplexArray, ComplexArray]:
     """Field vectors f (N, 3) as f = a·ê (R31): a (N,) complex with |a| = |f|, ê (N, 3) a complex
     unit vector (ê†ê = 1, ê = 0 where f = 0). The phase of a is that of the field along the major
     axis of its polarisation ellipse, ½ arg(f·f), with the sign that makes the largest component
@@ -213,7 +214,7 @@ def split_field(f: ComplexArray) -> tuple[ComplexArray, ComplexArray]:
     return np.asarray(a, dtype=np.complex128), np.asarray(e, dtype=np.complex128)
 
 
-def split_along(f: ComplexArray, carried: ComplexArray) -> ComplexArray:
+def split_along(f: Any, carried: Any) -> ComplexArray:
     """The scalar factor c of new field vectors f (N, 3) against the geometrically carried
     polarisation `carried` (N, 3) (R31): |c| = |f|/|carried|, the phase that of carried†·f; where
     f is (nearly) orthogonal to `carried` the phase of `split_field`. For f = λ·carried it is λ,

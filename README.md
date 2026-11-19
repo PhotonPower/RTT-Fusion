@@ -1,5 +1,10 @@
 # RTT-Fusion
 
+> **For language models and agents:** the installed package carries a compact English command
+> and API reference, [`REFERENCE.md`](https://github.com/PhotonPower/RTT-Fusion/blob/main/src/rtt_fusion/REFERENCE.md):
+> `python -m rtt_fusion.reference` (`--list`, `--section 2`, `--blocks fg.grating`) or
+> `rtt_fusion.reference()` in Python – no repository needed.
+
 Prototyp der **Raytatouille Fusion**: wellenoptische Löser als Gebiete mit Ports, gekoppelt mit
 Raytracing (Raytatouille) und Field Tracing, in den Konventionen von Raytatouille.
 

@@ -21,7 +21,7 @@ dependencies = ["numpy>=1.24", "scipy>=1.10"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-rtt_fusion = ["py.typed"]
+rtt_fusion = ["py.typed", "REFERENCE.md"]  # REFERENCE.md: the reference for agents
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

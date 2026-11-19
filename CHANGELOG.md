@@ -4,6 +4,25 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- Befehlsreferenz für Sprachmodelle und Agenten im Paket: `src/rtt_fusion/REFERENCE.md`
+  (englisch, kompakt: Orientierung, Denkmodell mit Darstellungen, Planer samt R30f, Umwandlungen,
+  Kohärenz, Einheiten, Vorzeichen und Polarisation nach R31; lauffähige Rezepte; Blockkatalog;
+  öffentliche API je Modul; Diagnosecodes mit Abhilfe; Stolperfallen und Stellschrauben der
+  Laufzeit; Erkundung zur Laufzeit). Zugriff ohne Repository: `python -m rtt_fusion.reference`
+  (`--list`, `--section NAME`, `--blocks [TYP …]`, `--blocks --live`) und
+  `rtt_fusion.reference(abschnitt)`; `help(rtt_fusion)` nennt beides in der ersten Zeile, das
+  README oben (damit auch die Beschreibung auf PyPI).
+- Der Blockkatalog darin wird aus der Registry erzeugt (`tools/gen_llm_reference.py`,
+  `rtt_fusion._reference.catalogue_markdown`): je Blocktyp Kategorie, benötigte optionale Module,
+  nativ gerechnete Darstellungen, Sockets, Ports, Abhängigkeiten und Parameter mit Typ,
+  Vorgabe, Einheit und Bereich. `tests/test_llm_reference.py` prüft, dass er aktuell ist, dass
+  jeder Blocktyp seine Voraussetzungen nennt, dass jedes mit `python run` markierte Beispiel
+  läuft (mit `needs=…` ohne das Modul übersprungen, mit `RTT_FUSION_REQUIRE_MODULES=1` Fehler), dass
+  die Datei Paketdaten ist und die Kommandozeile sie ausgibt. Der Wheels-Workflow prüft sie im
+  installierten Wheel.
+
 ### Geändert
 
 - Planer, Stufe R30f (Entscheidung des Maintainers, `docs/plan-s-spektren.md`): „auto“ wählt S

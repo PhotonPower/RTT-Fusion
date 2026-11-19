@@ -314,7 +314,8 @@ def test_w87_fresnel_rhomb_makes_circular_light() -> None:
     pytest.importorskip("fieldtracing")
     fb = rays_to_field(out)
     rot = np.stack([fb.plane.u, fb.plane.v, fb.plane.normal])
-    st_h = stokes(np.asarray(fb.field.amplitude) @ rot, p_axis, s_axis)
+    field: Any = fb.field  # gridless
+    st_h = stokes(np.asarray(field.amplitude) @ rot, p_axis, s_axis)
     assert np.abs(st_h[:, 3] / st_h[:, 0] - st[0, 3]).max() < 1e-12
 
 
@@ -363,9 +364,11 @@ def test_w88_elliptical_gaussian_round_trip_keeps_stokes() -> None:
     fb = rays_to_field(bundle, plane)
     back = rays_to_field(field_to_rays(fb), plane)
     rot = np.stack([plane.u, plane.v, plane.normal])
-    st0 = stokes(np.asarray(fb.field.amplitude) @ rot, plane.u, plane.v)
-    st1 = stokes(np.asarray(back.field.amplitude) @ rot, plane.u, plane.v)
-    pts0, pts1 = np.asarray(fb.field.points), np.asarray(back.field.points)
+    f0: Any = fb.field  # gridless fields
+    f1: Any = back.field
+    st0 = stokes(np.asarray(f0.amplitude) @ rot, plane.u, plane.v)
+    st1 = stokes(np.asarray(f1.amplitude) @ rot, plane.u, plane.v)
+    pts0, pts1 = np.asarray(f0.points), np.asarray(f1.points)
     assert len(pts1) == len(pts0) and np.abs(pts1 - pts0).max() < 1e-15
     assert np.abs(st1 - st0).max() < 1e-12 * st0[:, 0].max()  # before R31: S3 lost
     # the state: S3/S0 = sin 2χ, S2/S1 = tan 2ψ – a beam of one polarisation

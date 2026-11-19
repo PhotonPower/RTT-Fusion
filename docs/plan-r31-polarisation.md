@@ -114,7 +114,8 @@ zirkularer Polarisation die Phase der größten Komponente), `light.split_along`
    neue Ergebnis das richtige (die Projektion fehlt).
 6. **Laufzeit:** keine neuen Felder; `split_field` kostet so viel wie die alte Aufteilung
    (10⁵ Strahlen: 53 statt 55 ms), Grenzfläche und verdichtete Gruppe ein Produkt P·prt statt
-   G·prt. Die geprüften Testdateien liefen vorher und nachher gleich lang (Rechner unter Last).
+   G·prt. Gesamtlaufzeiten der Tests sind auf dem belasteten Rechner nicht aussagekräftig
+   (Teilchen und Spektren: 2904 s vorher, 2897 s nachher).
 
 **Offen.**
 

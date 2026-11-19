@@ -40,12 +40,14 @@ jobs:
           CIBW_SKIP: "*-musllinux*"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           MACOSX_DEPLOYMENT_TARGET: "11.0"
-          # the extension must be in the wheel; the tests against the installed package (the
-          # solver modules are not installed: their tests skip)
+          # the extension and the reference for agents (REFERENCE.md) must be in the wheel; the
+          # tests against the installed package (the solver modules are not installed: their
+          # tests and the reference's examples that need them skip)
           CIBW_TEST_REQUIRES: pytest
           CIBW_TEST_COMMAND: >-
             python -c "import rtt_fusion._diffraction" &&
-            pytest -q -p no:cacheprovider --rootdir {project} {project}/tests/test_diffraction_cpp.py {project}/tests/test_grating.py
+            python -m rtt_fusion.reference --list &&
+            pytest -q -p no:cacheprovider --rootdir {project} {project}/tests/test_diffraction_cpp.py {project}/tests/test_grating.py {project}/tests/test_llm_reference.py
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}

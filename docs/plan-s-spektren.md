@@ -451,7 +451,7 @@ eines Modells als `connections_used_reason` („Kette – Grund“) weiter. Test
 Detektor auf „auto“ (geplant R, getragen S), S in einen Strahlenblock (R→H→S→H→R),
 `with_used`.
 
-CAD (Raytatouille-Fusion, Branch `feat/r30e-spectra`):
+CAD (Raytatouille-Fusion #138, Branch `feat/r30e-spectra`):
 
 - **Transportmenü** einer Verbindung bzw. Richtung: jede Darstellung mit Beschreibung („S –
   plane-wave spectra“), die aktuelle abgehakt, nicht rechenbare ausgegraut mit Grund im Tooltip.

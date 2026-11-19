@@ -110,7 +110,7 @@ Konvergenz) und Replikate (Fusion-ADR, Nachtrag R8–R10):
 | --- | --- | --- | --- |
 | N | Brechzahlprofil n(z) | BioOptoMD | Schichtlöser, FourierGrating, hp-FEM |
 | N3 | Voxelgitter aus Material-Kennungen + Materialtabelle je λ (optional Δñ je Voxel) | Voxelspaetzle | BWPM, FourierGrating, Raytatouille |
-| Q | Dipol-Ensemble je Rezeptorzustand | BioOptoMD | Quellen (Emitter), CliffordBem, hp-FEM |
+| Q | Dipol-Ensemble je Rezeptorzustand: Tracker-Reihe (n_replicas, n_frames, 7) in nm im Sensorsystem von BioOptoMD (D13, Fusionsplan 6.2) | BioOptoMD | Quellen (Emitter), CliffordBem, hp-FEM (rechnen ins RTT-System um), BindOptiX |
 | F | komplexe Feldkarte E ∈ ℂ³ auf geschachtelten Gittern, je 1 mW | hp-FEM, CliffordBem, `rtt-field` | BindOptiX, Voxelspaetzle (Fokus), BioOptoMD (optische Kraft) |
 | Form | benannte Körper (STEP) | Voxelspaetzle, CAD | Löser-Gebiete, Tracer |
 | Höhenkarte | z(x, y) | Voxelspaetzle | SpeckleBem, Gitter |

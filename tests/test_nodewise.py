@@ -88,7 +88,11 @@ def test_w43_michelson_node_wise_is_whole_path(transport: str) -> None:
         g = graph_from_raytatouille(d)
         g.nodes["camera"].params["half_size"] = [0.3, 0.3]
         images.append(_image(g, system, "camera", mode, transport, **SHARED_W18)[0])
-    _same(images[0], images[1])
+    # R (auto): node-wise carries the polarisation, the whole path does not; the arms meet 4 mrad
+    # apart, so their p fields are 4 mrad apart and the vectorial image (R32) has the interference
+    # term lower by up to 1 − cos(4 mrad) ≈ 8e-6 (measured 1.8e-6 of the peak). H was vectorial
+    # before.
+    _same(images[0], images[1], 1e-5 if transport == "auto" else 1e-9)
 
 
 def test_w43_michelson_with_vignetted_rays() -> None:

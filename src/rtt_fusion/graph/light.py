@@ -21,9 +21,9 @@ ray is a·prt·jones, a the scalar `amplitude` (beam splitter r/t, mirror reflec
 Complex polarisation (R31, docs/plan-r31-polarisation.md): ê = prt·jones is a complex vector, so
 elliptical polarisation survives every conversion. Where a block splits the field f of a ray into
 a scalar and the rest, it takes f = a·ê with a complex unit vector ê and |a| = |f|
-(`split_field`); for linear polarisation ê is real and a is what it was before R31. The scalar
-image of R15 (`imaging.coherent_image`) uses |a| and the phase of a; the field representation H
-uses a·prt·jones (`graph.field`).
+(`split_field`); for linear polarisation ê is real and a is what it was before R31. The ray
+image (`imaging.coherent_image`, vectorial since R32) and the field representation H
+(`graph.field`) use a·prt·jones.
 """
 
 from __future__ import annotations

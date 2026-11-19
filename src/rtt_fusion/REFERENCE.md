@@ -180,7 +180,10 @@ fusion paths, diagnostics, cost). `Executor.check()` plans before every run (`Ex
   |a| = |f|, ê a complex unit vector, phase along the major axis of the ellipse.
 - `optics.interface` and condensed groups carry the full Fresnel/table matrix in prt (mixed s/p,
   TIR phase exact); mirrors multiply prt by I − 2nnᵀ; gratings and stacks use their PRT matrices.
-- `optics.collimated_source.polarisation` may be complex in Python (`[1, 1j, 0]`), not in JSON.
+- `optics.collimated_source`: `polarisation` is the major axis p̂, `ellipticity_deg` χ (±45°
+  circular) makes it elliptical: ê = cos χ·p̂ + i sin χ·(d × p̂); χ > 0 means S3 > 0 under
+  e^(−iωt). JSON and the GUI use χ; from Python `polarisation` may also be complex (`[1, 1j, 0]`,
+  then χ must be 0).
 - The R image (`imaging.coherent_image`) is scalar (|a| and phase); H and S images are vectorial.
 
 ## 2 Recipes
@@ -740,7 +743,8 @@ source: Collimated beam (plane wave per field angle and wavelength).
 - param `wavelengths_um` numbers = [0.6328] [µm]
 - param `field_angles_deg` numbers = [[0.0, 0.0]] [deg]
 - param `irradiance` number = 1.0 [W/mm²]
-- param `polarisation` point = [1.0, 0.0, 0.0] – field direction
+- param `polarisation` point = [1.0, 0.0, 0.0] – field direction (elliptical: the major axis)
+- param `ellipticity_deg` number = 0.0 [deg] range -45…45 – 0: linear; ±45: circular; > 0: the field turns from the polarisation towards direction × polarisation (S3 > 0, e^(−iωt))
 - param `up` point = [0.0, 1.0, 0.0] – direction of the local v axis
 - param `gaussian_waist` number = 0.0 [mm] range 0… – 0: uniform; > 0: Gaussian amplitude exp(−ρ²/w²)
 
@@ -1154,7 +1158,7 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
 12. The cache key covers node params and plain `shared` values; objects in `shared` (a compiled
     system, a material library) are not hashed: pass `environment=` or a fresh `cache`.
     Mutating `node.params` between runs is fine (keys change).
-13. Complex `polarisation` only from Python; JSON documents hold real vectors.
+13. Complex `polarisation` only from Python; JSON documents and the GUI use `ellipticity_deg`.
 
 ### 6.2 Performance knobs
 

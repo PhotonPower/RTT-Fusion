@@ -63,7 +63,9 @@ def source(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> lis
     """Collimated beam: disc of `radius` around `center` perpendicular to `direction`; one bundle
     per field angle (deg, about the frame's u and v axes) and wavelength. With `gaussian_waist`
     w > 0 the amplitude is exp(−ρ²/w²) (a Gaussian beam at its waist, cut at `radius`);
-    `irradiance` is then the irradiance on the axis."""
+    `irradiance` is then the irradiance on the axis. `ellipticity_deg` χ makes the polarisation
+    elliptical: field direction cos χ·p̂ + i sin χ·(d × p̂), p̂ the major axis (tan χ = minor/major
+    axis; ±45° circular; χ > 0: S3 > 0, the field turns from p̂ towards d × p̂)."""
     centre = _vec(node, "center", (0.0, 0.0, 0.0))
     frame = Plane.make(
         centre, _vec(node, "direction", (0.0, 0.0, 1.0)), _vec(node, "up", (0.0, 1.0, 0.0))
@@ -88,6 +90,15 @@ def source(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> lis
         if np.linalg.norm(pol) < 1e-12:
             raise ExecutionError("exec.param", "polarisation along the beam", node.id)
         pol = pol / np.linalg.norm(pol)
+        chi = float(node.params.get("ellipticity_deg", 0.0))
+        if chi != 0.0:
+            if not -45.0 <= chi <= 45.0 or np.linalg.norm(pol.imag) > 1e-12:
+                raise ExecutionError(
+                    "exec.param", "ellipticity outside ±45° or with a complex polarisation", node.id
+                )
+            minor = np.cross(d, pol.real)  # the minor axis d × p̂ (unit: p̂ ⟂ d)
+            c = np.radians(chi)
+            pol = np.cos(c) * pol + 1j * np.sin(c) * minor
         for wi, wl in enumerate(wavelengths):
             out.append(
                 RayBundle(
@@ -469,7 +480,22 @@ TYPES = (
             ParamSpec("wavelengths_um", "numbers", [0.6328], unit="µm"),
             ParamSpec("field_angles_deg", "numbers", [[0.0, 0.0]], unit="deg"),
             ParamSpec("irradiance", "number", 1.0, unit="W/mm²"),
-            ParamSpec("polarisation", "point", [1.0, 0.0, 0.0], description="field direction"),
+            ParamSpec(
+                "polarisation",
+                "point",
+                [1.0, 0.0, 0.0],
+                description="field direction (elliptical: the major axis)",
+            ),
+            ParamSpec(
+                "ellipticity_deg",
+                "number",
+                0.0,
+                unit="deg",
+                minimum=-45.0,
+                maximum=45.0,
+                description="0: linear; ±45: circular; > 0: the field turns from the polarisation "
+                "towards direction × polarisation (S3 > 0, e^(−iωt))",
+            ),
             ParamSpec("up", "point", [0.0, 1.0, 0.0], description="direction of the local v axis"),
             ParamSpec(
                 "gaussian_waist",

@@ -302,7 +302,7 @@ def test_w87_fresnel_rhomb_makes_circular_light() -> None:
     e1 = maxwell_reflection(pol.astype(complex), np.array([0.0, 0, 1]), -n1, N_GLASS, 1.0)
     e2 = maxwell_reflection(e1, k1, n1, N_GLASS, 1.0)
     got = out.field_vectors()
-    assert np.abs(got - e2).max() < 1e-12  # measured
+    assert np.abs(got - e2).max() < 1e-12  # measured 5e-16 (before R31: 0.78)
     st = stokes(got, p_axis, s_axis)
     assert np.abs(st[:, 0] - 1).max() < 1e-12  # lossless
     # circular: S3/S0 = ±sin(2δ), the phase difference of two reflections
@@ -367,7 +367,7 @@ def test_w88_elliptical_gaussian_round_trip_keeps_stokes() -> None:
     st1 = stokes(np.asarray(back.field.amplitude) @ rot, plane.u, plane.v)
     pts0, pts1 = np.asarray(fb.field.points), np.asarray(back.field.points)
     assert len(pts1) == len(pts0) and np.abs(pts1 - pts0).max() < 1e-15
-    assert np.abs(st1 - st0).max() < 1e-12 * st0[:, 0].max()  # measured
+    assert np.abs(st1 - st0).max() < 1e-12 * st0[:, 0].max()  # before R31: S3 lost
     # the state: S3/S0 = sin 2χ, S2/S1 = tan 2ψ – a beam of one polarisation
     expected = np.array([np.cos(2 * chi) * np.cos(2 * psi), np.cos(2 * chi) * np.sin(2 * psi)])
     assert np.abs(st1[:, 1:3] / st1[:, :1] - expected).max() < 1e-12

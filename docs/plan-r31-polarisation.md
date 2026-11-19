@@ -68,3 +68,48 @@ die Umwandlungen Feld → Strahlen übersteht. Reelle Daten bleiben lesbar.
 | W87 | Fresnel-Rhombus: zirkulare Polarisation aus 45°-linearer durch zwei Totalreflexionen (n = 1,51, 54,6°) | analytische Jones-Rechnung (Phasensprung der Totalreflexion, Born/Wolf 1.5.4) |
 | W88 | Rundreise H → R → H eines elliptisch polarisierten Gauß-Strahls | Stokes-Parameter je Stützstelle und integriert unverändert |
 | W89 | Lineare Polarisation unverändert; reelle prt aus älteren Port-Daten | Ergebnisse vor R31 (1e−12); komplex mit Imaginärteil 0 |
+
+## Nachtrag R31 (Umsetzung, 2026-11-19)
+
+**Gebaut.** Wie im Entwurf: `light.split_field` (f = a·ê, |a| = |f|, ê komplex mit ê†ê = 1;
+Phase entlang der großen Halbachse, Vorzeichen an der größten Komponente von f wie bisher, bei
+zirkularer Polarisation die Phase der größten Komponente), `light.split_along` und
+`light.physical_split` (Grenzfläche, verdichtete Gruppe), `RayBundle.field_vectors()`
+(a·prt·jones) und die Umwandlung reeller `prt`/`jones` in `RayBundle.__post_init__`. Benutzt in
+`field.field_to_rays`, `particle.spectrum_to_rays`, `particle.rays_to_spectrum`/`ray_powers`,
+`grating.split_prt` (auch `fg.stack`), `backend_rtt._scalar_along`, `optics._fresnel`,
+`condense.apply`. Abnahme W86–W89 (`tests/test_complex_polarisation.py`, W86 (b) in
+`tests/test_particle_spectra.py`):
+
+| Prüfung | Referenz | Toleranz | vor R31 | gemessen |
+|---|---|---|---|---|
+| W86 (b) Kugel (K3 mit S), Detektor 1 mm davor um 1,5 mrad gekippt: Bild | \|E∞\|²/r² von CliffordBem allein | 1e−2 der Spitze | 7,0e−2 (Diagonale 0,867) | 4,4e−3 (Pixel ≥ 0,995) |
+| W86 (b) dasselbe gegen den ungekippten Detektor | Bild ungekippt | 1e−2 | 7,0e−2 | 7,8e−3 |
+| W86 (a) Dipol p = (1; 0,3i; 0), ungekippt / gekippt | Kugelwelle | 1e−2 | 3,9e−3 / 8,7e−2 | 3,9e−3 / 5,0e−3 (linear p: 4,9e−3) |
+| W87 Fresnel-Rhombus, Feld je Strahl | Maxwell-Randbedingungen | 1e−12 | 0,78 (Leistung 2 %, S3 = 0) | 5e−16 (S3/S0 = 1) |
+| W88 elliptischer Gauß-Strahl H → R → H, Stokes je Stützstelle | vorher | 1e−12 | S3 → 0, Leistung 0,876 | < 1e−12 |
+| W89 lineare Polarisation: Aufteilung, Grenzflächenfaktor | Formeln von R18–R30 | 1e−15 / 1e−14 | – | erfüllt |
+| W89 bestehende Tests (Ausgänge aller Auswertungen, 165 Tests) | Lauf auf `main` | 1e−12 | – | NUMBERS |
+
+**Entscheidungen und Abweichungen.**
+
+1. **Kein eigenes Feld für ê.** prt (N, 3, 3) war schon komplex; die Polarisation ist prt·jones.
+   Ein Feld (N, 3) neben prt wäre redundant und an jeder Wechselwirkung doppelt zu führen.
+2. **Phase des Skalars.** Das skalare R-Bild nimmt |a| und eine Phase je Bündel; für lineare
+   Polarisation bleibt a bis auf Rundung gleich (auch das Vorzeichen bei zwei gleich großen
+   Komponenten), für elliptische folgt die Phase der großen Halbachse (stetig über das Bündel,
+   außer bei zirkularer Polarisation). An Grenzflächen und in verdichteten Gruppen bleibt der
+   Faktor auf die geometrisch mitgeführte Polarisation bezogen, damit Teilsummen mehrerer
+   Bündel (W50) ihre Vorzeichen behalten.
+3. **Das R-Bild bleibt skalar** (R15). Es nutzt jetzt die volle Feldstärke einer elliptischen
+   Polarisation, addiert die Bündel einer Kohärenzgruppe aber weiter ohne ihre Polarisation;
+   vektoriell rechnen H und S.
+4. **Debye-Weg des Teilchens mit der Phase der Amplitude.** Bisher ging nur |a| ein; für die
+   Strahlen einer Linse (reelle Amplituden) gleich, nach einem Spiegel oder H → R jetzt richtig.
+5. **Bestehende Tests unverändert** (nur ein Kommentar in `test_particle_spectra.py` zur
+   gekippten Ebene und die neue Prüfung W86 (b) im Fixture `k3`).
+
+**Offen.**
+
+- Vektorielles R-Bild (Bündel einer Kohärenzgruppe mit verschiedener Polarisation).
+- Komplexe `polarisation` der Quelle im JSON-Format des Modells (bisher nur aus Python).

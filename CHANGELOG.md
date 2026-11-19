@@ -4,6 +4,25 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Geändert
+
+- Komplexe Polarisation der Strahlen, Stufe R31 (Plan `docs/plan-r31-polarisation.md`): die
+  Polarisation eines Strahls ê = prt·jones ist ein komplexer Einheitsvektor, elliptische
+  Polarisation übersteht jede Umwandlung. Wo das Feld eines Strahls in Skalar und Rest geteilt
+  wird (`light.split_field`: |a| = |f|, Phase entlang der großen Halbachse), gibt es keine
+  Projektion auf eine reelle Richtung mehr: H → R (`field.field_to_rays`, damit S → R und das
+  Umtasten auf gekippte Detektoren), Strahlweg von `fusion.particle`, Gitter und Stapel
+  (`grating.split_prt`), geteilte Raytatouille-Pfade. `optics.interface` und `fusion.condensed`
+  tragen die Fresnel- bzw. Tabellenmatrix in prt (`light.physical_split`), gemischtes s/p-Licht
+  und der Phasensprung der Totalreflexion sind exakt; der skalare Faktor bleibt für s- und
+  p-Licht der bisherige. Der Debye-Weg des Teilchens nimmt die Phase der Strahlamplitude mit.
+  Lineare Polarisation rechnet wie bisher (bis auf Rundung). `RayBundle` nimmt reelle `prt` und
+  `jones` (Port-Daten von vor R31) als complex128; neu `RayBundle.field_vectors()`.
+  Abnahme W86–W89 (`tests/test_complex_polarisation.py`, `tests/test_particle_spectra.py`): die
+  Rückstreuung der Kugel auf einem um 1,5 mrad gekippten Detektor wie ungekippt (bisher bis
+  13 % weniger an den Diagonalen), Fresnel-Rhombus gegen die Randbedingungen, Rundreise
+  H → R → H eines elliptischen Gauß-Strahls mit gleichen Stokes-Parametern.
+
 ## [0.3.0] - 2026-11-19
 
 ### Hinzugefügt

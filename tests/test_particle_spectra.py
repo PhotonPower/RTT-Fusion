@@ -445,11 +445,11 @@ def test_w86_k3_backscatter_on_a_tilted_detector(k3: dict[str, Any]) -> None:
     values = np.asarray(k3["image_tilted"].values) / k3["S"]["incident"]
     ref = _far_field_image(k3, plane, values.shape[0])
     error = np.abs(values - ref).max() / ref.max()
-    assert error < 1e-2  # as the untilted detector (W85 (b): 5.5e-3); measured
+    assert error < 1e-2  # as the untilted detector (W85 (b): 5.5e-3); measured 4.4e-3
     untilted = np.asarray(k3["image"].values) / k3["S"]["incident"]
-    assert np.abs(values - untilted).max() < 1e-2 * untilted.max()  # measured
+    assert np.abs(values - untilted).max() < 1e-2 * untilted.max()  # measured 7.8e-3
     ratio = values / ref
-    assert ratio.min() > 0.98  # before R31: 0.87 at the diagonals
+    assert ratio.min() > 0.98  # measured 0.995; before R31: 0.867 at the diagonals
 
 
 # ------------------------------------------------------------------------------ planner

@@ -495,3 +495,137 @@ CAD (Raytatouille-Fusion #138, Branch `feat/r30e-spectra`):
   den Server. Die Planprüfung aus R30c (Pläne mit „auto“ unverändert) gilt weiter.
 - Die Meldungen von Blöcken in anderen Prozessen kommen als Protokollzeilen herüber; ihr Ort ist
   der Block in diesem Prozess, wie ihn die Zeile nennt.
+
+## Nachtrag R30f: „auto“ wählt S hinter einem Spektrum (Entscheidung des Maintainers, 2026-11-19)
+
+**Anlass.** R30c (Punkt 8) und R30d (Punkt 8) ließen offen: „auto“ lässt S zwischen nativen Blöcken
+zu, die Kostenrangfolge (R 1 < H 3 < S 4, S → R 1) behielt aber R überall, wo R zulässig ist, auch
+hinter einem Block, der S bekommt. Ein Spektrum, das auf einer Verbindung mit „auto“ einen nativen
+Block erreicht, blieb zur Laufzeit ein Spektrum, der Plan sagte R (Anzeige „R→S“ seit R30e).
+Frage: Soll „auto“ hinter einem S-Eingang S selbst wählen? **Entscheidung: ja.**
+
+**Regel.** Eine Verbindung auf „auto“, deren beide Blöcke S nativ nehmen und auf der S zulässig ist
+(Sockets, verfügbar, Gültigkeit), ist **S ohne Kostenvergleich**, wenn das Licht am Ausgang des
+Quellblocks ein Spektrum ist:
+
+- der Block macht S, was auch immer ankommt (`Requirements.produces`, aus dem Attribut `produces`
+  des Auswerters: `fusion.convert` mit `to = S`), oder
+- er gibt weiter, was er bekommt (Gitter, Stapel, verdichtete Gruppe, Teilchen), und **alles**, was
+  über Lichtverbindungen an diesen Ausgang reicht (`through`), kommt auf Verbindungen mit S an –
+  fest S, nur S zulässig (Quelle, die nur S abgibt) oder nach dieser Regel S.
+
+Die Regel wirkt in Lichtrichtung weiter: Eine Kette nativer Blöcke hinter einem Spektrum ist
+durchgehend S, ohne Umwandlung. Grund im Plan: „spectra from gr; S kept between blocks that take
+it natively (among RHS)“.
+
+**Umsetzung im Planer.** Erst die Wahl nach Kosten wie bisher (Vorwärts- und Rückwärtslauf,
+`planner._choose`), dann werden die Verbindungen nach der Regel auf S festgelegt
+(`planner._spectra_kept`, in Lichtrichtung, eine ganze Kette in einer Runde) und die Wahl
+wiederholt, bis keine weitere hinzukommt (jede Runde legt mindestens eine Verbindung fest). Die
+Wiederholung braucht es, weil die festgelegten Verbindungen die Wahl davor ändern können (eine
+Umwandlung R → S im Block davor wird angerechnet). `Requirements.produces` kommt in der Ausführung
+aus `Executor.produces`, im Dokument aus `workflow.produces_of` (über `workflow.checked`, das die
+CAD aufruft). Ohne `native` (abstrakte Planung) gilt die Regel nicht.
+
+**Kostenmodell.** `REPRESENTATION_COST` und die Kosten der Operatoren bleiben unverändert; neu ist
+eine Einschränkung des Bereichs, keine neue Zahl. Auf diesen Verbindungen war R nie eine echte
+Alternative: Die Ausführung behält seit R30b ein Spektrum auf einer Verbindung auf „auto“ vor einem
+Block, der S nativ nimmt; die geplante Umwandlung S → R im Block (`orders_to_rays`, 1) und R auf der
+Verbindung (1) wurden nie gerechnet. Der Vergleich R 2 < S 4 verglich also mit einem Plan, den es
+nicht gab. Jetzt zählt `Plan.cost` die S-Verbindungen (je 4) und die Umwandlung in S dort, wo sie
+geschieht (`fusion.convert` mit `to = S`: R → H → S, 3). Pläne mit Spektren sind dadurch teurer
+ausgewiesen, ohne dass sich die Rechnung ändert; die Kosten bleiben eine Rangfolge, bis `estimate`
+(Stufe 3) sie ersetzt.
+
+**Entscheidung: Strahlen werden nicht von selbst zu Spektren.** Gefragt war auch, ob „auto“ S
+wählen soll, wenn eine Kette nativer Blöcke Strahlen bekommt (Gitter → Stapel → Detektor), also
+einmal R → S am ersten Gitter statt Strahlen durch die ganze Kette. **Nein:** „auto“ bleibt dort
+bei R. S entsteht, wo der Nutzer es verlangt (fester Transport S an einer Verbindung,
+`fusion.convert` mit `to = S`) oder eine Quelle es abgibt; dahinter hält „auto“ es jetzt durch die
+Kette. Gründe:
+
+1. R → S geht über H (Entscheidung 2): Das Strahlnetz muss dicht genug sein, ohne Kaustik am Port;
+   die PFT gilt nur bei großer lokaler Fresnel-Zahl, sonst FFT auf einem Gitter. Fern vom Fokus –
+   breite, gekrümmte Bündel wie hinter dem Objektiv des Linnik auf der Probe – wird das Spektrum
+   groß (Tausende Wellen), und am Gitter kostet jede Welle eine FourierGrating-Lösung (ohne
+   `field_transfer = interpolated`). Der Strahlweg rechnet je Strahl lokal exakt und billig.
+2. Der Gewinn von S – exakte Ausbreitung zwischen parallelen Ebenen, Interferenz der Ordnungen,
+   keine Rundreise über H je Block – zeigt sich bei kleinen Strahlen, nahe einem Fokus und bei
+   engen Abständen der Blöcke (W81 b). Das kann der Planer ohne `estimate` nicht erkennen; mit den
+   vorläufigen Kosten wäre jede Wahl von S an dieser Stelle geraten.
+3. Bestehende Pläne (Linnik, die Beispiele, K3 mit Strahlen) und ihre Ergebnisse bleiben gleich.
+   Der Nutzer setzt S an *einer* Stelle, der Rest der Kette folgt.
+
+Wiedervorlage mit Stufe 3 (gemessene statt geschätzte Kosten).
+
+**Vorsichtig, wo S schlechter wäre.** Die Regel greift nicht:
+
+- **vor einem Block, der S nicht nativ nimmt** (Linsen, Spiegel, Raytatouille-Abschnitte): S ist
+  dort für „auto“ gar nicht zulässig; es bleibt bei R mit S → R im Block davor. Früher umzuwandeln
+  brächte nichts: S → R ist ohnehin einmal nötig, und bis dahin bleibt S exakt;
+- **bei gemischten Eingängen** (ein Block bekommt ein Spektrum und Strahlen): Wahl nach Kosten wie
+  bisher; die Strahlen würden auf einer S-Verbindung sonst R → H → S gewandelt (die Ausführung
+  lässt auf R beides, wie es kommt);
+- **bei Strahlen oder Feldern am Eingang** (auch bei festem H davor);
+- **wenn die Gültigkeit S ablehnt** (`validity`) oder S nicht verfügbar ist;
+- **ein fester Transport bleibt.** Ein festes H hinter dem Spektrum bekommt S → H im Block davor.
+
+**Laufzeit.** Die Ergebnisse ändern sich nicht: Ein Spektrum auf „auto“ vor einem nativen Block
+blieb schon bisher ein Spektrum, auf einer S-Verbindung bleibt es das ebenso; Strahlen oder Felder
+erreichen solche Verbindungen nach der Regel nicht. Es ändern sich der Plan, damit der Schlüssel
+des Caches (betroffene Blöcke rechnen einmal neu), und die Anzeige: `Context.used` ist gleich
+(Darstellung S, Kette „S“), weicht aber nicht mehr vom Plan ab – die CAD zeigt „S“ statt „R→S“.
+`rtt.detector` richtet sich im Modus ganzer Pfade nach der geplanten Darstellung seiner
+Verbindung (R30b, Punkt 4); mit `fusion.convert(to = S)` direkt davor ist sie jetzt S, wie der
+Konvertierungsblock es verlangt.
+
+**Pläne vorher und nachher** (`main` gegen diesen Stand, mit fieldtracing, `native` aus den
+Auswertern; Verbindungen in Lichtrichtung, * = fest):
+
+| Graph | vorher | nachher |
+|---|---|---|
+| `linnik_mini` mit `fg.grating` als Probe, alles „auto“ | 8 × R, keine Umwandlung | unverändert |
+| dasselbe mit H fest an der Probe | H an der Probe, R sonst; Objektiv R→H, H→R | unverändert |
+| `auflicht_si_gitter.rttf`, `auflicht_si_gitter_100x.rttf` (Dokument über `workflow.checked` und Lauf mit den `rtt.*`-Auswertern) | 12 bzw. 13 × R, keine Umwandlung | unverändert |
+| K3: Quelle → Linse → Teilchen → Detektor, „auto“ | R, R, R | unverändert |
+| K3 mit S* in das Teilchen | R, S*, R; Linse R→H→S, Teilchen S→R | R, S*, **S**; nur Linse R→H→S |
+| Quelle → `fusion.convert(S)` → Gitter → Stapel → Detektor | R, R, R, R; keine Umwandlung (Spektren flossen trotzdem) | R, **S, S, S**; convert R→H→S |
+| Strahlen → Gitter → Stapel → Detektor | R, R, R | unverändert (Entscheidung oben) |
+| `fusion.convert(S)` → Gitter → Linse → Detektor | R, R, R, R | R, **S**, R, R; Gitter S→R (an der Linse wie bisher S → H → R) |
+| `fusion.convert(S)` → Detektor (R30b, R30e) | R, getragen S | S |
+
+**Tests angepasst** (die beabsichtigte Planänderung, freigegeben mit dieser Entscheidung):
+
+- `test_spectrum_links.py::test_used_representation_per_link`: `toS.out -> cam.in` geplant S statt
+  R; der Eintrag in `Context.used` ist derselbe.
+- `test_spectrum_detector.py::test_auto_plans_with_native_detectors`: dieselbe Verbindung S, die
+  Verbindung in `fusion.convert` bleibt R.
+- `test_spectrum_blocks.py::test_spectra_flow_between_native_blocks`: Gitter → Stapel und Stapel →
+  Detektor S statt R, Grund „spectra from gr“, keine Umwandlung; das Bild ist wie bisher gleich dem
+  mit festem S.
+- `test_particle_spectra.py::test_w85_k3_in_the_graph_without_rays`: Teilchen → Detektor S statt R,
+  nur noch die Umwandlung an der Linse.
+
+Unverändert grün: `test_existing_plans_are_unchanged`,
+`test_existing_auto_plans_with_a_grating_sample_are_unchanged`,
+`test_auto_plans_around_the_particle_are_unchanged` (alle mit Strahlen am Eingang) und
+`test_auto_takes_s_only_between_native_blocks` (eine Quelle ohne Eingang, die nichts über ihre
+Ausgabe sagt, gibt Strahlen). Neu in `test_planner.py`: die Regel an abstrakten Blöcken (Quelle,
+die S macht; festes S; Block ohne S dazwischen; gemischte Eingänge; festes H dahinter; Gültigkeit;
+`fusion.convert` mit `to = R`; ohne `native`).
+
+**CAD (Raytatouille-Fusion).** Kein Code nötig: Das Dokument plant über `workflow.checked`, das
+`produces` jetzt selbst mitgibt, und das Schild zeigt geplant→getragen nur, wo es abweicht. Zu
+ändern sind dort der Test `tests/python/test_workflow_plugin.py` (`fusion.convert(S)` → Kamera:
+geplant S statt R, angezeigt S statt R→S), das Handbuch (Kapitel Node-Workflow: „auto wählt S nur
+…, wenn R nicht zulässig ist“ und das Beispiel R→S unter „Was wurde verwendet?“) und die
+Kommentare mit dem Beispiel R→S (`node_editor.cpp`, `workflow_plugin.py`).
+
+**Offen.**
+
+- Tabelle 6.3 im Planer hat kein direktes S → H (die inverse PFT bzw. FFT der Ausführung); die
+  billigste Kette läuft über R (Anzeige „SRH“), gerechnet wird S → H direkt.
+- `fusion.convert` mit `to = H` vor einem Block, der H nimmt: der Plan sagt weiter R, es fließen
+  Felder (wie bisher). `produces` gibt es her; die Regel gilt bewusst nur für S.
+- Ein stummgeschalteter nativer Block reicht ein Spektrum durch, gilt dem Planer aber als R-Block
+  (wie bisher).

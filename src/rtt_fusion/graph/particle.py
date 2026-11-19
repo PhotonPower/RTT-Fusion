@@ -23,6 +23,18 @@ their direction cosines, so that downstream ray tubes carry the right power.
 Collimated light (all rays parallel, e.g. Köhler illumination of the sample) is one plane wave
 with the field of the ray through the particle centre.
 
+Plane-wave spectra (S, stage R30d, docs/plan-s-spektren.md): a `SpectrumBundle` on the input is
+the incident angular spectrum as it is – no internal R -> S (`incident_waves`: the spectrum moved
+onto CliffordBem's front port in the spectrum, `spectrum.propagate`, an exact phase per wave; the
+particle's axis is the spectrum's normal). The backscattered far field leaves as a spectrum too
+(`scattered_spectrum`): the waves of CliffordBem's front port referred to the particle centre, in
+the mirrored frame (u, −v, −n) as behind a grating, with the sampling of a point source at the
+centre (spectral phase ψ̃ = 0, ρ = 0, Hessian 0: the far field E∞ is the residual) moved in the
+spectrum onto a plane `OUT_WAVELENGTHS` wavelengths in front of the particle, so that S -> H there
+is the inverse PFT of the spherical wave E∞ e^(ikr)/r (exact for it) and S -> R gives rays from
+that plane, away from the centre. Rays in, rays out (the Debye way above); spectra in, spectra
+out.
+
 Each coherence group is scattered on its own (the BEM problem is linear; groups add as
 intensities). The particle: a sphere of radius `radius_um` and index `index` (complex allowed)
 in a medium of index `n_medium`, meshed as an icosphere of level `refinement` (CliffordBem
@@ -31,6 +43,7 @@ in a medium of index `n_medium`, meshed as an icosphere of level `refinement` (C
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -38,6 +51,7 @@ from scipy.spatial import Delaunay, QhullError
 
 from rtt_fusion._types import FloatArray
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
+from rtt_fusion.graph.field import FieldError
 from rtt_fusion.graph.light import CoherenceKey, Plane, RayBundle
 from rtt_fusion.graph.model import (
     Category,
@@ -49,9 +63,15 @@ from rtt_fusion.graph.model import (
     light_out,
 )
 from rtt_fusion.graph.registry import NodeTypeRegistry
+from rtt_fusion.graph.spectrum import CUT_WARNING, SpectrumBundle, propagate
 from rtt_fusion.ports import PlaneWaves, Port
 
 UM_PER_MM = 1000.0
+#: the scattered spectrum leaves on a plane this many wavelengths (in the medium) in front of the
+#: particle: S -> H there is the inverse PFT of the spherical wave E∞ e^(ikr)/r (exact for it; the
+#: near field, 1/(kD) of it, and the evanescent waves are not in the far field anyway), and the
+#: blocks behind the particle – an objective, a detector – lie beyond it
+OUT_WAVELENGTHS = 100.0
 
 
 def _vertex_areas(points: FloatArray) -> FloatArray:
@@ -206,6 +226,118 @@ def spectrum_to_rays(
     )
 
 
+def incident_waves(
+    sb: SpectrumBundle, centre: FloatArray, port_z_mm: float, n: float, notes: list[str]
+) -> tuple[PlaneWaves, FloatArray]:
+    """S at the particle (R30d): the incident spectrum on CliffordBem's front port, local frame
+    (u, v of the spectrum's plane, z = its normal, origin = `centre`), port at z = `port_z_mm`.
+
+    The spectrum is moved onto the port plane in the spectrum (`spectrum.propagate`, plan S4:
+    e^(i k·Δr) per wave, exact; its sampling is not needed there and left behind); waves that
+    are evanescent there (decayed on the way) are left out with `exec.spectrum_cut`. Discrete
+    waves stay discrete, a continuous spectrum keeps its dΩ. Returns the plane waves and the
+    rotation global -> local (rows u, v, n)."""
+    if abs(sb.refractive_index - n) > 1e-9:
+        raise ExecutionError(
+            "exec.particle",
+            f"the spectrum runs in a medium of index {sb.refractive_index:g}, the particle sits "
+            f"in n_medium = {n:g}",
+        )
+    plane = sb.plane
+    axis = np.asarray(plane.normal, dtype=float)
+    port_plane = Plane(np.asarray(centre) + port_z_mm * axis, axis, plane.u, plane.v)
+    moved = propagate(replace(sb, support=None), port_plane, notes)
+    w = moved.waves
+    kz = w.port.kz(w.kx, w.ky)
+    keep = (np.imag(kz) == 0.0) & (np.real(kz) > 0.0)
+    if not keep.all():
+        e = np.column_stack([np.asarray(w.field), w.ez()])
+        weight = np.sum(np.abs(e) ** 2, axis=1)
+        if w.solid_angle is not None:
+            weight = weight / np.asarray(w.solid_angle)
+        share = float(weight[~keep].sum() / (weight.sum() or 1.0))
+        if share > CUT_WARNING:
+            notes.append(
+                f"exec.spectrum_cut: {share:.2e} of the power left out of the spectrum "
+                "(evanescent at the particle)"
+            )
+    if not keep.any():
+        raise ExecutionError("exec.particle", "no propagating wave reaches the particle")
+    waves = PlaneWaves(
+        Port(port_z_mm, 1, complex(n), sb.wavelength_um),
+        np.ascontiguousarray(np.asarray(w.kx)[keep]),
+        np.ascontiguousarray(np.asarray(w.ky)[keep]),
+        np.ascontiguousarray(np.asarray(w.field)[keep], dtype=np.complex128),
+        orders=None if w.orders is None else np.asarray(w.orders)[keep],
+        solid_angle=None if w.solid_angle is None else np.asarray(w.solid_angle)[keep],
+    )
+    return waves, np.asarray(np.stack([plane.u, plane.v, axis]))
+
+
+def out_distance(sb: SpectrumBundle) -> float:
+    """Distance (mm) of the scattered spectrum's plane in front of the particle:
+    `OUT_WAVELENGTHS` wavelengths in the medium."""
+    return OUT_WAVELENGTHS * sb.wavelength_um / UM_PER_MM / sb.refractive_index
+
+
+def scattered_spectrum(
+    waves: PlaneWaves,
+    centre: FloatArray,
+    rot: FloatArray,
+    distance: float,
+    template: SpectrumBundle,
+    path: tuple[str, ...],
+    notes: list[str] | None = None,
+) -> SpectrumBundle:
+    """The backscattered far field as a spectrum (R30d): `waves` on CliffordBem's front port
+    (direction −1, with `solid_angle`, local frame `rot` about `centre`) referred to the centre
+    (factor e^(−i k_z z_port)), in the mirrored frame (u, −v, −n) – the light now runs along −n
+    – with the sampling of a point source at the centre: ψ̃ = 0, −ρ = 0 and Hessian 0, the
+    residual field_j/Δ²k_j (∝ the far field E∞, slowly varying for a small body). Then moved in
+    the spectrum (`spectrum.propagate`, S4) onto the plane `distance` in front of the centre:
+    ψ̃ = k·Δr, −ρ = the ray shift −(k∥/k_n)·distance, Hessian −distance·∂²k_n/∂k∥², regular for
+    distance > 0, so that S -> H there is the inverse PFT of the spherical wave."""
+    from fieldtracing.field import GridlessField
+
+    if waves.solid_angle is None:
+        raise ExecutionError("exec.particle", "scattered waves without solid angles")
+    port = waves.port
+    n = float(np.real(port.index))
+    k = n * port.k0
+    kz = np.real(port.kz(waves.kx, waves.ky))  # |k_z|; the waves run along −n
+    field = np.column_stack([np.asarray(waves.field), waves.ez()])
+    field = field * np.exp(-1j * port.direction * kz * port.z)[:, None]  # e^(−i k_z z), k_z < 0
+    mirror = np.array([1.0, -1.0, -1.0])
+    e = field * mirror
+    kx = np.ascontiguousarray(np.asarray(waves.kx, dtype=float))
+    ky = np.ascontiguousarray(-np.asarray(waves.ky, dtype=float))
+    w = np.asarray(waves.solid_angle, dtype=float)
+    u, v, axis = (np.asarray(r, dtype=float) for r in rot)
+    at_centre = Plane(np.asarray(centre, dtype=float), -axis, u, -v)
+    out_port = Port(0.0, 1, complex(n), port.wavelength_um)
+    count = len(kx)
+    support = GridlessField(
+        np.column_stack([kx, ky]),
+        np.zeros(count),
+        np.zeros((count, 2)),
+        np.zeros((count, 2, 2)),
+        np.asarray(e / (w * k * kz)[:, None], dtype=np.complex128),
+        float(port.wavelength_um),
+        n,
+        "frequency",
+    )
+    sb = SpectrumBundle(
+        template.key,
+        at_centre,
+        PlaneWaves(out_port, kx, ky, np.ascontiguousarray(e[:, :2]), solid_angle=w),
+        path,
+        template.branch,
+        support,
+    )
+    target = Plane(np.asarray(centre) - distance * axis, -axis, u, -v)
+    return propagate(sb, target, notes)
+
+
 def _structure(node: Node, centre: FloatArray, wavelength_um: float) -> Any:
     from rtt_fusion.adapters import cliffordbem as cba
 
@@ -230,7 +362,9 @@ def _structure(node: Node, centre: FloatArray, wavelength_um: float) -> Any:
     )
 
 
-def particle(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[RayBundle]:
+def particle(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:
+    """Backscatter of every incident bundle: rays as rays (the Debye way, module docstring),
+    spectra as spectra (R30d)."""
     from rtt_fusion.adapters import cliffordbem as cba
 
     centre = np.asarray(node.params.get("point", [0.0, 0.0, 0.0]), dtype=float)
@@ -246,46 +380,66 @@ def particle(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> l
     }
     store = ctx.operators if ctx.operators is not None else ctx.shared.setdefault("operators", {})
     # the bundles grouped by operator, each group in one apply_many (L4)
-    groups: dict[str, list[tuple[int, RayBundle, Any, Any]]] = {}
-    bundles = [b for b in inputs.get("in", []) if isinstance(b, RayBundle)]
-    for index, b in enumerate(bundles):
-        alive = np.asarray(b.alive)
-        axis = np.asarray(b.direction)[alive].mean(axis=0)
-        axis = axis / np.linalg.norm(axis)
-        key = f"particle|{b.wavelength_um!r}|{sorted(local.items(), key=str)!r}"
-        if key not in store:
-            structure = _structure(node, centre, b.wavelength_um)
-            try:
-                store[key] = cba.prepare(structure, (b.wavelength_um,))
-            except ValueError as e:
+    groups: dict[str, list[tuple[int, Any, Any, Any]]] = {}
+    bundles = [b for b in inputs.get("in", []) if isinstance(b, RayBundle | SpectrumBundle)]
+    notes: list[str] = []
+    try:
+        for index, b in enumerate(bundles):
+            key = f"particle|{b.wavelength_um!r}|{sorted(local.items(), key=str)!r}"
+            if key not in store:
+                structure = _structure(node, centre, b.wavelength_um)
+                try:
+                    store[key] = cba.prepare(structure, (b.wavelength_um,))
+                except ValueError as e:
+                    raise ExecutionError("exec.solver", f"CliffordBem: {e}", node.id) from e
+                ctx.log.append(f"{node.id}: CliffordBem operator prepared")
+            handle = store[key]
+            z_front, n_bg = handle.structure.z_front_mm, handle.structure.n_background
+            if isinstance(b, SpectrumBundle):
+                waves, rot = incident_waves(b, centre, z_front, n_bg, notes)
+            else:
+                alive = np.asarray(b.alive)
+                axis = np.asarray(b.direction)[alive].mean(axis=0)
+                waves, rot = rays_to_spectrum(b, centre, axis / np.linalg.norm(axis), z_front, n_bg)
+            groups.setdefault(key, []).append((index, b, waves, rot))
+        results: dict[int, Any] = {}
+        for key, group in groups.items():
+            handle = store[key]
+            try:  # recycling only pays across several solves; one bundle stays as with apply
+                applied = cba.apply_many(
+                    handle, [g[2] for g in group], n_theta, n_phi, recycle=len(group) > 1
+                )
+            except (ValueError, RuntimeError) as e:
                 raise ExecutionError("exec.solver", f"CliffordBem: {e}", node.id) from e
-            ctx.log.append(f"{node.id}: CliffordBem operator prepared")
-        handle = store[key]
-        waves, rot = rays_to_spectrum(
-            b, centre, axis, handle.structure.z_front_mm, handle.structure.n_background
-        )
-        groups.setdefault(key, []).append((index, b, waves, rot))
-    results: dict[int, RayBundle] = {}
-    for key, group in groups.items():
-        handle = store[key]
-        try:  # recycling only pays across several solves; one bundle stays as with apply
-            applied = cba.apply_many(
-                handle, [g[2] for g in group], n_theta, n_phi, recycle=len(group) > 1
-            )
-        except (ValueError, RuntimeError) as e:
-            raise ExecutionError("exec.solver", f"CliffordBem: {e}", node.id) from e
-        for (index, b, waves, rot), result in zip(group, applied, strict=True):
-            back = result["front"]  # backscattered, direction −1 on the front port
-            results[index] = spectrum_to_rays(back, centre, rot, b, (*b.path, f"{node.id}[back]"))
-            ctx.log.append(f"{node.id}: CliffordBem, {len(waves.kx)} incident waves, key {b.key}")
-        ctx.log.append(f"{node.id}: CliffordBem apply_many, {len(group)} incidence(s)")
+            for (index, b, waves, rot), result in zip(group, applied, strict=True):
+                back = result["front"]  # backscattered, direction −1 on the front port
+                path = (*b.path, f"{node.id}[back]")
+                if isinstance(b, SpectrumBundle):
+                    results[index] = scattered_spectrum(
+                        back, centre, rot, out_distance(b), b, path, notes
+                    )
+                    kind = "spectrum"
+                else:
+                    results[index] = spectrum_to_rays(back, centre, rot, b, path)
+                    kind = "rays"
+                ctx.log.append(
+                    f"{node.id}: CliffordBem, {len(waves.kx)} incident waves ({kind}), key {b.key}"
+                )
+            ctx.log.append(f"{node.id}: CliffordBem apply_many, {len(group)} incidence(s)")
+    except FieldError as e:
+        raise ExecutionError("exec.field", str(e), node.id) from e
+    finally:
+        ctx.log.extend(f"{node.id}: {line}" for line in notes)
     return [results[i] for i in sorted(results)]
+
+
+particle.representations = frozenset("RS")  # type: ignore[attr-defined]
 
 
 TYPE = NodeType(
     "fusion.particle",
     Category.DOMAIN,
-    (light_in("in", "RH"), light_out("out", "RH", label="backscattered")),
+    (light_in("in", "RHS"), light_out("out", "RHS", label="backscattered")),
     (
         ParamSpec("point", "point", [0.0, 0.0, 0.0], unit="mm", description="particle centre"),
         ParamSpec("radius_um", "number", 0.25, unit="µm", minimum=0.0),
@@ -309,4 +463,14 @@ def register(registry: NodeTypeRegistry) -> dict[str, Evaluator]:
     return dict(EVALUATORS)
 
 
-__all__ = ["CoherenceKey", "ray_powers", "rays_to_spectrum", "register", "spectrum_to_rays"]
+__all__ = [
+    "OUT_WAVELENGTHS",
+    "CoherenceKey",
+    "incident_waves",
+    "out_distance",
+    "ray_powers",
+    "rays_to_spectrum",
+    "register",
+    "scattered_spectrum",
+    "spectrum_to_rays",
+]

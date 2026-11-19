@@ -52,7 +52,9 @@ Blocks with S (stage R30c): gratings, layer stacks and condensed groups take spe
 (`graph.grating`, `graph.stack`, `graph.condense`); `order_support` carries the sampling through
 a map k∥ -> F·k∥ + n·K, `overlapping_orders` is the `exec.spectrum_rays` check of orders that
 are not separated (S -> R). `GridSupport` is plain data, so spectra travel as port data to
-blocks of other processes.
+blocks of other processes. The particle (stage R30d, `graph.particle`) takes the incident
+spectrum as it is and gives its far field as a spectrum with the sampling of a point source.
+A continuous spectrum without a sampling cannot become a field or rays (`SupportError`).
 - `spectrum_image`: the detector's coherent image from spectra (and fields). The field of the
   waves at the pixel centres in space, E(r) = Σ_j E_j e^(i k_j·(r − o)), with no plane in between:
   exact for discrete waves (diffraction orders, interference of plane waves) and for a tilted
@@ -66,7 +68,10 @@ blocks of other processes.
   rays land at the focus: the sum is the Debye integral without its approximation); far from a
   focus – a large beam on a window far away – it does not, and the spectrum goes back to a field
   on its plane (S → H, the inverse transform) and through Fieldtracing's propagation planner as
-  H does (`field.field_sums`), with a line in the log. Cost: one complex exponential per pixel
+  H does (`field.field_sums`), with a line in the log; before that the waves of a PFT spectrum
+  whose rays pass far from the window are left out (`towards`, R30d: the nearly grazing
+  directions of a far field would spread the field over the whole plane). Cost: one complex
+  exponential per pixel
   and wave, in blocks of `SUM_BLOCK` (a PFT spectrum of 2800 waves on 256² pixels: 1.8·10⁸
   terms, a few seconds); a grid spectrum on a detector parallel to its plane with the same axes
   (up to sign and order) factorises into two matrix products over the grid's rows and columns
@@ -129,6 +134,16 @@ SUM_BLOCK = 4_000_000
 #: waves × pixels above which a spectrum with a sampling goes through H instead of the direct
 #: sum (a few seconds); a grid spectrum on a parallel detector factorises and has no limit
 SUM_BUDGET = 500_000_000
+#: before S -> H for an image (the sum would alias, or cost too much), the waves of a PFT spectrum
+#: whose rays pass further than this many half-diagonals of the window from its centre are left
+#: out (R30d): they do not reach the window, and a wide field – the nearly grazing directions of
+#: a scatterer's far field – would make the propagation planner take waves over the whole plane
+REACH = 10.0
+
+
+class SupportError(FieldError):
+    """S -> H (or S -> R) of a continuous spectrum without a sampling (`SpectrumBundle.support`
+    None), e.g. behind a condensed group: the executor reports it as `exec.spectrum_support`."""
 
 
 @dataclass(frozen=True)
@@ -496,10 +511,18 @@ def spectrum_to_field(sb: SpectrumBundle, notes: list[str] | None = None) -> Fie
 
     w = sb.waves
     support = sb.support
-    if w.solid_angle is None or support is None:
+    if w.solid_angle is None:
         raise FieldError(
-            "discrete plane waves (no solid angles or no sampling) do not become a field on a "
-            "plane; a detector takes them as they are (the sum of the waves)"
+            "discrete plane waves (no solid angles) do not become a field on a plane; a detector "
+            "takes them as they are (the sum of the waves)"
+        )
+    if support is None:
+        raise SupportError(
+            "the continuous spectrum"
+            + (f" from {sb.path[-1]}" if sb.path else "")
+            + " carries no sampling (support): S -> H and S -> R are not possible behind that "
+            "block – a detector takes it as it is (the sum of the waves); for rays or fields "
+            "further on, give the link into that block H or R"
         )
     n = sb.refractive_index
     k = n * sb.k0
@@ -972,6 +995,66 @@ def grid_sum(
     return np.asarray(out.reshape(ny * nx, 3) @ rot)
 
 
+def subset(sb: SpectrumBundle, keep: Any) -> SpectrumBundle:
+    """The waves `keep` (mask or indices) of a spectrum, with their part of the sampling (a PFT
+    sampling has one sample per wave, a grid sampling one bin per wave)."""
+    w = sb.waves
+    waves = ports.PlaneWaves(
+        w.port,
+        np.ascontiguousarray(np.asarray(w.kx)[keep]),
+        np.ascontiguousarray(np.asarray(w.ky)[keep]),
+        np.ascontiguousarray(np.asarray(w.field)[keep]),
+        orders=None if w.orders is None else np.asarray(w.orders)[keep],
+        solid_angle=None if w.solid_angle is None else np.asarray(w.solid_angle)[keep],
+    )
+    support: Any = sb.support
+    if _is_pft(support):
+        support = type(support)(
+            np.asarray(support.points)[keep],
+            np.asarray(support.phase)[keep],
+            np.asarray(support.gradient)[keep],
+            np.asarray(support.hessian)[keep],
+            np.asarray(support.amplitude)[keep],
+            support.wavelength_um,
+            support.refractive_index,
+            "frequency",
+        )
+    elif isinstance(support, GridSupport):
+        support = GridSupport(support.grid, np.asarray(support.bins)[keep], support.field)
+    return SpectrumBundle(sb.key, sb.plane, waves, sb.path, sb.branch, support)
+
+
+def towards(
+    sb: SpectrumBundle, plane: Plane, half_u: float, half_v: float, notes: list[str] | None
+) -> SpectrumBundle:
+    """A PFT spectrum without the waves whose rays – from where they land on the spectrum's plane
+    (ρ = −∇ψ̃), along k – pass further than `REACH` half-diagonals of the window on `plane` from
+    its centre (or run parallel to it), with a note of their share of the power; other spectra
+    and spectra whose waves all pass near the window unchanged."""
+    if not _is_pft(sb.support) or sb.waves.solid_angle is None:
+        return sb
+    rot = _frame(sb.plane)
+    start = sb.plane.origin + (-np.asarray(sb.support.gradient, dtype=float)) @ rot[:2]
+    k_loc, e_loc = _local_waves(sb)
+    d = np.real(k_loc) @ rot
+    d = d / np.linalg.norm(d, axis=1)[:, None]
+    dn = d @ np.asarray(plane.normal)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = ((np.asarray(plane.origin) - start) @ np.asarray(plane.normal)) / dn
+        reach = np.linalg.norm(start + t[:, None] * d - plane.origin, axis=1)
+    keep = np.isfinite(reach) & (reach <= REACH * float(np.hypot(half_u, half_v)))
+    if keep.all() or keep.sum() < 3:
+        return sb
+    if notes is not None:
+        weight = _weights(sb, e_loc)
+        share = float(weight[~keep].sum() / (weight.sum() or 1.0))
+        notes.append(
+            f"{sb.key.source}: {int((~keep).sum())} of {len(keep)} waves pass far from the window "
+            f"({share:.2e} of the power) – left out before S -> H"
+        )
+    return subset(sb, keep)
+
+
 def _on_pixels(
     sb: SpectrumBundle,
     plane: Plane,
@@ -993,7 +1076,7 @@ def _on_pixels(
             f"{step:.3g} rad between neighbouring waves, at most {limit:.3g}) – S -> H on its "
             "plane and propagated as a field"
         )
-        return spectrum_to_field(sb, notes)
+        return spectrum_to_field(towards(sb, plane, half_u, half_v, notes), notes)
     e = grid_sum(sb, plane, half_u, half_v, nx, ny)
     cost = count * len(pixels)
     if e is None and cost > SUM_BUDGET and sb.support is not None:
@@ -1002,7 +1085,7 @@ def _on_pixels(
             f"{cost:.2g} terms (at most {SUM_BUDGET:.2g}) – S -> H on its plane and propagated "
             "as a field"
         )
-        return spectrum_to_field(sb, notes)
+        return spectrum_to_field(towards(sb, plane, half_u, half_v, notes), notes)
     if np.isnan(step):
         notes.append(
             f"{sb.key.source}: a continuous spectrum without its sampling – the sum of its "
@@ -1073,6 +1156,7 @@ __all__ = [
     "SPECTRUM_THRESHOLD",
     "GridSupport",
     "SpectrumBundle",
+    "SupportError",
     "beam_size",
     "field_to_spectrum",
     "fresnel_number",
@@ -1083,6 +1167,8 @@ __all__ = [
     "spectrum_power",
     "spectrum_to_field",
     "spectrum_to_rays",
+    "subset",
     "sum_phase_step",
+    "towards",
     "wave_sum",
 ]

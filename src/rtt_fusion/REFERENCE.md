@@ -1086,6 +1086,11 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
   σy, method="cubic")`, `near_rayleigh_anomaly`, `prt_matrix`, `prt_many`.
   `couplings.grating_table`: `order_efficiencies`, `with_efficiencies(system, surface_id,
   table)`. `couplings.focus.richards_wolf(port, na, focus_mm, ...) -> PlaneWaves`.
+- `couplings.dipole_layers` (K5a): `Stack(n_bottom, layers=((n, t_mm), …) bottom-up, n_top,
+  z_bottom)`; `rates(stack, λ_um, z0_mm, p, na=0) -> Rates(total, up, down, collected, na,
+  .absorbed)` normalised to the free dipole in the emitter's medium (total: Chance–Prock–Silbey);
+  `angular_spectrum(stack, λ_um, z0, p, theta, phi, side='bottom'|'top') -> (N, 3)` A per solid
+  angle, supercritical light included. Emitter in a lossless medium; indices may be complex.
 - `rtt_fusion.convert`: `hemisphere(n_theta, n_phi, forward)`, `far_field_to_spectrum(...)`;
   `phasespace`: `field_to_packets`, `coupling_into_gaussian_mode`; `portdata.write(value,
   folder) -> handle`, `portdata.read(handle, folder)` (values as JSON + .npy);

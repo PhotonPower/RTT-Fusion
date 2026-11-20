@@ -6,6 +6,19 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- **Dipol in einem planaren Schichtstapel** (Pilot K5, Stufe K5a, `couplings.dipole_layers`): je
+  transversaler Wellenzahl der Stapel mit dem Dipol als Primärfeld (Weyl) gelöst, TE/TM über
+  stetige Tangentialfelder, nur abklingende Exponentialfaktoren. `rates` gibt die Gesamtrate
+  (Chance–Prock–Silbey), die Leistung nach oben und unten, den Anteil in einer NA und die
+  Absorption, normiert auf den freien Dipol; `angular_spectrum` das Winkelspektrum je Raumwinkel
+  im Substrat oder oben, überkritisches Licht (SAF, SPCE durch Gold) eingeschlossen. Der Dipol
+  darf in einer Schicht sitzen (Adschicht aus n(z)). Tests W94: homogenes Medium = freier Dipol
+  (Fernfeld 1e−12), Spiegel = Spiegeldipol (Fehler wie 1/|n|, < 1e−4 bei n = i·10⁵), Nahfeld-Rate
+  = abgestrahlte Leistung ohne Verluste (1e−9), Gold absorbiert, Quadratur konvergiert (1e−6),
+  Leistung des Winkelspektrums = Fluss ins Glas (1e−6).
+
+### Hinzugefügt
+
 - **BindOptiX als Datenknoten** (D13 Schritt 3, RTT-Fusion#106): Block `bindoptix.signal`
   (Eingänge `excitation` F, `response` M, `dipoles` Q, `occupancy` B; Ausgang `rates`) rechnet mit
   dem Signalmodell von BindOptiX (`bindoptix.signal.spot_rates_s`) die mittlere erkannte

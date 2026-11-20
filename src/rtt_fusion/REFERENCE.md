@@ -557,7 +557,7 @@ Generated from the registry by `tools/gen_llm_reference.py`; do not edit by hand
 `python -m rtt_fusion.reference --blocks --live` prints it from the installed registry.
 
 <!-- BEGIN GENERATED: block catalogue (python tools/gen_llm_reference.py) -->
-38 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
+39 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
 
 ### analysis.camera_image
 analysis: Irradiance image of a detector with many rays.
@@ -818,6 +818,19 @@ detector: Plane detector: coherent image (amplitudes per coherence group).
 - param `drive` number = 0.0 [mm] – shift along the normal
 - param `half_size` numbers = [1.0, 1.0] [mm]
 - param `pixels` numbers = [128, 128]
+
+### optics.ideal_imaging
+domain: Ideal aplanatic microscope (objective + tube lens, magnification M) for angular spectra (S), Richards–Wolf.
+- needs: fieldtracing (point-source sampling of the image spectrum); evaluator in `rtt_fusion.graph.ideal_imaging`; native: S
+- sockets: `in` in light:S; `out` out light:S
+- ports: in(in→·); out(·→out)
+- param `point` point = [0.0, 0.0, 0.0] [mm] – object point (on the axis, in the object plane)
+- param `axis` point = [0.0, 0.0, 1.0]
+- param `up` point = [0.0, 1.0, 0.0] – fixes the in-plane axes
+- param `image_point` point = [0.0, 0.0, 200.0] [mm] – where the object point is imaged
+- param `magnification` number = 40.0 range 0… – lateral magnification |M| (the image is inverted)
+- param `na` number = 1.4 range 0… – object-side NA
+- param `n_image` number = 1.0 range 1… – image-side index
 
 ### optics.interface
 domain: Plane interface of two media (Fresnel, s and p).

@@ -357,3 +357,52 @@ def angular_spectrum(
         k = np.real(n_m) * k0
         out[i] = k**2 * abs(np.cos(theta[i])) * e[0, 0]
     return out
+
+
+def angular_spectrum_grid(
+    stack: Stack,
+    wavelength_um: float,
+    z0: float,
+    theta: FloatArray,
+    phi: FloatArray,
+    side: str = "bottom",
+) -> ComplexArray:
+    """A(k̂) as `angular_spectrum` on the grid theta × phi for the three unit dipoles x̂, ŷ, ẑ:
+    shape (3 dipoles, Nθ, Nφ, 3); the stack is solved once per θ. A(p) = Σ_j p_j A[j]."""
+    k0 = 2 * np.pi / (wavelength_um * 1e-3)
+    s = stack.medium_at(z0)
+    m = len(stack.indices)
+    medium = 0 if side == "bottom" else m - 1
+    n_m = complex(stack.indices[medium])
+    if abs(np.imag(n_m)) > 0:
+        raise ValueError("the half-space must be lossless")
+    theta = np.asarray(theta, dtype=float).ravel()
+    phi = np.asarray(phi, dtype=float).ravel()
+    kappa = np.real(n_m) * k0 * np.sin(theta)
+    resp = _solve(stack, k0, z0, kappa)
+    amp = (resp.bottom if side == "bottom" else resp.top).copy()
+    if s == medium:
+        zi = stack.interfaces
+        kz_s = _kz(np.array([stack.indices[s]]), k0, kappa)[:, 0]
+        if side == "bottom":
+            amp[:, :, 1] += np.exp(1j * kz_s * (z0 - zi[0]))[:, None]
+        else:
+            amp[:, :, 0] += np.exp(1j * kz_s * (zi[-1] - z0))[:, None]
+    direction = -1.0 if side == "bottom" else 1.0
+    k = np.real(n_m) * k0
+    out = np.zeros((3, len(theta), len(phi), 3), dtype=complex)
+    for j in range(3):
+        p = np.zeros(3, dtype=complex)
+        p[j] = 1.0
+        prim, _ = _primary(p, stack.indices[s], k0, kappa, phi)
+        psi = np.einsum("kad,kpad->kpa", amp, prim)
+        e = _vector(psi, n_m, k0, kappa, phi, direction)
+        out[j] = k**2 * np.abs(np.cos(theta))[:, None, None] * e
+    return out
+
+
+def free_power(stack: Stack, wavelength_um: float, z0: float) -> float:
+    """P₀ of a unit dipole in the emitter's medium in the units of this module (k₀⁴ n/(12π))."""
+    k0 = 2 * np.pi / (wavelength_um * 1e-3)
+    n = float(np.real(stack.indices[stack.medium_at(z0)]))
+    return float(k0**4 * n / (12 * np.pi))

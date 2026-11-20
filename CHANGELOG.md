@@ -6,6 +6,19 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- **Block `emitter.dipole_layer`** (Pilot K5, Stufe K5b): Fluorophore an der Sensoroberfläche als
+  Lichtquelle. Eingänge Q (Dipol-Reihe, Zustand `state`, Stichprobe `samples`/`seed`) und N
+  (Adschicht über der Oberfläche) sind optional; ohne Q ein Dipol aus `dipole` und `height_nm`.
+  Der Stapel (Substrat, `layers` unter der Oberfläche wie ein Goldfilm, Adschicht, Lösung) wird je
+  Emitter mit `couplings.dipole_layers` gelöst, Nahfeld und überkritisches Licht eingeschlossen.
+  Jeder Emitter gibt ein kontinuierliches Spektrum S mit eigener Kohärenzgruppe, mit der
+  Abtastung einer Punktquelle am Fußpunkt, verschoben auf die Port-Ebene (`distance`), so dass
+  S → H → R dahinter gehen. Gesammelt wird im Substrat oder in der Lösung (`collect`); das
+  Sensorsystem wird nach der Spiegelregel von `in_rtt_frame` (DP8) in die Pose gelegt. Leistung:
+  `power_w` (freier Dipol) mal Anteil in der NA. `couplings.dipole_layers.angular_spectrum_grid`
+  löst den Stapel einmal je θ für drei Einheitsdipole. Tests W95: Leistung = Anteil aus
+  `rates` (2e−4, auch mit Gold), Wellen = gespiegeltes Winkelspektrum (1e−9), Emitter inkohärent
+  und seitlich verschoben um e^(−ik∥·Δ), Profil gleich dem Lösungsmittel ändert nichts.
 - **Dipol in einem planaren Schichtstapel** (Pilot K5, Stufe K5a, `couplings.dipole_layers`): je
   transversaler Wellenzahl der Stapel mit dem Dipol als Primärfeld (Weyl) gelöst, TE/TM über
   stetige Tangentialfelder, nur abklingende Exponentialfaktoren. `rates` gibt die Gesamtrate

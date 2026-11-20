@@ -87,12 +87,13 @@ def emitters(node: Node, q: bmd.DipoleSeries | None) -> tuple[Any, Any]:
     state = str(node.params.get("state", "") or "") or q.states[0]
     if state not in q.series:
         raise ExecutionError("exec.data", f"state {state!r} not in Q {q.states}", node.id)
-    a = np.asarray(q.series[state], dtype=float).reshape(-1, 7)
+    every: Any = np.asarray(q.series[state], dtype=float).reshape(-1, 7)
+    a = every
     count = int(node.params.get("samples", 20))
-    if count < len(a):
+    if count < len(every):
         rng = np.random.default_rng(int(node.params.get("seed", 0)))
-        a = a[np.sort(rng.choice(len(a), count, replace=False))]
-    xy = a[:, 0:2] - np.asarray(q.series[state], dtype=float).reshape(-1, 7)[:, 0:2].mean(axis=0)
+        a = every[np.sort(rng.choice(len(every), count, replace=False))]
+    xy = a[:, 0:2] - every[:, 0:2].mean(axis=0)
     pos = np.column_stack([xy, a[:, 6]])
     mu = a[:, 3:6] / np.linalg.norm(a[:, 3:6], axis=1, keepdims=True)
     return pos, mu

@@ -42,6 +42,8 @@ NEEDS: dict[str, str] = {
     "display.beam": "nothing; fields on its input: fieldtracing",
     "optics.ideal_imaging": "fieldtracing (point-source sampling of the image spectrum); "
     "evaluator in `rtt_fusion.graph.ideal_imaging`",
+    "emitter.response_map": "bindoptix (builds its EmitterResponseTable); physics in "
+    "`couplings.dipole_layers`",
     "emitter.dipole_layer": "fieldtracing (the spectra carry a point-source sampling); "
     "evaluator in `rtt_fusion.graph.emitter`, physics in `couplings.dipole_layers`",
     "display.image": "nothing",

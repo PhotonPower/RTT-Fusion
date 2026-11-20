@@ -557,7 +557,7 @@ Generated from the registry by `tools/gen_llm_reference.py`; do not edit by hand
 `python -m rtt_fusion.reference --blocks --live` prints it from the installed registry.
 
 <!-- BEGIN GENERATED: block catalogue (python tools/gen_llm_reference.py) -->
-39 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
+40 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
 
 ### analysis.camera_image
 analysis: Irradiance image of a detector with many rays.
@@ -651,6 +651,17 @@ source: Fluorophores at a sensor surface (Q, N) emitting through a planar stack,
 - param `n_theta` integer = 32 range 4…
 - param `n_phi` integer = 48 range 8…
 - param `distance` number = 0.01 [mm] range 0… – port plane in front of the surface along direction
+
+### emitter.response_map
+data: Emitter response table M of a planar stack for BindOptiX (decay, radiative and detected rates per height and detector region).
+- needs: bindoptix (builds its EmitterResponseTable); physics in `couplings.dipole_layers`; native: – (data block, no light)
+- sockets: `profile` in data:N; `response_map` out data:response_map
+- param `wavelength_um` number = 0.67 [µm] range 0… – emission wavelength
+- param `n_substrate` number = 1.52 range 1…
+- param `n_solution` number = 1.333 range 1… – index above the surface (N's solvent if N is connected)
+- param `layers` numbers = [] – rows (thickness nm, Re n, Im n) between substrate and surface, bottom-up (e.g. 50, 0.197, 3.44 for gold)
+- param `heights_nm` numbers = [2.0, 5.0, 10.0, 20.0, 50.0] [nm] – heights of the emitters above the surface (increasing)
+- param `regions` text = "camera=substrate:0:1.45" – name=substrate|solution:na_lo:na_hi, … – detector regions as bands of n sin θ
 
 ### fg.grating
 splitter: Periodic sample (FourierGrating table): diffraction orders as channels.
@@ -1129,7 +1140,10 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
   `angular_spectrum(stack, λ_um, z0, p, theta, phi, side='bottom'|'top') -> (N, 3)` A per solid
   angle, supercritical light included. Emitter in a lossless medium; indices may be complex.
   `angular_spectrum_grid(stack, λ, z0, theta, phi, side) -> (3 dipoles, Nθ, Nφ, 3)`,
-  `free_power(stack, λ, z0)`. Block `emitter.dipole_layer` (K5b, section 3): Q/N → S per emitter.
+  `free_power(stack, λ, z0)`, `band_power(stack, λ, z0, p, side, na_lo, na_hi)`. Blocks
+  `emitter.dipole_layer` (K5b): Q/N → S per emitter; `emitter.response_map` (K5d): stack →
+  BindOptiX `EmitterResponseTable` (`adapters.bindoptix.response_table`, `response_tensors`,
+  `parse_regions`: "name=substrate|solution:na_lo:na_hi, …", bands must not overlap).
 - `rtt_fusion.convert`: `hemisphere(n_theta, n_phi, forward)`, `far_field_to_spectrum(...)`;
   `phasespace`: `field_to_packets`, `coupling_into_gaussian_mode`; `portdata.write(value,
   folder) -> handle`, `portdata.read(handle, folder)` (values as JSON + .npy);

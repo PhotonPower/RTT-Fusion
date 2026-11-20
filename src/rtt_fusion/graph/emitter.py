@@ -40,6 +40,7 @@ from rtt_fusion.graph.model import (
     ParamSpec,
     PortFrame,
     data_in,
+    data_out,
     light_out,
 )
 from rtt_fusion.graph.registry import NodeTypeRegistry
@@ -213,7 +214,7 @@ def _frames(node: Node) -> dict[str, PortFrame]:
     return {"out": PortFrame((float(o[0]), float(o[1]), float(o[2])), (d[0], d[1], d[2]))}
 
 
-TYPES = (
+TYPES: tuple[NodeType, ...] = (
     NodeType(
         "emitter.dipole_layer",
         Category.SOURCE,
@@ -318,7 +319,78 @@ TYPES = (
     ),
 )
 
-EVALUATORS: dict[str, Evaluator] = {"emitter.dipole_layer": dipole_layer}
+
+HEIGHTS_NM = [2.0, 5.0, 10.0, 20.0, 50.0]
+REGIONS = "camera=substrate:0:1.45"
+
+
+def response_map(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> Any:
+    """The emitter response table M (BindOptiX `EmitterResponseTable`) of the block's stack over
+    `heights_nm` for the detector regions `regions` (K5d)."""
+    from rtt_fusion.adapters import bindoptix as bxa
+
+    profile = inputs.get("profile") or None
+    if isinstance(profile, list):
+        profile = profile[0] if len(profile) == 1 else None
+    if profile is not None and not isinstance(profile, bmd.Profile):
+        raise ExecutionError("exec.data", "profile: not a BioOptoMD index profile (N)", node.id)
+    stack = stack_of(node, profile)
+    heights = [float(h) / 1000.0 for h in node.params.get("heights_nm", HEIGHTS_NM)]
+    if not heights or any(h <= 0 for h in heights) or sorted(set(heights)) != heights:
+        raise ExecutionError("exec.param", "heights_nm: increasing, above the surface", node.id)
+    try:
+        regions = bxa.parse_regions(str(node.params.get("regions", REGIONS)))
+        return bxa.response_table(
+            stack,
+            float(node.params.get("wavelength_um", 0.67)),
+            heights,
+            regions,
+            {"block": node.id},
+        )
+    except ImportError as e:
+        raise ExecutionError("exec.solver", f"BindOptiX is not installed ({e})", node.id) from e
+    except ValueError as e:
+        raise ExecutionError("exec.param", str(e), node.id) from e
+
+
+response_map.representations = frozenset()  # type: ignore[attr-defined]
+
+_STACK_PARAMS = tuple(
+    p for p in TYPES[0].params if p.name in ("wavelength_um", "n_substrate", "n_solution", "layers")
+)
+
+TYPES = (
+    *TYPES,
+    NodeType(
+        "emitter.response_map",
+        Category.DATA,
+        (data_in("profile", "N"), data_out("response_map", "response_map")),
+        (
+            *_STACK_PARAMS,
+            ParamSpec(
+                "heights_nm",
+                "numbers",
+                HEIGHTS_NM,
+                unit="nm",
+                description="heights of the emitters above the surface (increasing)",
+            ),
+            ParamSpec(
+                "regions",
+                "text",
+                REGIONS,
+                description="name=substrate|solution:na_lo:na_hi, … – detector regions "
+                "as bands of n sin θ",
+            ),
+        ),
+        description="Emitter response table M of a planar stack for BindOptiX (decay, radiative "
+        "and detected rates per height and detector region)",
+    ),
+)
+
+EVALUATORS: dict[str, Evaluator] = {
+    "emitter.dipole_layer": dipole_layer,
+    "emitter.response_map": response_map,
+}
 
 
 def register(registry: NodeTypeRegistry) -> dict[str, Evaluator]:

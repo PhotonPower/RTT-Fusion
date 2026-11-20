@@ -50,6 +50,7 @@
 | **K5b Emitter-Block** | `emitter.dipole_layer`: Q (Stichprobe je Zustand) und N → S je Emitter (eigene Kohärenzgruppe, Punktquellen-Abtastung, Port-Ebene), Stapel mit Gold und Adschicht, Spiegelregel DP8 ([Plan](plan-k5-biosensor.md)) | Leistung = Anteil aus `rates`, Wellen = gespiegeltes Winkelspektrum, Verschiebung, Profil = Lösungsmittel ✅ (W95) |
 | **K5c Abbildung** | `optics.ideal_imaging`: ideales aplanatisches Mikroskop für S (Richards–Wolf, Vergrößerung M, NA, Bild umgekehrt), Ausgang mit Punktquellen-Abtastung am Bildpunkt; Kette Emitter → Mikroskop → Detektor ([Plan](plan-k5-biosensor.md)) | Leistung in der NA, Airy bei kleiner NA, Verschiebung −M·Δ, Ring des z-Dipols ✅ (W96) |
 | **K5d Antwortkarte** | `emitter.response_map`: A_tot, A_rad, A_det je Höhe und NA-Band aus dem Stapel als BindOptiX-`EmitterResponseTable`; Kette K5 → K8 ohne hp-FEM ([Plan](plan-k5-biosensor.md)) | quadratische Form, Spiegeldipol (DP4), Annahme durch BindOptiX (DP6), Ausbeute und Sammelanteil (DP5), Signal ✅ (W97) |
+| **K8a Zeitschleife** | `bindoptix.time_loop`: Optik einmal je Rezeptorzustand (Emitter → Mikroskop → Kamera, gecacht), Bilder und Kennzahlen über der Zeit als Σ f_s(t)·I_s aus BindOptiX' Belegung B; dunkle Zustände (D13 Schritt 5) | inkohärente Summe, einmal je Zustand, dunkle und fehlende Zustände, Kette mit B aus BindOptiX ✅ (W98); Biologie im Block mit einem Szenario-Format von BindOptiX offen |
 
 ## Entscheidungen
 

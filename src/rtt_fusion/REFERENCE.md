@@ -557,7 +557,7 @@ Generated from the registry by `tools/gen_llm_reference.py`; do not edit by hand
 `python -m rtt_fusion.reference --blocks --live` prints it from the installed registry.
 
 <!-- BEGIN GENERATED: block catalogue (python tools/gen_llm_reference.py) -->
-40 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
+41 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
 
 ### analysis.camera_image
 analysis: Irradiance image of a detector with many rays.
@@ -581,6 +581,16 @@ analysis: Detected photon rate per receptor, spot, time and detector region (Bin
 - param `port_irradiance_w_m2_per_mw` number = 0.0 [W/m² per mW] range 0… – irradiance at the spot per mW at the input port (0: the map is per mW already)
 - param `port_irradiance_status` choice = "P" of L|K|P – L literature, K calibration, P placeholder
 - param `port_irradiance_reference` text = "" – source of L or K
+
+### bindoptix.time_loop
+meta: Time loop of a biosensor: optics once per receptor state, images over time from BindOptiX's occupancy B (Σ f_s(t)·I_s).
+- needs: nothing itself (meta block; its B from `data.occupancy` needs bindoptix); evaluator in `rtt_fusion.graph.time_loop`; native: – (data block, no light)
+- sockets: `occupancy` in data:occupancy; `observe` in data:result; `results` out data:result
+- through: results ← occupancy
+- param `emitter` text = "" – emitter block whose state is varied (empty: the only one)
+- param `collect` text = "" – observed output block.socket if nothing is linked to observe
+- param `dark_states` text = "" – states without fluorophores, comma-separated (e.g. cell)
+- param `measure` choice = "power" of peak|centre|power – measure of the images over time
 
 ### biooptomd.layer
 data: Refractive-index profile n(z) (N) and dipole series per receptor state (Q, BioOptoMD's sensor frame) of a BioOptoMD run.

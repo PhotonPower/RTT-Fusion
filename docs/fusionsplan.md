@@ -235,6 +235,10 @@ Vorzeichen nach dem ADR-Entwurf `PhotonPower/BindOptiX`, `docs/adr-entwurf-daten
   Vertrag, (3) Datenknoten `bindoptix.signal` (Eingänge `field_map`, `response_map`, Q je Zustand,
   `occupancy`; Ausgang `result`) mit `tests/test_adapter_bindoptix.py`, (4) K5, (5) Meta-Block
   `bindoptix.time_loop` mit R20 und Pilot K8.
+- **Stand 2026-11-20:** Schritte 1–5 umgesetzt (R33, R34, K5a–K5d, K8a in `docs/roadmap.md`). Die
+  Zeitschleife nimmt B von BindOptiX und rechnet die Optik einmal je Zustand (Entscheidung des
+  Maintainers 2026-11-20); dass der Block die Biologie selbst startet, wartet auf ein
+  Szenario-Format in BindOptiX. Die Abnahme von K8 gegen eine Messung ist offen.
 
 ### 6.3 Umwandlungen
 

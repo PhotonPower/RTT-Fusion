@@ -6,6 +6,17 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- **Zeitschleife `bindoptix.time_loop`** (D13 Schritt 5, Pilot K8): ein Meta-Block über dem
+  optischen Graphen. Die Biologie rechnet BindOptiX und liefert die Belegung B
+  (`data.occupancy`); der Block setzt den Zustand des Emitters (`emitter.dipole_layer`,
+  `state`) auf jeden Zustand von B, wertet den beobachteten Ausgang (Kamerabild) je Zustand
+  einmal aus (gecacht, Optik einmal je Design) und setzt die Bilder über der Zeit exakt als
+  Σ_s f_s(t)·I_s zusammen (Emitter sind inkohärent). Zustände ohne Fluorophor nennt
+  `dark_states`. Ergebnis `TimeSeries` (`image(t, spot)`, `measures` über der Zeit, Kurven in
+  `display.plot`). Tests W98: Bild bei f = (½, ½) = halbes inkohärentes Bild aller Emitter
+  (1e−9), Optik genau einmal je Zustand, dunkle und fehlende Zustände, Kette mit B aus
+  BindOptiX. Ein Szenario-Format, mit dem der Block die Biologie selbst starten kann, ist in
+  BindOptiX vorgeschlagen (PhotonPower/BindOptiX#44).
 - **Antwortkarte M aus dem Schichtstapel** (Pilot K5, Stufe K5d): Block `emitter.response_map`
   (Stapel wie `emitter.dipole_layer`, Adschicht aus N, Höhen `heights_nm`, Detektorbereiche
   `regions` als NA-Bänder im Substrat oder in der Lösung) gibt BindOptiX' `EmitterResponseTable`

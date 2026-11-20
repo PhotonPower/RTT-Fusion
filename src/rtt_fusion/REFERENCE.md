@@ -557,7 +557,7 @@ Generated from the registry by `tools/gen_llm_reference.py`; do not edit by hand
 `python -m rtt_fusion.reference --blocks --live` prints it from the installed registry.
 
 <!-- BEGIN GENERATED: block catalogue (python tools/gen_llm_reference.py) -->
-37 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
+38 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
 
 ### analysis.camera_image
 analysis: Irradiance image of a detector with many rays.
@@ -627,6 +627,30 @@ analysis: Display: curves of a sweep / optimisation, or profiles of an image.
 - needs: nothing; native: R
 - sockets: `in` in data:result; `view` out data:result
 - param `title` text = "" – window title (default: the block name)
+
+### emitter.dipole_layer
+source: Fluorophores at a sensor surface (Q, N) emitting through a planar stack, near field and supercritical light included (S, one coherence group per emitter).
+- needs: fieldtracing (the spectra carry a point-source sampling); evaluator in `rtt_fusion.graph.emitter`, physics in `couplings.dipole_layers`; native: S
+- sockets: `dipoles` in data:Q; `profile` in data:N; `out` out light:S
+- ports: out(·→out)
+- param `center` point = [0.0, 0.0, 0.0] [mm] – point on the sensor surface under the emitters
+- param `direction` point = [0.0, 0.0, 1.0] – direction of the collected light (away from the surface)
+- param `up` point = [0.0, 1.0, 0.0] – fixes the in-plane axes
+- param `collect` choice = "substrate" of substrate|solution – half-space the light is collected from
+- param `wavelength_um` number = 0.67 [µm] range 0… – emission wavelength
+- param `n_substrate` number = 1.52 range 1…
+- param `n_solution` number = 1.333 range 1… – index above the surface (N's solvent if N is connected)
+- param `layers` numbers = [] – rows (thickness nm, Re n, Im n) between substrate and surface, bottom-up (e.g. 50, 0.197, 3.44 for gold)
+- param `state` text = "" – receptor state of Q (empty: the first)
+- param `samples` integer = 20 range 1… – emitters drawn from Q (each a coherence group)
+- param `seed` integer = 0
+- param `height_nm` number = 5.0 [nm] range 0… – without Q: height of the one dipole above the surface
+- param `dipole` point = [0.0, 0.0, 1.0] – without Q: orientation of the one dipole (sensor frame)
+- param `power_w` number = 1.0 [W] range 0… – power a free dipole in the emitter's medium would emit
+- param `na` number = 1.52 range 0… – largest n sin θ of the waves (default: up to grazing)
+- param `n_theta` integer = 32 range 4…
+- param `n_phi` integer = 48 range 8…
+- param `distance` number = 0.01 [mm] range 0… – port plane in front of the surface along direction
 
 ### fg.grating
 splitter: Periodic sample (FourierGrating table): diffraction orders as channels.
@@ -1091,6 +1115,8 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
   .absorbed)` normalised to the free dipole in the emitter's medium (total: Chance–Prock–Silbey);
   `angular_spectrum(stack, λ_um, z0, p, theta, phi, side='bottom'|'top') -> (N, 3)` A per solid
   angle, supercritical light included. Emitter in a lossless medium; indices may be complex.
+  `angular_spectrum_grid(stack, λ, z0, theta, phi, side) -> (3 dipoles, Nθ, Nφ, 3)`,
+  `free_power(stack, λ, z0)`. Block `emitter.dipole_layer` (K5b, section 3): Q/N → S per emitter.
 - `rtt_fusion.convert`: `hemisphere(n_theta, n_phi, forward)`, `far_field_to_spectrum(...)`;
   `phasespace`: `field_to_packets`, `coupling_into_gaussian_mode`; `portdata.write(value,
   folder) -> handle`, `portdata.read(handle, folder)` (values as JSON + .npy);

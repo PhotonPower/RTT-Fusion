@@ -40,6 +40,8 @@ NEEDS: dict[str, str] = {
     "data.occupancy": "bindoptix (reads the `raytatouille-result` file)",
     "data.response_map": "bindoptix (reads the `raytatouille-result` file)",
     "display.beam": "nothing; fields on its input: fieldtracing",
+    "emitter.dipole_layer": "fieldtracing (the spectra carry a point-source sampling); "
+    "evaluator in `rtt_fusion.graph.emitter`, physics in `couplings.dipole_layers`",
     "display.image": "nothing",
     "display.plot": "nothing",
     "fg.grating": "`table`/`table_data` (Jones table): nothing for rays, the optional C++ "

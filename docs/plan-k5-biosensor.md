@@ -23,7 +23,7 @@ Löser (CliffordBem, hp-FEM) später als Gegenprobe (DP3, K7).
 | Stufe | Inhalt | Abnahme |
 | --- | --- | --- |
 | **K5a** | `couplings.dipole_layers`: Stapel je Wellenzahl mit dem Dipol als Primärfeld, `rates`, `angular_spectrum` | freier Dipol, Spiegeldipol, Nahfeld-Rate = abgestrahlte Leistung, Konvergenz mit Gold, Fluss des Spektrums ✅ (W94) |
-| **K5b** | Block `emitter.dipole_layer`: Q (Zustand, Stichprobe) + N bzw. Schichtparameter → S im Substrat auf einer Port-Ebene, je Emitter eine Kohärenzgruppe (inkohärent über Emitter); Raten als Ergebnis; Pose Sensor ↔ RTT mit Spiegelregel (DP8, `in_rtt_frame`) | S → H/R gegen `angular_spectrum`; Leistung = `rates`; Spiegelung |
+| **K5b** | Block `emitter.dipole_layer`: Q (Zustand, Stichprobe) + N bzw. Schichtparameter → S im Substrat auf einer Port-Ebene, je Emitter eine Kohärenzgruppe (inkohärent über Emitter); Raten als Ergebnis; Pose Sensor ↔ RTT mit Spiegelregel (DP8, `in_rtt_frame`) | S gegen `angular_spectrum`; Leistung = `rates`; Spiegelung ✅ (W95) |
 | **K5c** | Abbildung durch ein Objektiv (ideal bzw. Raytatouille) auf die Kamera | Bild eines Dipols gegen die vektorielle Dipol-PSF (Richards–Wolf); ohne Schicht = freier Dipol |
 | **K5d** | Antwortkarte M (`EmitterResponseTable`) aus `rates` über einem Gitter von Höhen und Detektorbereichen (NA-Kegel) für BindOptiX | DP4 (Chance–Prock–Silbey, Lukosz–Kunz), DP5 (Anteil in der NA), DP6 (Tensoren) |
 

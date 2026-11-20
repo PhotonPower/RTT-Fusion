@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-20
+
+Biosensoren in der Fusion (RTT-Fusion#106: D13, Piloten K5 und K8): Datenports für BioOptoMD und
+BindOptiX, Emitter an der Sensoroberfläche durch einen Schichtstapel, ideale Abbildung, Antwortkarte
+für BindOptiX und die Zeitschleife.
+
 ### Hinzugefügt
 
 - **Zeitschleife `bindoptix.time_loop`** (D13 Schritt 5, Pilot K8): ein Meta-Block über dem
@@ -59,7 +65,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   = abgestrahlte Leistung ohne Verluste (1e−9), Gold absorbiert, Quadratur konvergiert (1e−6),
   Leistung des Winkelspektrums = Fluss ins Glas (1e−6).
 
-### Hinzugefügt
 
 - **BindOptiX als Datenknoten** (D13 Schritt 3, RTT-Fusion#106): Block `bindoptix.signal`
   (Eingänge `excitation` F, `response` M, `dipoles` Q, `occupancy` B; Ausgang `rates`) rechnet mit

@@ -6,6 +6,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- **Block `optics.ideal_imaging`** (Pilot K5, Stufe K5c): ein ideales aplanatisches Mikroskop
+  (Objektiv mit NA im Medium des Spektrums, Tubuslinse, Vergrößerung M, Bild umgekehrt) für
+  Winkelspektren S nach Richards–Wolf: Spektrum auf die Objektebene, je Welle n′ sin θ′ = n sin θ/M,
+  Feld in der Meridionalebene gedreht, Amplitude leistungserhaltend, Phase erhalten; Ausgang am
+  Bildpunkt mit Punktquellen-Abtastung, so dass der Detektor die Summe der Wellen direkt bildet.
+  Wellen jenseits der NA fallen weg (Anteil im Protokoll). Kette Emitter → Mikroskop → Detektor
+  mit S. Tests W96: Leistung in der NA erhalten (1e−9), Bild eines Dipols bei NA 0,1 = Airy
+  (1,8e−4), Verschiebung um −M·Δ (1e−9), z-Dipol als Ring mit Minimum auf der Achse.
 - **Block `emitter.dipole_layer`** (Pilot K5, Stufe K5b): Fluorophore an der Sensoroberfläche als
   Lichtquelle. Eingänge Q (Dipol-Reihe, Zustand `state`, Stichprobe `samples`/`seed`) und N
   (Adschicht über der Oberfläche) sind optional; ohne Q ein Dipol aus `dipole` und `height_nm`.

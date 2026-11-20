@@ -49,6 +49,7 @@
 | **K5a Dipol im Schichtstapel** | `couplings.dipole_layers`: Emitter in einem planaren Stapel je Wellenzahl gelöst (Weyl, TE/TM, stetige Tangentialfelder), Raten (Chance–Prock–Silbey, oben, unten, NA, Absorption) und Winkelspektrum mit überkritischem Licht ([Plan](plan-k5-biosensor.md)) | freier Dipol, Spiegeldipol, Nahfeld = Fernfeld, Konvergenz mit Gold, Fluss des Winkelspektrums ✅ (W94) |
 | **K5b Emitter-Block** | `emitter.dipole_layer`: Q (Stichprobe je Zustand) und N → S je Emitter (eigene Kohärenzgruppe, Punktquellen-Abtastung, Port-Ebene), Stapel mit Gold und Adschicht, Spiegelregel DP8 ([Plan](plan-k5-biosensor.md)) | Leistung = Anteil aus `rates`, Wellen = gespiegeltes Winkelspektrum, Verschiebung, Profil = Lösungsmittel ✅ (W95) |
 | **K5c Abbildung** | `optics.ideal_imaging`: ideales aplanatisches Mikroskop für S (Richards–Wolf, Vergrößerung M, NA, Bild umgekehrt), Ausgang mit Punktquellen-Abtastung am Bildpunkt; Kette Emitter → Mikroskop → Detektor ([Plan](plan-k5-biosensor.md)) | Leistung in der NA, Airy bei kleiner NA, Verschiebung −M·Δ, Ring des z-Dipols ✅ (W96) |
+| **K5d Antwortkarte** | `emitter.response_map`: A_tot, A_rad, A_det je Höhe und NA-Band aus dem Stapel als BindOptiX-`EmitterResponseTable`; Kette K5 → K8 ohne hp-FEM ([Plan](plan-k5-biosensor.md)) | quadratische Form, Spiegeldipol (DP4), Annahme durch BindOptiX (DP6), Ausbeute und Sammelanteil (DP5), Signal ✅ (W97) |
 
 ## Entscheidungen
 

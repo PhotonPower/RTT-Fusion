@@ -6,6 +6,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- **Antwortkarte M aus dem Schichtstapel** (Pilot K5, Stufe K5d): Block `emitter.response_map`
+  (Stapel wie `emitter.dipole_layer`, Adschicht aus N, Höhen `heights_nm`, Detektorbereiche
+  `regions` als NA-Bänder im Substrat oder in der Lösung) gibt BindOptiX' `EmitterResponseTable`
+  aus – A_tot, A_rad und A_det je Höhe als diag(a∥, a∥, a⊥) aus einem x- und einem z-Dipol
+  (`adapters.bindoptix.response_tensors`, `response_table`). Damit läuft die Kette K5 → K8 ohne
+  hp-FEM: `emitter.response_map` → `bindoptix.signal`. `couplings.dipole_layers.band_power`: die
+  Leistung in einem NA-Band einer Seite. Überlappende Bereiche einer Seite sind ein Fehler.
+  Tests W97: Tensoren = quadratische Form gekippter Dipole (1e−9, auch mit Gold), Spiegel =
+  Spiegeldipol (DP4), BindOptiX nimmt die Tabelle an (DP6), Quantenausbeute und Sammelanteil
+  = direkte Raten (DP5), Signal der Kette = ausgeschriebenes Modell, Diagnosen.
 - **Block `optics.ideal_imaging`** (Pilot K5, Stufe K5c): ein ideales aplanatisches Mikroskop
   (Objektiv mit NA im Medium des Spektrums, Tubuslinse, Vergrößerung M, Bild umgekehrt) für
   Winkelspektren S nach Richards–Wolf: Spektrum auf die Objektebene, je Welle n′ sin θ′ = n sin θ/M,

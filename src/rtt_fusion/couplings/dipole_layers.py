@@ -406,3 +406,50 @@ def free_power(stack: Stack, wavelength_um: float, z0: float) -> float:
     k0 = 2 * np.pi / (wavelength_um * 1e-3)
     n = float(np.real(stack.indices[stack.medium_at(z0)]))
     return float(k0**4 * n / (12 * np.pi))
+
+
+def band_power(
+    stack: Stack,
+    wavelength_um: float,
+    z0: float,
+    p: Any,
+    side: str,
+    na_lo: float,
+    na_hi: float,
+    n_per: int = N_KAPPA,
+    n_phi: int = 8,
+) -> float:
+    """Power leaving through one half-space ("bottom" or "top") in the band of directions
+    na_lo ≤ n sin θ < na_hi of that half-space, normalised to the free dipole in the emitter's
+    medium (as `rates`); the primary wave is included where the dipole sits in that half-space."""
+    k0 = 2 * np.pi / (wavelength_um * 1e-3)
+    p = np.asarray(p, dtype=complex)
+    s = stack.medium_at(z0)
+    m = len(stack.indices)
+    medium = 0 if side == "bottom" else m - 1
+    n_m = complex(stack.indices[medium])
+    if abs(np.imag(n_m)) > 0:
+        raise ValueError("the half-space must be lossless")
+    nm = float(np.real(n_m))
+    lo, hi = max(na_lo, 0.0), min(na_hi, nm)
+    if hi <= lo:
+        return 0.0
+    kappa, wk = _kappa_nodes(stack, k0, z0, n_per, (lo * k0, hi * k0))
+    phi = np.arange(n_phi) * 2 * np.pi / n_phi
+    resp = _solve(stack, k0, z0, kappa)
+    prim, _ = _primary(p, stack.indices[s], k0, kappa, phi)
+    amp = (resp.bottom if side == "bottom" else resp.top).copy()
+    if s == medium:
+        zi = stack.interfaces
+        kz_s = _kz(np.array([stack.indices[s]]), k0, kappa)[:, 0]
+        if side == "bottom":
+            amp[:, :, 1] += np.exp(1j * kz_s * (z0 - zi[0]))[:, None]
+        else:
+            amp[:, :, 0] += np.exp(1j * kz_s * (zi[-1] - z0))[:, None]
+    psi = np.einsum("kad,kpad->kpa", amp, prim)
+    e = _vector(psi, n_m, k0, kappa, phi, -1.0 if side == "bottom" else 1.0)
+    kz = np.real(_kz(np.array([n_m]), k0, kappa)[:, 0])
+    density = (2 * np.pi) ** 2 * nm / 2 * np.sum(np.abs(e) ** 2, -1) * (kz / (nm * k0))[:, None]
+    inside = (kappa >= lo * k0) & (kappa < hi * k0)
+    p0 = free_power(stack, wavelength_um, z0) * float(np.vdot(p, p).real)
+    return float(np.sum((density * (kappa * wk)[:, None])[inside]) * 2 * np.pi / n_phi) / p0

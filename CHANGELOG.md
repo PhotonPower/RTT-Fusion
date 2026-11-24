@@ -16,6 +16,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   den vorderen Port.
 ### Behoben
 
+- **Knotenweiser Detektor auf „auto“ urteilt über Licht, das ihn erreicht**: er entschied zwischen
+  Strahlen und Feldern nur am ersten ankommenden Bündel. Verfehlt das den Detektor (eine
+  Beugungsordnung neben der Optik), blieb er bei Strahlen, auch wo die anderen Bündel auf ihn
+  fokussieren – im FrObSy-Modell zeigte die Kamera hinter Objektiv und Tubuslinse nur einen
+  geometrischen Strich statt der Streifen des Substrats (×100, 33,8 µm). Jetzt entscheidet das erste
+  Bündel, dessen Licht ankommt.
 - **Index hinter der letzten Fläche vor einem ersetzten Block** (#88, Befund 2): im geteilten Pfad
   (ein Fremdblock wie `fg.grating` an der Stelle der Probe) trugen die Strahlen den Index des
   Mediums, durch das sie an der letzten Fläche ankamen – hinter einem Objektiv dessen letztes Glas

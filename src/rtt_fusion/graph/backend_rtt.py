@@ -1689,29 +1689,32 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
     planned = _input_representation(ctx, node)
     fields_wanted = planned in ("H", "S")
     if not fields_wanted and _auto_fields(ctx, node):
-        first = next(
-            (
-                b
-                for arriving in inputs.values()
-                for b in arriving or []
-                if isinstance(b, RayBundle) and b.branch is not None
-            ),
-            None,
-        )
-        if first is not None and first.branch is not None:
-            run, _ = _run_of(ctx, node, first, None)
+        # the first arriving bundle whose light reaches the detector decides: one that misses it
+        # (a diffraction order beside the optics) gives no field to judge, and the detector fell
+        # back to rays where the others focus
+        probe: list[FieldBundle] = []
+        for b in (
+            b
+            for arriving in inputs.values()
+            for b in arriving or []
+            if isinstance(b, RayBundle) and b.branch is not None
+        ):
+            assert b.branch is not None
+            run, _ = _run_of(ctx, node, b, None)
             probe = _trace_run(
                 compiled,
                 layouts,
                 run,
-                first,
-                first.key.wavelength_index,
-                first.key.field_index,
+                b,
+                b.key.wavelength_index,
+                b.key.field_index,
                 True,
-                first=first.branch[1] < 0,
+                first=b.branch[1] < 0,
                 keep_all=True,
             )
-            fields_wanted = _near_focus(ctx, node, compiled, probe)
+            if probe:
+                break
+        fields_wanted = _near_focus(ctx, node, compiled, probe)
     bundles: list[RayBundle] = []
     fields: list[FieldBundle] = []
     spectra: list[SpectrumBundle] = []

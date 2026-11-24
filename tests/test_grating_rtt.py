@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import warnings
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -155,7 +156,6 @@ def test_w73_linnik_with_a_grating_from_another_process(tmp_path: Path) -> None:
     """CAD ADR 0010, W4: the grating sample of the Linnik evaluated by a provider behind a JSON
     channel (as the FourierGrating plugin of Raytatouille Fusion does) gives the camera image of
     the grating computed in the engine's process."""
-    from typing import Any
 
     from rtt_fusion.graph import backend_rtt
     from rtt_fusion.graph.remote import BlockProvider, register_remote
@@ -241,3 +241,63 @@ def test_a_remote_detector_with_a_grating_runs_in_the_engine(tmp_path: Path) -> 
     remote = _remote_image(d, table, True, tmp_path / "b")
     here = image(d, table)
     assert np.abs(remote.values - here.values).max() < 1e-12 * here.values.max()
+
+
+def test_a_replaced_block_behind_glass_gets_the_rays_in_air(tmp_path: Path) -> None:
+    """#88 finding 2: in a split path the rays stand on the last surface before the replaced
+    block and go on in the medium behind it. With a glass plate before the sample that medium is
+    air – they carried the plate's index, every later path length was too long by (n − 1)·t, and a
+    tilted field point's field (H) focused beside its rays (at the pupil camera of the 100× model
+    the pairs of orders merged into one spot each)."""
+    d = load_system()
+    plate = {
+        "type": "plate",
+        "name": "cover glass",
+        "material": "CONST:1.5",
+        "pose": {"position": [0.0, 0.0, 12.5]},
+        "surfaces": [
+            {"id": "P.1", "aperture": {"type": "circular", "radius": 2.0}},
+            {
+                "id": "P.2",
+                "aperture": {"type": "circular", "radius": 2.0},
+                "pose": {"position": [0.0, 0.0, 0.5]},
+            },
+        ],
+    }
+    data: dict[str, Any] = d
+    data["root"]["children"].insert(3, plate)
+    for p in data["paths"]:
+        ev_ = p["events"]
+        i = [e["surface"] for e in ev_].index("SPM")
+        p["events"] = [
+            *ev_[:i],
+            {"surface": "P.1"},
+            {"surface": "P.2"},
+            ev_[i],
+            {"surface": "P.2"},
+            {"surface": "P.1"},
+            *ev_[i + 1 :],
+        ]
+    d["fields"] = {"points": [{}, {"y": 0.5}]}
+    table = write_table(tmp_path / "mirror.json", {0: -1.0}, PERIOD_UM)
+    seen: list[float] = []
+    real = grating.grating
+
+    def spy(ctx: Any, node: Any, socket: str, inputs: dict[str, Any]) -> Any:
+        seen.extend(float(b.index) for b in inputs.get("in", []) if hasattr(b, "index"))
+        return real(ctx, node, socket, inputs)
+
+    from rtt_fusion.graph import backend_rtt
+
+    system = rt.System.from_json(json.dumps(d))
+    g: Graph = graph_from_raytatouille(d)
+    reg = builtin_registry()
+    ev = dict(backend_rtt.EVALUATORS)
+    ev.update(grating.register(reg))
+    ev["fg.grating"] = spy
+    replace_block(g, reg, "sample", Node("sample", "fg.grating", params={"table": table}))
+    ex = Executor(g, reg, ev, {"system": system, "rings": 6, "pixels": [64, 8]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ex.evaluate("camera", "image")
+    assert seen and all(n == pytest.approx(1.0, abs=1e-3) for n in seen), seen  # air

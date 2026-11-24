@@ -557,7 +557,7 @@ Generated from the registry by `tools/gen_llm_reference.py`; do not edit by hand
 `python -m rtt_fusion.reference --blocks --live` prints it from the installed registry.
 
 <!-- BEGIN GENERATED: block catalogue (python tools/gen_llm_reference.py) -->
-41 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
+42 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
 
 ### analysis.camera_image
 analysis: Irradiance image of a detector with many rays.
@@ -745,6 +745,23 @@ splitter: Junction of unrolled branches: the sum of the light arriving at one st
 domain: Group (R28): a sub-model with variants; in the socket form it keeps the group's pose and exported parameters for the blocks inside.
 - needs: nothing (structural: `unroll`/`flatten` resolve it into its blocks); native: – (no evaluator)
 - sockets: + dynamic (per node, from the import or `unroll`)
+
+### hpfem.grating
+splitter: Periodic sample computed by hp-FEM (finite elements): diffraction orders as channels.
+- needs: hpfem (builds its Jones table from the job, 2 FEM solves per node); evaluator in `rtt_fusion.graph.hpfem_grating`; H or S arrive as rays (fieldtracing for the conversion); native: R
+- sockets: `in` in light:HRS; `out` out light:HRS
+- ports: front(in→out)
+- through: out ← in
+- param `job` file = "" – hp-FEM job (JSON, problem 'grating'): cell, mesh, materials, stack and solver; Check workflow stores it in the block (job_data) and clears the path
+- param `job_data` data = {} – the hp-FEM job held by the block (before the file)
+- param `side` choice = "reflected" of reflected|transmitted – the orders passed on
+- param `orders` numbers = [] – orders to pass on; empty: -1, 0, 1
+- param `sigma_step` number = 0.01 range 1e-05… – σ step of the table; spacing of the Jones table's nodes in the direction cosines σ = n·sin θ of the incident rays (cubic interpolation between them); every node is 2 hp-FEM solves
+- param `sigma_margin` number = 0.01 range 0… – σ margin of the table; how far the table reaches beyond the σ range of the incident rays
+- param `max_nodes` integer = 400 range 16… – Most table nodes; a wider bundle stops with a message instead of starting this many hp-FEM solves
+- param `point` point = [0.0, 0.0, 0.0] [mm] – top of the grating
+- param `normal` point = [0.0, 0.0, 1.0]
+- param `grating_vector` point = [1.0, 0.0, 0.0] – local x (the job's x), ⟂ lines
 
 ### meta.optimise
 meta: Optimisation of one parameter for the extremum of a measure.

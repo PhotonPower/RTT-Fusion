@@ -35,6 +35,7 @@ S -> H works behind the block. With only a table a spectrum becomes rays at the 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
@@ -402,13 +403,34 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
         from_fields: list[Any] = [o for fb in fields for o in grating_fields(ctx, node, fb)]
         return from_fields + (grating(ctx, node, socket, {"in": rays}) if rays else [])
     built = embedded.has(node, *CONFIG[:2]) and not embedded.has(node, *TABLE[:2])
-    table = None if built else _table(ctx, node)
+    held = None if built else _table(ctx, node)
+    n_in0 = float(node.params.get("n_in", 1.0))
+
+    def table_for(lam: float, d_loc: FloatArray) -> jt.JonesTable:
+        if held is not None:
+            return held
+        return _built_table(ctx, node, lam, n_in0 * d_loc[:, :2])
+
+    return rays_through(ctx, node, inputs.get("in", []), table_for, built)
+
+
+#: a block's Jones table for one wavelength (µm) and the local unit directions of the live
+#: incident rays (n × 3, z along the incident light)
+TableFor = Callable[[float, FloatArray], jt.JonesTable]
+
+
+def rays_through(
+    ctx: Context, node: Node, bundles: list[Any], table_for: TableFor, built: bool
+) -> list[RayBundle]:
+    """Rays through a grating block with a Jones table (R19a; shared by `fg.grating` and
+    `hpfem.grating`, R35): every requested order of the table a bundle of its own. `built`: the
+    table is computed around the rays (its log line suggests a smaller σ margin and step)."""
     point = np.asarray(node.params.get("point", [0.0, 0.0, 0.0]), dtype=float)
     normal = np.asarray(node.params.get("normal", [0.0, 0.0, 1.0]), dtype=float)
     normal = normal / np.linalg.norm(normal)
     gvec = np.asarray(node.params.get("grating_vector", [1.0, 0.0, 0.0]), dtype=float)
     out: list[RayBundle] = []
-    for b in inputs.get("in", []):
+    for b in bundles:
         if not isinstance(b, RayBundle):
             continue
         d_mean = np.asarray(b.direction)[np.asarray(b.alive)].mean(axis=0)
@@ -422,10 +444,7 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
         alive = np.asarray(moved.alive)
         d_loc = np.asarray(moved.direction) @ rot.T
         lam = b.wavelength_um
-        if built:
-            n_in0 = float(node.params.get("n_in", 1.0))
-            table = _built_table(ctx, node, lam, n_in0 * d_loc[alive][:, :2])
-        assert table is not None
+        table = table_for(lam, d_loc[alive])
         reflected = table.side == "reflected"
         orders = [int(m) for m in node.params.get("orders", []) or table.orders]
         unknown = [m for m in orders if m not in table.orders]

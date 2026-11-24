@@ -23,6 +23,10 @@ P_m k_in = k_m and P_m E = E_m for transverse E.
 **Phase reference.** J_m refers to the local origin x = 0 of the grating (FourierGrating's x
 origin = Raytatouille's φ(0, 0) = 0, ADR 0025 point 1); the phase m·φ(x, y) at other hit points is
 the phase layer's own contribution.
+
+**Solvers.** The table is built from any prepared grating whose adapter gives port waves:
+FourierGrating (`adapters.fouriergrating`) and, since stage R35, hp-FEM (`adapters.hpfem`, which
+refers its Jones matrices to x = 0 as well).
 """
 
 from __future__ import annotations
@@ -34,8 +38,24 @@ from typing import Any
 import numpy as np
 
 from rtt_fusion._types import ComplexArray, FloatArray
-from rtt_fusion.adapters import fouriergrating as fga
 from rtt_fusion.ports import PlaneWaves
+
+#: a prepared grating: FourierGrating's handle (`adapters.fouriergrating`) or hp-FEM's
+#: (`adapters.hpfem`) – anything whose adapter module has `front_port` and `apply_many` and that
+#: has `front_index`, `back_index` and a period
+GratingHandle = Any
+
+
+def _adapter(handle: GratingHandle) -> Any:
+    """The adapter module a handle comes from (its `front_port`, `apply_many`)."""
+    return importlib.import_module(type(handle).__module__)
+
+
+def _period_um(handle: GratingHandle) -> float:
+    period = getattr(handle, "period_um", None)
+    if period is not None:
+        return float(period)
+    return float(handle.structure.config["period_um"]["x"])
 
 
 @dataclass(frozen=True)
@@ -63,22 +83,25 @@ class JonesTable:
 
 
 def direct_jones(
-    handle: fga.Handle,
+    handle: GratingHandle,
     wavelength_um: float,
     sigma_x: float,
     sigma_y: float,
     side: str = "transmitted",
 ) -> dict[int, ComplexArray]:
-    """J_m for every propagating order at one point, directly from FourierGrating (4 solves)."""
-    pair = fga.apply_many(handle, _unit_incidents(handle, wavelength_um, sigma_x, sigma_y))
+    """J_m for every propagating order at one point, directly from the solver (FourierGrating:
+    2 solves; hp-FEM: one `grating.jones`, i.e. 2 solves)."""
+    pair = _adapter(handle).apply_many(
+        handle, _unit_incidents(handle, wavelength_um, sigma_x, sigma_y)
+    )
     return _jones_of(handle, wavelength_um, sigma_x, sigma_y, side, pair)
 
 
 def _unit_incidents(
-    handle: fga.Handle, wavelength_um: float, sigma_x: float, sigma_y: float
+    handle: GratingHandle, wavelength_um: float, sigma_x: float, sigma_y: float
 ) -> list[PlaneWaves]:
     """The two unit incidences (x, y polarised) at one point of the table."""
-    port = fga.front_port(handle, wavelength_um)
+    port = _adapter(handle).front_port(handle, wavelength_um)
     kx, ky = sigma_x * port.k0, sigma_y * port.k0
     return [
         PlaneWaves(port, np.array([kx]), np.array([ky]), np.array([unit], dtype=np.complex128))
@@ -87,7 +110,7 @@ def _unit_incidents(
 
 
 def _jones_of(
-    handle: fga.Handle,
+    handle: GratingHandle,
     wavelength_um: float,
     sigma_x: float,
     sigma_y: float,
@@ -95,7 +118,7 @@ def _jones_of(
     pair: list[dict[str, PlaneWaves]],
 ) -> dict[int, ComplexArray]:
     """J_m from the results of the two unit incidences."""
-    port = fga.front_port(handle, wavelength_um)
+    port = _adapter(handle).front_port(handle, wavelength_um)
     k0 = port.k0
     kx, ky = sigma_x * k0, sigma_y * k0
     columns: dict[int, list[ComplexArray]] = {}
@@ -114,15 +137,15 @@ def _jones_of(
 
 
 def jones_many(
-    handle: fga.Handle,
+    handle: GratingHandle,
     wavelength_um: float,
     sigmas: list[tuple[float, float]],
     side: str = "transmitted",
 ) -> list[dict[int, ComplexArray]]:
     """J_m of every propagating order at many points (σ_x, σ_y) of one wavelength, directly from
-    FourierGrating in one `apply_many` (two unit incidences per point)."""
+    the solver in one `apply_many` (two unit incidences per point)."""
     incidents = [inc for sx, sy in sigmas for inc in _unit_incidents(handle, wavelength_um, sx, sy)]
-    results = fga.apply_many(handle, incidents)
+    results = _adapter(handle).apply_many(handle, incidents)
     return [
         _jones_of(handle, wavelength_um, sx, sy, side, results[2 * j : 2 * j + 2])
         for j, (sx, sy) in enumerate(sigmas)
@@ -130,7 +153,7 @@ def jones_many(
 
 
 def build_table(
-    handle: fga.Handle,
+    handle: GratingHandle,
     wavelengths_um: FloatArray,
     sigma_x: FloatArray,
     sigma_y: FloatArray,
@@ -151,13 +174,12 @@ def build_table(
         incidents = [
             inc for _, _, sx, sy in points for inc in _unit_incidents(handle, float(lam), sx, sy)
         ]
-        results = fga.apply_many(handle, incidents)
+        results = _adapter(handle).apply_many(handle, incidents)
         for j, (b, c, sx, sy) in enumerate(points):
             d = _jones_of(handle, float(lam), sx, sy, side, results[2 * j : 2 * j + 2])
             for o, m in enumerate(orders):
                 if m in d:
                     jones[o, a, b, c] = d[m]
-    cfg = handle.structure.config
     n_out = (handle.back_index if side == "transmitted" else handle.front_index).real
     return JonesTable(
         tuple(orders),
@@ -165,7 +187,7 @@ def build_table(
         np.asarray(wavelengths_um, dtype=np.float64),
         np.asarray(sigma_x, dtype=np.float64),
         np.asarray(sigma_y, dtype=np.float64),
-        float(cfg["period_um"]["x"]),
+        _period_um(handle),
         handle.front_index.real,
         n_out,
         jones,
@@ -173,7 +195,7 @@ def build_table(
 
 
 def point_table(
-    handle: fga.Handle,
+    handle: GratingHandle,
     wavelength_um: float,
     sigma_x: float,
     sigma_y: float,
@@ -192,7 +214,6 @@ def point_table(
     for o, m in enumerate(orders):
         if m in d:
             jones[o] = d[m]
-    cfg = handle.structure.config
     n_out = (handle.back_index if side == "transmitted" else handle.front_index).real
     return JonesTable(
         tuple(orders),
@@ -200,7 +221,7 @@ def point_table(
         wavelength_um + offsets,
         sigma_x + offsets,
         sigma_y + offsets,
-        float(cfg["period_um"]["x"]),
+        _period_um(handle),
         handle.front_index.real,
         n_out,
         jones,

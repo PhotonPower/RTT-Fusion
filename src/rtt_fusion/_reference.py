@@ -55,6 +55,9 @@ NEEDS: dict[str, str] = {
     "fouriergrating; H or S: fieldtracing and a configuration (a table turns fields and spectra "
     "into rays)",
     "fg.stack": "fouriergrating; H or S: also fieldtracing",
+    "hpfem.grating": "hpfem (builds its Jones table from the job, 2 FEM solves per node); "
+    "evaluator in `rtt_fusion.graph.hpfem_grating`; H or S arrive as rays (fieldtracing for "
+    "the conversion)",
     "fusion.condensed": "made by `unroll` from a group with `condense`; what its inner blocks "
     "need; S: fieldtracing",
     "fusion.convert": "fieldtracing for every real conversion (`exec.convert_unsupported` "

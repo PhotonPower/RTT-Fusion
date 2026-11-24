@@ -4,6 +4,27 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **hp-FEM-Gitter im Workflow** (Stufe R35): Block `hpfem.grating` – das rigorose Gitter von
+  `fg.grating` mit hp-FEM statt FourierGrating, Sockets eines Spiegels, Beugungsordnungen als
+  Kanäle. Das Gitter ist ein hp-FEM-Job (Schema v1, Aufgabe „grating“: Zelle, Netz,
+  Materialien, Stapel, Löser), als Datei (`job`) oder im Block (`job_data`, „Check workflow“
+  bettet ihn ein; eine Netzdatei bleibt außerhalb und wird gemeldet). Der Block baut um die
+  Strahlen einer Wellenlänge eine Jones-Tabelle aus dem hp-FEM-Adapter (eine Richtung: genau
+  dort; sonst Knoten alle `sigma_step`, höchstens `max_nodes`, je Knoten zwei FEM-Lösungen) und
+  hält sie im Operator-Speicher. Felder und Spektren kommen als Strahlen an. Neu im Adapter:
+  `structure_from_job` (Zelle aus dem Job mit hp-FEMs eigenem Leser, Ports auf Ober- und
+  Unterkante von Streuern und Stapel) und `front_index`, `back_index`, `period_um` am Handle.
+  Tests W99–W101 (Fresnel, hp-FEM direkt und Energie, Tabelle gegen die direkte Lösung). In
+  Raytatouille Fusion bietet das hp-FEM-Plugin den Block an.
+
+### Geändert
+
+- `couplings.jones_table` baut Tabellen aus jedem Adapter mit Port-Wellen (FourierGrating,
+  hp-FEM), nicht mehr nur aus FourierGrating; der Strahlengang von `fg.grating` steckt in
+  `grating.rays_through` und gilt für beide Gitterblöcke (Ergebnisse unverändert).
+
 ## [0.4.0] - 2026-11-20
 
 Biosensoren in der Fusion (RTT-Fusion#106: D13, Piloten K5 und K8): Datenports für BioOptoMD und

@@ -285,3 +285,21 @@ def test_w74_provider_resets_changes_of_a_run(tmp_path: Path) -> None:
         g.nodes["lens"].params["focal_length"] = focal  # as a meta block sets it
         remote(ctx, g.nodes["lens"], "out", {"in": beam})
     assert seen == [40.0, 20.0, 40.0]
+
+
+def test_hpfem_grating_is_offered_as_a_ray_block() -> None:
+    """R35: the hp-FEM plugin offers `hpfem.grating` through a provider; its type travels as
+    JSON with the sockets of a mirror, native in rays (fields and spectra become rays before
+    it), and the workflow's registry knows it – without hp-FEM installed."""
+    from rtt_fusion.graph import hpfem_grating, workflow
+
+    provider = BlockProvider([hpfem_grating.TYPE], dict(hpfem_grating.EVALUATORS))
+    (entry,) = provider.catalogue()
+    assert entry["representations"] == ["R"]
+    remote = NodeType.from_dict(json.loads(json.dumps(entry)))
+    assert dataclasses.replace(remote, port_frames=hpfem_grating.TYPE.port_frames) == (
+        hpfem_grating.TYPE
+    )
+    reg, _ = workflow.registry()
+    known = reg.get("hpfem.grating")
+    assert known is not None and known.type_id == "hpfem.grating"

@@ -17,7 +17,10 @@ the plane-wave phases.
 from __future__ import annotations
 
 import hashlib
+import importlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -25,7 +28,7 @@ import numpy as np
 from rtt_fusion import __version__
 from rtt_fusion.ports import PlaneWaves, Port
 
-ADAPTER_VERSION = "0.1.0"
+ADAPTER_VERSION = "0.2.0"
 MM_PER_M = 1e3
 
 
@@ -64,6 +67,110 @@ class Handle:
     wavelengths_um: tuple[float, ...]
     content_hash: str
     _cache: dict[tuple[float, float, float], Any] = field(default_factory=dict, repr=False)
+
+    # what the Jones table (`couplings.jones_table`) asks of a prepared grating, as of
+    # FourierGrating's handle
+    @property
+    def front_index(self) -> complex:
+        """Index of the incidence medium (front port)."""
+        return complex(self.structure.n_cover)
+
+    @property
+    def back_index(self) -> complex:
+        """Index of the exit medium (back port)."""
+        return complex(self.structure.n_substrate)
+
+    @property
+    def period_um(self) -> float:
+        """Grating period Λ (µm): the width of the cell's mesh."""
+        x = np.asarray(self.structure.mesh.vertices, dtype=np.float64)[:, 0]
+        return float(np.ptp(x)) * 1e6
+
+
+#: solver options of a job (`solver` of hp-FEM's job schema v1) that `grating.jones` takes
+_OPTIONS = ("bottom", "orders_max", "snap_tolerance", "pml_target", "check")
+
+
+def _real_index(material: Any, where: str, lossless: bool) -> float:
+    eps = complex(np.asarray(material.eps_tensor)[0, 0])
+    if lossless and abs(eps.imag) > 1e-12:
+        raise ValueError(f"{where} must be lossless (eps = {eps:.6g})")
+    return float(np.sqrt(eps).real)
+
+
+def structure_from_job(
+    job: Mapping[str, Any], wavelength_um: float, base: str | Path | None = None
+) -> Structure:
+    """The grating cell of an hp-FEM job document (schema v1, problem "grating", as hp-FEM's
+    `python -m hpfem.run` and the hp-FEM plugin of Raytatouille Fusion write it) at one
+    wavelength, built with hp-FEM's own job reader (`hpfem.run`, so a job computes here as it
+    does there): unit cell and mesh (structured, gmsh or a mesh file relative to `base`), the
+    materials by tag, the background stack and the solver options (order, PML, bottom, orders).
+    The job's incidence, sweep and maps are not used – the incident waves set them.
+
+    Ports (Convention of the R9 adapter): the front plane on the highest, the back plane on the
+    lowest point of the structure and the stack – the scatterers are the cells whose material
+    differs from the stack's at their centroid, as hp-FEM finds them –, so that a block's surface
+    point is the top of the grating. The stack's media are taken at `wavelength_um` (a Jones
+    table of a few nm around it neglects their dispersion there; the cells' materials follow the
+    wavelength of every solve). A lossy substrate has no transmitted orders.
+
+    Raises ValueError for a job that is not a grating, a lossy incidence medium or an error of
+    hp-FEM's reader.
+    """
+    hp = _hp()
+    run = importlib.import_module("hpfem.run")
+    if str(job.get("problem", "grating")) != "grating":
+        raise ValueError(f"problem {job.get('problem')!r}: the grating block needs 'grating'")
+    unit = float(job.get("unit", 1.0))
+    omega = float(hp.units.angular_frequency(wavelength=wavelength_um * 1e-6))
+    try:
+        cell = run._unit_cell(job["model"], unit)
+        materials = {
+            int(t): run._material(m, f"materials[{t}]") for t, m in dict(job["materials"]).items()
+        }
+        stack = run._stack(job["stack"], omega, unit)
+        mesh = run._build_mesh(job, cell, materials, omega, unit, Path(base or Path.cwd()))
+    except KeyError as e:
+        raise ValueError(f"hp-FEM job: missing {e}") from e
+    n_cover = _real_index(stack.incidence_medium, "the incidence medium", True)
+    n_substrate = _real_index(stack.substrate, "the substrate", False)
+    lo, hi = _structure_extent(mesh, materials, stack, omega)
+    solver = dict(job.get("solver", {}))
+    options: dict[str, Any] = {k: solver[k] for k in _OPTIONS if k in solver}
+    pml = solver.get("pml")
+    if isinstance(pml, Mapping):
+        options["pml"] = {str(k): float(v) * unit for k, v in pml.items()}
+    return Structure(
+        mesh,
+        materials,
+        stack,
+        n_cover,
+        n_substrate,
+        max(hi, float(stack.top)),
+        min(lo, float(stack.bottom)),
+        int(solver.get("order", 4)),
+        tuple(sorted(options.items())),
+    )
+
+
+def _structure_extent(mesh: Any, materials: dict[int, Any], stack: Any, omega: float) -> Any:
+    """Lowest and highest vertex y (m) of the cells whose material differs from the stack's at
+    their centroid (hp-FEM's rule, `grating._structure_extent`); (+inf, −inf) for none."""
+    at = {t: (m.at(omega) if hasattr(m, "at") else m) for t, m in materials.items()}
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    centroids = np.asarray(mesh.cell_centroids, dtype=np.float64)
+    tags = np.asarray(mesh.cell_tags)
+    lo, hi = np.inf, -np.inf
+    for c in range(mesh.num_cells):
+        material = at[int(tags[c])]
+        background = stack.material_at([float(centroids[c, 0]), float(centroids[c, 1])])
+        if material.mu_r != background.mu_r or not np.array_equal(
+            np.asarray(material.eps_tensor), np.asarray(background.eps_tensor)
+        ):
+            ys = vertices[np.asarray(mesh.cell_vertices(c), dtype=int), 1]
+            lo, hi = min(lo, float(ys.min())), max(hi, float(ys.max()))
+    return lo, hi
 
 
 def describe() -> dict[str, Any]:

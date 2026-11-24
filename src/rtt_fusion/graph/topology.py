@@ -954,12 +954,56 @@ def _is_topology(registry: NodeTypeRegistry, node: Node) -> bool:
     )
 
 
+def _through_back_ports(graph: Graph, registry: NodeTypeRegistry) -> Graph:
+    """Version 1 chained transmission gratings out → in (#120): the light link leaving a block on
+    `side = transmitted` through a port that already takes light from another block goes out
+    through the node's other port the type scatters into (a grating's `back_out`), so that each
+    port has one connection. Other graphs come back unchanged."""
+    changed = False
+    links: list[Link] = []
+    for lk in graph.links:
+        node = graph.nodes.get(lk.source[0])
+        if node is None:
+            links.append(lk)
+            continue
+        ports = node_ports(node, registry)
+        front = next((p for p in ports if p.out_socket == lk.source[1]), None)
+        feeders = (
+            {x.source[0] for x in graph.links_to(node.id, front.in_socket)}
+            if front is not None and front.in_socket
+            else set()
+        )
+        # only light that goes through (a grating on "transmitted"): reflected light leaving
+        # towards another block is no step of a branch
+        through = str(node.params.get("side", "")) == "transmitted"
+        if front is None or not through or not feeders or feeders == {lk.target[0]}:
+            links.append(lk)
+            continue
+        scatter = node_scatter(node, registry)
+        others = [
+            p
+            for p in ports
+            if p.name != front.name
+            and p.out_socket
+            and scatter.get((front.name, p.name), ("none", ()))[0] != "none"
+        ]
+        if len(others) != 1:
+            links.append(lk)
+            continue
+        links.append(replace(lk, source=(node.id, others[0].out_socket)))
+        changed = True
+    if not changed:
+        return graph
+    return Graph(nodes=dict(graph.nodes), links=links, meta=dict(graph.meta))
+
+
 def model_from_graph(graph: Graph, registry: NodeTypeRegistry) -> Model:
     """A version 1 working graph as a model: pairs of sockets become ports, the light links
     between two ports one connection, and the source-to-detector ways of the directed graph –
     which in version 1 *were* the choice of the ways – the branches (named after
     `graph.meta["paths"]` where they match). Light links into blocks outside the light ways
     (displays) become observer links."""
+    graph = _through_back_ports(graph, registry)
     m = Model(meta={k: v for k, v in graph.meta.items() if k not in ("paths", "branches")})
     for node in graph.nodes.values():
         m.add(replace(node, params=dict(node.params)))

@@ -236,8 +236,8 @@ def test_transmission_gratings_are_steps_of_a_branch() -> None:
         (("G1", "back_out"), ("G2", "in")),
         (("G2", "back_out"), ("cam", "in")),
     }
-    with pytest.raises(ValueError, match="a port has one connection"):
-        model_from_graph(_transmission_chain(back=False), reg)
+    # the version 1 form (out → in on "transmitted") is read through the back port as well
+    assert len(model_from_graph(_transmission_chain(back=False), reg).connections) == 3
 
 
 def test_the_back_port_needs_transmitted_orders(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -264,3 +264,28 @@ def test_port_frames_face_both_ways() -> None:
     )
     assert frames["front"].normal == (0.0, 0.0, 1.0) and frames["back"].normal == (0.0, 0.0, -1.0)
     assert frames["front"].origin == frames["back"].origin == (0.0, 0.0, 1.0)
+
+
+def test_a_version_1_chain_of_transmission_gratings_becomes_a_model() -> None:
+    """A version 1 graph (as scripts write it) chains transmission gratings out → in; as a model
+    the light goes on through the back port (#120), the branch steps front → back, and the model
+    unrolls to the same computation (the same blocks and links up to the socket name)."""
+    from rtt_fusion.graph.topology import model_from_graph, unroll
+
+    reg = builtin_registry()
+    optics.register(reg)
+    grating.register(reg)
+    g = _transmission_chain(back=False)
+    m = model_from_graph(g, reg)
+    steps = [(s.node, s.port_in, s.port_out) for s in m.branches[0].steps]
+    assert ("G1", "front", "back") in steps and ("G2", "front", "back") in steps
+    u = unroll(m, reg)
+    assert {(lk.source, lk.target) for lk in u.links} >= {
+        (("G1", "back_out"), ("G2", "in")),
+        (("G2", "back_out"), ("cam", "in")),
+    }
+    # a grating on "reflected" that sends light on to another block stays refused
+    for name in ("G1", "G2"):
+        g.nodes[name].params["side"] = "reflected"
+    with pytest.raises(ValueError, match="a port has one connection"):
+        model_from_graph(g, reg)

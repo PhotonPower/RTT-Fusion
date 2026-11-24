@@ -6,6 +6,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- **Alte Graphen mit Gittern im Durchlicht als Modell** (#120, Folge): `model_from_graph` liest eine
+  Kette `out` → `in` von Gittern auf `side = transmitted` (wie Skripte sie schreiben) über den
+  hinteren Port `back_out`, statt mit „a port has one connection“ abzubrechen; die Äste laufen
+  front → back. Ein Gitter auf „reflected“, das Licht an einen anderen Block weitergibt, bleibt
+  abgelehnt.
 - **Gitter im Durchlicht als Schritt eines Astes** (#120): `fg.grating` und `hpfem.grating` haben
   einen zweiten Port `back` mit dem Ausgang `back_out`, der immer die transmittierten Ordnungen
   liefert (Streutabelle front → front und front → back, wie `fg.stack`). Damit liegt ein

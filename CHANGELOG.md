@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-24
+
+Rückmeldungen aus dem Modell der Zweigitter-Interferenzlithografie (#119–#125, #88): Gitter im
+Durchlicht als Schritt eines Astes, Bündelindex und tote Bündel an Gittern, dispersive Port-Medien,
+Startstrahlen einer gedrehten Blende, Feldbilder mit einem Fokus neben der Achse.
+
 ### Hinzugefügt
 
 - **Gitter im Durchlicht als Schritt eines Astes** (#120): `fg.grating` und `hpfem.grating` haben

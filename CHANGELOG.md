@@ -16,6 +16,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   den vorderen Port.
 ### Behoben
 
+- **Knotenweiser Detektor auf „auto“ urteilt über Licht, das ihn erreicht**: er entschied zwischen
+  Strahlen und Feldern nur am ersten ankommenden Bündel. Verfehlt das den Detektor (eine
+  Beugungsordnung neben der Optik), blieb er bei Strahlen, auch wo die anderen Bündel auf ihn
+  fokussieren – im FrObSy-Modell zeigte die Kamera hinter Objektiv und Tubuslinse nur einen
+  geometrischen Strich statt der Streifen des Substrats (×100, 33,8 µm). Jetzt entscheidet das erste
+  Bündel, dessen Licht ankommt.
 - **Feldbilder mit einem Fokus neben der Achse des Felds** (#88, Befund 1 und die Fälle A und B):
   Rayleigh–Sommerfeld und Debye legen ihr Ergebnis um die Achse der Feldkoordinaten, die im
   Schwerpunkt des Bündels liegt. Ein Bündel, das daneben fokussiert (außeraxialer Feldpunkt, eine

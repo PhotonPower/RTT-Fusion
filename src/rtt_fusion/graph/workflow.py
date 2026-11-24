@@ -32,6 +32,7 @@ OPTIONAL_MODULES = (
     "rtt_fusion.graph.optics",
     "rtt_fusion.graph.condense",
     "rtt_fusion.graph.grating",
+    "rtt_fusion.graph.hpfem_grating",
     "rtt_fusion.graph.stack",
     "rtt_fusion.graph.particle",
     "rtt_fusion.graph.meta",

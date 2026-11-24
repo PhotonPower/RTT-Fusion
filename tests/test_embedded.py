@@ -199,6 +199,23 @@ def test_w75d_relative_cad_file_made_absolute_and_reported(tmp_path: Path) -> No
     assert [d.code for d in done.diagnostics] == ["graph.file_external"]
 
 
+def test_hpfem_job_is_stored_and_its_mesh_file_reported(tmp_path: Path) -> None:
+    """R35: the hp-FEM grating holds its job (`job_data`) like the FourierGrating grating its
+    configuration; a relative mesh file is made absolute (as `hpfem.run` resolves it) and
+    reported, a job with a built mesh is stored silently."""
+    job = {"version": 1, "problem": "grating", "unit": 1e-9, "mesh": {"file": "cell.msh"}}
+    (tmp_path / "job.json").write_text(json.dumps(job), encoding="utf-8")
+    node = Node("gr", "hpfem.grating", params={"job": str(tmp_path / "job.json")})
+    done = embedded.embed_node(node)
+    assert node.params["job"] == ""
+    assert node.params["job_data"]["mesh"]["file"] == str(tmp_path / "cell.msh")
+    assert [d.code for d in done.diagnostics] == ["graph.file_external"]
+    job["mesh"] = {"structured": {"nx": 4, "rows": [[0, 1, 1]]}}
+    (tmp_path / "job.json").write_text(json.dumps(job), encoding="utf-8")
+    node = Node("gr", "hpfem.grating", params={"job": str(tmp_path / "job.json")})
+    assert embedded.embed_node(node).diagnostics == [] and node.params["job_data"] == job
+
+
 def test_w75d_without_file_and_copy_the_run_says_how_to_fix_it(tmp_path: Path) -> None:
     missing = str(tmp_path / "grating.fg.json")
     with pytest.raises(ExecutionError) as e:

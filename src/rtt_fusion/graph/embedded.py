@@ -8,6 +8,7 @@ that used to name files hold the content in data parameters instead:
   `fouriergrating`, `table_data` (the `raytatouille-result` document of a Jones table, stage R6)
   instead of `table`;
 - `fg.stack`: `config` instead of `fouriergrating`;
+- `hpfem.grating`: `job_data` (the hp-FEM job, schema v1) instead of `job` (R35);
 - `rtt.source`: `rtt_catalog_data` (the glass catalogues, AGF, base64) instead of the files in
   `rtt_catalogs` (written by the Raytracer plugin); `load_catalogs` builds the material library
   from both.
@@ -41,6 +42,7 @@ FILE_PARAMS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("table", "table_data", "result"),
     ),
     "fg.stack": (("fouriergrating", "config", "fouriergrating"),),
+    "hpfem.grating": (("job", "job_data", "hpfem"),),
 }
 
 #: hint for a block that names a file it cannot read and holds no copy of it
@@ -69,6 +71,22 @@ def read_fouriergrating(path: str) -> dict[str, Any]:
     return cfg
 
 
+def read_hpfem(path: str) -> dict[str, Any]:
+    """An hp-FEM job file with the path of its mesh file (`mesh.file`) made absolute, as
+    `hpfem.run` resolves it against the job's folder; the mesh file itself stays outside the
+    document."""
+    with open(path, encoding="utf-8") as f:
+        job = json.load(f)
+    if not isinstance(job, dict):
+        raise ValueError("an hp-FEM job is a JSON object")
+    mesh = job.get("mesh")
+    if isinstance(mesh, dict) and isinstance(mesh.get("file"), str):
+        if not os.path.isabs(mesh["file"]):
+            base = os.path.dirname(os.path.abspath(path))
+            mesh["file"] = os.path.normpath(os.path.join(base, mesh["file"]))
+    return job
+
+
 def read_result(path: str) -> dict[str, Any]:
     """A `raytatouille-result` file as its JSON document (checked when it is used)."""
     with open(path, encoding="utf-8") as f:
@@ -78,7 +96,11 @@ def read_result(path: str) -> dict[str, Any]:
     return doc
 
 
-_READERS = {"fouriergrating": read_fouriergrating, "result": read_result}
+_READERS = {
+    "fouriergrating": read_fouriergrating,
+    "hpfem": read_hpfem,
+    "result": read_result,
+}
 
 
 def content(node: Node, file_param: str, data_param: str, kind: str) -> dict[str, Any] | None:
@@ -139,6 +161,17 @@ def embed_node(node: Node) -> Embedded:
         node.params[file_param] = ""
         name = os.path.basename(path)
         done.stored.append(f"{node.id}: {name} stored in the workflow ({data_param})")
+        mesh = value.get("mesh") if kind == "hpfem" else None
+        if isinstance(mesh, dict) and mesh.get("file"):
+            done.diagnostics.append(
+                Diagnostic(
+                    "graph.file_external",
+                    "warning",
+                    f"the hp-FEM job reads the mesh file {mesh['file']}, which stays outside the "
+                    "workflow",
+                    node.id,
+                )
+            )
         if kind == "fouriergrating":
             for k, layer in enumerate(value.get("layers", [])):
                 if isinstance(layer, dict) and layer.get("type") == "cad" and layer.get("file"):

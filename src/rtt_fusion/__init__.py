@@ -8,7 +8,7 @@ the package as REFERENCE.md: `print(rtt_fusion.reference())`, one section with
 Conventions: mm, µm (wavelengths), rad; fields ∝ exp(i(k·r − ωt)); Fresnel Convention A.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 
 def reference(section: str | None = None) -> str:

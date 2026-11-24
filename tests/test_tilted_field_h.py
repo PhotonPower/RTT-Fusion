@@ -185,3 +185,34 @@ def test_issue_69_start_opl_agrees_with_the_directions() -> None:
         (phase[b] - phase[a]) - 0.5 * np.sum((grad[a] + grad[b]) * (p[b] - p[a]), axis=1)
     )
     assert float(mismatch.max()) < 1e-6, float(mismatch.max())
+
+
+def test_node_wise_detector_judges_the_light_that_reaches_it() -> None:
+    """A node-wise detector on "auto" decides between rays and fields from the light it gets. The
+    first bundle may miss it (here a field point at 30°, as a diffraction order beside the optics
+    in the FrObSy model): it must judge a bundle that reaches it – the on-axis one focuses on the
+    camera, so fields (H). It judged only the first and drew a ray image of a perfect focus."""
+    d = _system(0.0)
+    d["fields"] = {"type": "angle_deg", "points": [{"y": 30.0}, {}]}
+    g = graph_from_raytatouille(d)
+    camera = next(n for n in g.nodes.values() if n.type_id == "rtt.detector")
+    camera.params["half_size"] = [0.05, 0.05]
+    ex = Executor(
+        g,
+        builtin_registry(),
+        dict(backend_rtt.EVALUATORS),
+        {
+            "system": rt.System.from_json(json.dumps(d)),
+            "rings": 6,
+            "pixels": [41, 41],
+            "rtt_execution": "nodes",
+            "auto_fields": True,
+        },
+        available=WITH_FIELDS,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        image = ex.evaluate(camera.id, "image")
+    used = [u["representation"] for k, u in (ex.context.used or {}).items() if camera.id in k]
+    assert used == ["H"], ex.context.log
+    assert image.values.max() > 0

@@ -73,7 +73,9 @@ def node_through(node: Node, registry: NodeTypeRegistry) -> dict[str, tuple[str,
 def replace_block(graph: Graph, registry: NodeTypeRegistry, node_id: str, new: Node) -> Node:
     """`Graph.replace_node` with the socket map found from the sockets: linked sockets of the old
     block move to the new block's socket of the same name, else to the only new socket of the same
-    direction and kind (a mirror's `from_objective`/`to_objective` -> a grating's `in`/`out`).
+    direction and kind (a mirror's `from_objective`/`to_objective` -> a grating's `in`/`out`);
+    where several fit, the one on the same side, else the only one of the front port (a grating's
+    `out`, not its `back_out`).
     Raises GraphError if a linked socket has no unique counterpart."""
     old = graph.node(node_id)
     new_sockets = node_sockets(new, registry)
@@ -85,9 +87,11 @@ def replace_block(graph: Graph, registry: NodeTypeRegistry, node_id: str, new: N
     for spec in node_sockets(old, registry):
         if spec.name not in linked or spec.name in names:
             continue
-        same = [
-            s.name for s in new_sockets if s.direction is spec.direction and s.kind is spec.kind
-        ]
+        fits = [s for s in new_sockets if s.direction is spec.direction and s.kind is spec.kind]
+        if len(fits) > 1:  # e.g. a grating's front `out` and back `back_out` (#120)
+            side = [s for s in fits if spec.side and s.side == spec.side]
+            fits = side if len(side) == 1 else [s for s in fits if s.side in ("", "front")]
+        same = [s.name for s in fits]
         if len(same) != 1:
             raise GraphError(
                 f"no unique socket of {new.type_id} for {old.id}.{spec.name} ({len(same)} fit)"

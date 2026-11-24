@@ -188,3 +188,79 @@ def _model_with(node: Node) -> Model:  # a model holding one node, with its type
     m = Model()
     m.add(node)
     return m
+
+
+# ------------------------------------------------- the back port (#120): gratings in transmission
+
+
+def _transmission_chain(back: bool) -> Graph:
+    """Source → G1 → G2 → camera, both gratings in transmission: through their back port (two
+    neighbours each, #120) or, as before, through `out` with side = transmitted."""
+    g = Graph()
+    g.add(Node("src", "optics.collimated_source", params={"radius": 0.01, "rings": 2}))
+    for name, z in (("G1", 1.0), ("G2", 2.0)):
+        g.add(
+            Node(
+                name,
+                "fg.grating",
+                params={
+                    "table": TABLE,
+                    "side": "reflected" if back else "transmitted",
+                    "point": [0, 0, z],
+                    "normal": [0, 0, -1],  # towards the light (front)
+                },
+            )
+        )
+    g.add(Node("cam", "optics.detector", params={"point": [0, 0, 3.0], "normal": [0, 0, -1]}))
+    out = "back_out" if back else "out"
+    g.connect(("src", "out"), ("G1", "in"))
+    g.connect(("G1", out), ("G2", "in"))
+    g.connect(("G2", out), ("cam", "in"))
+    return g
+
+
+def test_transmission_gratings_are_steps_of_a_branch() -> None:
+    """Version 2 (the model CAD writes): a grating with a front and a back port is a step between
+    two neighbours; with its single front port it is not (a port has one connection)."""
+    from rtt_fusion.graph.topology import model_from_graph, unroll
+
+    reg = builtin_registry()
+    optics.register(reg)
+    grating.register(reg)
+    m = model_from_graph(_transmission_chain(back=True), reg)
+    assert len(m.connections) == 3
+    steps = [(s.node, s.port_in, s.port_out) for s in m.branches[0].steps]
+    assert ("G1", "front", "back") in steps and ("G2", "front", "back") in steps
+    u = unroll(m, reg)
+    assert {(lk.source, lk.target) for lk in u.links} >= {
+        (("G1", "back_out"), ("G2", "in")),
+        (("G2", "back_out"), ("cam", "in")),
+    }
+    with pytest.raises(ValueError, match="a port has one connection"):
+        model_from_graph(_transmission_chain(back=False), reg)
+
+
+def test_the_back_port_needs_transmitted_orders(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A table of reflected orders cannot feed the back port: a clear message, not reflected
+    light leaving at the back."""
+    from dataclasses import replace
+
+    from rtt_fusion.graph import grating as module
+    from rtt_fusion.graph.execute import ExecutionError
+
+    held = module._table
+    monkeypatch.setattr(
+        module, "_table", lambda ctx, node: replace(held(ctx, node), side="reflected")
+    )
+    _, ex = setup()
+    assert ex.evaluate("gr", "out")  # the front port takes it
+    with pytest.raises(ExecutionError, match="back port needs a table of the transmitted"):
+        ex.evaluate("gr", "back_out")
+
+
+def test_port_frames_face_both_ways() -> None:
+    frames = grating.port_frames(
+        Node("gr", "fg.grating", params={"point": [0, 0, 1], "normal": [0, 0, 2]})
+    )
+    assert frames["front"].normal == (0.0, 0.0, 1.0) and frames["back"].normal == (0.0, 0.0, -1.0)
+    assert frames["front"].origin == frames["back"].origin == (0.0, 0.0, 1.0)

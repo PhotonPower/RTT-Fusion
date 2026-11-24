@@ -176,3 +176,50 @@ def test_point_table_is_the_direct_solution(config: tuple[dict[str, object], str
     for m in (-1, 0, 1):
         assert np.allclose(jt.interpolate(t, m, LAMBDA_UM, 0.137, 0.02), direct[m], rtol=1e-12)
     assert not jt.near_rayleigh_anomaly(t, LAMBDA_UM, 0.137, 0.02)
+
+
+def _incident(alpha_deg: float) -> Any:
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    g.add(
+        Node(
+            "src",
+            "optics.collimated_source",
+            params={
+                "radius": 0.01,
+                "rings": 3,
+                "center": [0, 0, -0.1],
+                "wavelengths_um": [LAMBDA_UM],
+                "field_angles_deg": [[alpha_deg, 0.0]],
+                "polarisation": [0, 1, 0],
+            },
+        )
+    )
+    return Executor(g, reg, ev).evaluate("src", "out")[0]
+
+
+def test_back_port_gives_the_transmitted_orders(config: tuple[dict[str, object], str]) -> None:
+    """#120: `back_out` of a grating whose `side` is "reflected" gives exactly what `out` gives
+    with side = transmitted (the same table, the same rays)."""
+    cfg, _ = config
+    b = _incident(3.0)
+    back = grating.grating(
+        Context(Graph()),
+        Node("gr", "fg.grating", params={"config": cfg, "orders": [-1, 0, 1]}),
+        "back_out",
+        {"in": [b]},
+    )
+    out = grating.grating(
+        Context(Graph()),
+        Node(
+            "gr", "fg.grating", params={"config": cfg, "side": "transmitted", "orders": [-1, 0, 1]}
+        ),
+        "out",
+        {"in": [b]},
+    )
+    assert [x.path for x in back] == [x.path for x in out]
+    for x, y in zip(back, out, strict=True):
+        assert np.array_equal(x.direction, y.direction)
+        assert np.array_equal(x.amplitude, y.amplitude)
+        assert np.all(np.asarray(x.direction)[np.asarray(x.alive)][:, 2] > 0)  # onward, not back

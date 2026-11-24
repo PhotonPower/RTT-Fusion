@@ -676,14 +676,14 @@ data: Emitter response table M of a planar stack for BindOptiX (decay, radiative
 ### fg.grating
 splitter: Periodic sample (FourierGrating table): diffraction orders as channels.
 - needs: `table`/`table_data` (Jones table): nothing for rays, the optional C++ extension `rtt_fusion._diffraction` speeds them up; `fouriergrating`/`config`: fouriergrating; H or S: fieldtracing and a configuration (a table turns fields and spectra into rays); native: HRS
-- sockets: `in` in light:HRS; `out` out light:HRS
-- ports: front(in→out)
-- through: out ← in
+- sockets: `in` in light:HRS@front; `out` out light:HRS@front; `back_out` out light:HRS@back
+- ports: front(in→out); back(·→back_out)
+- through: out ← in; back_out ← in
 - param `table` file = "" – Jones table (raytatouille-result file); Check workflow stores it in the block (table_data) and clears the path
 - param `fouriergrating` file = "" – FourierGrating configuration: the block builds its table around the rays (R) or computes every plane wave of a field (H); Check workflow stores it in the block (config) and clears the path
 - param `config` data = {} – the FourierGrating configuration held by the block (before the file)
 - param `table_data` data = {} – the Jones table held by the block (before the file)
-- param `side` choice = "reflected" of reflected|transmitted – the orders passed on (with a configuration)
+- param `side` choice = "reflected" of reflected|transmitted – the orders at out (with a configuration); back_out always gives the transmitted orders
 - param `orders` numbers = [] – orders to pass on; empty: all of the table
 - param `n_in` number = 1.0 – index of the incident medium (R, built)
 - param `sigma_step` number = 0.01 range 1e-05… – σ step of the table; spacing of the Jones table's nodes in the direction cosines σ = n·sin θ of the incident rays (cubic interpolation between them): smaller is more exact and needs more FourierGrating solves
@@ -749,12 +749,12 @@ domain: Group (R28): a sub-model with variants; in the socket form it keeps the 
 ### hpfem.grating
 splitter: Periodic sample computed by hp-FEM (finite elements): diffraction orders as channels.
 - needs: hpfem (builds its Jones table from the job, 2 FEM solves per node); evaluator in `rtt_fusion.graph.hpfem_grating`; H or S arrive as rays (fieldtracing for the conversion); native: R
-- sockets: `in` in light:HRS; `out` out light:HRS
-- ports: front(in→out)
-- through: out ← in
+- sockets: `in` in light:HRS@front; `out` out light:HRS@front; `back_out` out light:HRS@back
+- ports: front(in→out); back(·→back_out)
+- through: out ← in; back_out ← in
 - param `job` file = "" – hp-FEM job (JSON, problem 'grating'): cell, mesh, materials, stack and solver; Check workflow stores it in the block (job_data) and clears the path
 - param `job_data` data = {} – the hp-FEM job held by the block (before the file)
-- param `side` choice = "reflected" of reflected|transmitted – the orders passed on
+- param `side` choice = "reflected" of reflected|transmitted – the orders at out; back_out always gives the transmitted orders
 - param `orders` numbers = [] – orders to pass on; empty: -1, 0, 1
 - param `sigma_step` number = 0.01 range 1e-05… – σ step of the table; spacing of the Jones table's nodes in the direction cosines σ = n·sin θ of the incident rays (cubic interpolation between them); every node is 2 hp-FEM solves
 - param `sigma_margin` number = 0.01 range 0… – σ margin of the table; how far the table reaches beyond the σ range of the incident rays

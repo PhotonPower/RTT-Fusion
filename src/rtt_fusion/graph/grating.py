@@ -372,7 +372,16 @@ def grating_spectra(ctx: Context, node: Node, sb: SpectrumBundle) -> list[Spectr
     return out
 
 
+def transmitting(node: Node, socket: str) -> Node:
+    """The node as its socket sees it: `back_out` (the back port, #120) always gives the
+    transmitted orders; `out` gives the orders of the side `side` chooses (one port, as before)."""
+    if socket != "back_out" or node.params.get("side") == "transmitted":
+        return node
+    return replace(node, params={**node.params, "side": "transmitted"})
+
+
 def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:
+    node = transmitting(node, socket)
     spectra = [b for b in inputs.get("in", []) if isinstance(b, SpectrumBundle)]
     if spectra:
         rest = [b for b in inputs.get("in", []) if not isinstance(b, SpectrumBundle)]
@@ -404,6 +413,13 @@ def grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
         return from_fields + (grating(ctx, node, socket, {"in": rays}) if rays else [])
     built = embedded.has(node, *CONFIG[:2]) and not embedded.has(node, *TABLE[:2])
     held = None if built else _table(ctx, node)
+    if held is not None and socket == "back_out" and held.side != "transmitted":
+        raise ExecutionError(
+            "exec.param",
+            f"the table holds {held.side} orders; the back port needs a table of the transmitted "
+            "orders (or a FourierGrating configuration)",
+            node.id,
+        )
     n_in0 = float(node.params.get("n_in", 1.0))
 
     def table_for(lam: float, d_loc: FloatArray) -> jt.JonesTable:
@@ -559,10 +575,34 @@ def _carry(frame: Any, a: Any, b: Any) -> Any:
     return f @ rotation_between(a, b).T
 
 
+#: the ports of a grating block (#120): light in at the front; out at the front the orders of
+#: the side `side` chooses (one port, as a mirror), out at the back the transmitted orders – so a
+#: transmission grating is a step of a branch between two neighbours
+PORTS = (PortSpec("front", "in", "out", "front"), PortSpec("back", "", "back_out", "back"))
+SCATTER = (("front", "front", "full", ()), ("front", "back", "full", ()))
+
+
+def port_frames(n: Node) -> dict[str, PortFrame]:
+    """Front and back port in the grating's plane: the front faces along `normal`, the back
+    against it."""
+    normal = np.asarray(n.params.get("normal", [0.0, 0.0, 1.0]), dtype=float)
+    normal = normal / np.linalg.norm(normal)
+    point = n.params.get("point", [0.0, 0.0, 0.0])
+    origin = (float(point[0]), float(point[1]), float(point[2]))
+    return {
+        "front": PortFrame(origin, (float(normal[0]), float(normal[1]), float(normal[2]))),
+        "back": PortFrame(origin, (-float(normal[0]), -float(normal[1]), -float(normal[2]))),
+    }
+
+
 TYPE = NodeType(
     "fg.grating",
     Category.SPLITTER,
-    (light_in("in", "RHS"), light_out("out", "RHS", label="orders")),
+    (
+        light_in("in", "RHS", "front"),
+        light_out("out", "RHS", "front", label="orders"),
+        light_out("back_out", "RHS", "back", label="transmitted orders"),
+    ),
     (
         ParamSpec(
             "table",
@@ -596,7 +636,8 @@ TYPE = NodeType(
             "choice",
             "reflected",
             options=("reflected", "transmitted"),
-            description="the orders passed on (with a configuration)",
+            description="the orders at out (with a configuration); back_out always gives the "
+            "transmitted orders",
         ),
         ParamSpec(
             "orders", "numbers", [], description="orders to pass on; empty: all of the table"
@@ -649,18 +690,10 @@ TYPE = NodeType(
             description="at most this many grid points per axis for a field (H)",
         ),
     ),
-    (("out", ("in",)),),
-    ports=(PortSpec("front", "in", "out", "front"),),
-    scatter=(("front", "front", "full", ()),),
-    port_frames=lambda n: {
-        "front": PortFrame(
-            tuple(float(x) for x in n.params.get("point", [0.0, 0.0, 0.0])),  # type: ignore[arg-type]
-            tuple(  # type: ignore[arg-type]
-                float(x) / float(np.linalg.norm(n.params.get("normal", [0.0, 0.0, 1.0])))
-                for x in n.params.get("normal", [0.0, 0.0, 1.0])
-            ),
-        )
-    },
+    (("out", ("in",)), ("back_out", ("in",))),
+    ports=PORTS,
+    scatter=SCATTER,
+    port_frames=lambda n: port_frames(n),
     description="Periodic sample (FourierGrating table): diffraction orders as channels",
 )
 

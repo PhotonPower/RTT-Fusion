@@ -1,6 +1,6 @@
 # Issue-Entwurf für Fieldtracing: Debye mit einer Pupille neben der Achse
 
-Nicht eingereicht. Ein Vorschlag für das Fieldtracing-Repository, entstanden bei RTT-Fusion#88.
+Eingereicht als PhotonPower/Fieldtracing#85 (2026-11-24), entstanden bei RTT-Fusion#88.
 
 ## Befund
 

@@ -289,3 +289,23 @@ def test_a_version_1_chain_of_transmission_gratings_becomes_a_model() -> None:
         g.nodes[name].params["side"] = "reflected"
     with pytest.raises(ValueError, match="a port has one connection"):
         model_from_graph(g, reg)
+
+
+def test_a_model_document_of_gratings_reads_back() -> None:
+    """The workflow document of a fresh model (no ports stored on the nodes yet, as a script or
+    the conversion of an old graph makes it) keeps the gratings' declared ports front and back: the
+    file reads back and unrolls (the ports were derived from the sockets as in / out before)."""
+    import json
+
+    from rtt_fusion.graph import io, workflow
+    from rtt_fusion.graph.topology import model_from_graph, unroll
+
+    reg, _ = workflow.registry()
+    m = model_from_graph(_transmission_chain(back=False), reg)
+    doc = workflow.model_document(m, reg)
+    assert not [d for d in doc["diagnostics"] if d["severity"] == "error"], doc["diagnostics"]
+    g1 = next(n for n in doc["model"]["nodes"] if n["id"] == "G1")
+    assert [p["name"] for p in g1["ports"]] == ["front", "back"]
+    back = io.model_from_dict(json.loads(json.dumps(doc["model"])), reg)
+    links = {(lk.source, lk.target) for lk in unroll(back, reg).links}
+    assert (("G1", "back_out"), ("G2", "in")) in links

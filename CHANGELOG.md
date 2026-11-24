@@ -21,6 +21,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   den vorderen Port.
 ### Behoben
 
+- **Workflow-Dokument eines frischen Modells**: `workflow.model_document` setzte erst die Sockets
+  eines Knotens und leitete daraus dann die Ports ab – Typen mit deklarierten Ports (die Gitter:
+  `front`, `back`) bekamen die Namen `in`/`out`, und das Dokument ließ sich nicht wieder lesen
+  („no port 'front'“). Betraf Modelle ohne gespeicherte Ports, z. B. aus Skripten oder aus der
+  Umwandlung eines alten Graphen; von CAD geschriebene Dokumente tragen die Ports schon.
 - **Feldbilder mit einem Fokus neben der Achse des Felds** (#88, Befund 1 und die Fälle A und B):
   Rayleigh–Sommerfeld und Debye legen ihr Ergebnis um die Achse der Feldkoordinaten, die im
   Schwerpunkt des Bündels liegt. Ein Bündel, das daneben fokussiert (außeraxialer Feldpunkt, eine

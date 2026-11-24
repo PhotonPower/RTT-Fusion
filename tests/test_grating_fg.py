@@ -272,21 +272,12 @@ def test_a_dispersive_substrate_is_evaluated_at_the_wavelength() -> None:
         with pytest.raises(ValueError, match="dispersive"):
             fga.prepare(fga.Structure(cfg), (LAMBDA_UM,))
         return
-    sellmeier = {
-        "A": 1.0,
-        "B": [0.6961663, 0.4079426, 0.8974794],
-        "C_um2": [0.00467914826, 0.0135120631, 97.9340025],
-    }  # fused silica
-    cfg = _air_to_glass({"sellmeier": sellmeier})
+    b_coef = [0.6961663, 0.4079426, 0.8974794]  # fused silica
+    c_um2 = [0.00467914826, 0.0135120631, 97.9340025]
+    cfg = _air_to_glass({"sellmeier": {"A": 1.0, "B": b_coef, "C_um2": c_um2}})
     lam2 = LAMBDA_UM**2
     n = float(
-        np.sqrt(
-            1.0
-            + sum(
-                bk * lam2 / (lam2 - ck)
-                for bk, ck in zip(sellmeier["B"], sellmeier["C_um2"], strict=True)
-            )
-        )
+        np.sqrt(1.0 + sum(bk * lam2 / (lam2 - ck) for bk, ck in zip(b_coef, c_um2, strict=True)))
     )
     handle = fga.prepare(fga.Structure(cfg), (LAMBDA_UM,))
     assert handle.back_index.real == pytest.approx(n, abs=1e-9)

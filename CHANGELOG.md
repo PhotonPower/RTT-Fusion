@@ -4,6 +4,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Gitter im Durchlicht als Schritt eines Astes** (#120): `fg.grating` und `hpfem.grating` haben
+  einen zweiten Port `back` mit dem Ausgang `back_out`, der immer die transmittierten Ordnungen
+  liefert (Streutabelle front → front und front → back, wie `fg.stack`). Damit liegt ein
+  Transmissionsgitter zwischen zwei Nachbarn im Modell (Version 2), etwa zwei Gitter
+  hintereinander. `out` bleibt wie bisher (die Ordnungen der Seite `side`); alte Dokumente sind
+  unverändert gültig. Eine Tabelle nur reflektierter Ordnungen am Rückport meldet das klar. Beim
+  Ersetzen eines Blocks geht ein Socket, für den mehrere passen, an den der gleichen Seite, sonst an
+  den vorderen Port.
 ### Behoben
 
 - **Gitter: Index der gebeugten Bündel** (#121): `fg.grating` und `hpfem.grating` setzen den Index

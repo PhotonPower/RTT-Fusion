@@ -199,6 +199,32 @@ def _source_bundle(alpha_deg: float = 0.0) -> Any:
     return Executor(g, reg, ev).evaluate("src", "out")[0]
 
 
+def test_back_port_gives_the_transmitted_orders(config: tuple[dict[str, object], str]) -> None:
+    """#120: `back_out` of a grating whose `side` is "reflected" gives exactly what `out` gives
+    with side = transmitted (the same table, the same rays)."""
+    cfg, _ = config
+    b = _source_bundle(3.0)
+    back = grating.grating(
+        Context(Graph()),
+        Node("gr", "fg.grating", params={"config": cfg, "orders": [-1, 0, 1]}),
+        "back_out",
+        {"in": [b]},
+    )
+    out = grating.grating(
+        Context(Graph()),
+        Node(
+            "gr", "fg.grating", params={"config": cfg, "side": "transmitted", "orders": [-1, 0, 1]}
+        ),
+        "out",
+        {"in": [b]},
+    )
+    assert [x.path for x in back] == [x.path for x in out]
+    for x, y in zip(back, out, strict=True):
+        assert np.array_equal(x.direction, y.direction)
+        assert np.array_equal(x.amplitude, y.amplitude)
+        assert np.all(np.asarray(x.direction)[np.asarray(x.alive)][:, 2] > 0)  # onward, not back
+
+
 def _air_to_glass(glass: Any) -> dict[str, Any]:
     """A shallow lamellar grating, air above, glass below (Λ = 1.7 µm: no order grazes at normal
     incidence in air or glass)."""

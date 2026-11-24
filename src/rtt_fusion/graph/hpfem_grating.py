@@ -39,14 +39,20 @@ from rtt_fusion._types import FloatArray
 from rtt_fusion.couplings import jones_table as jt
 from rtt_fusion.graph import embedded
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
-from rtt_fusion.graph.grating import PLANE_WAVE, _grid, rays_through
+from rtt_fusion.graph.grating import (
+    PLANE_WAVE,
+    PORTS,
+    SCATTER,
+    _grid,
+    port_frames,
+    rays_through,
+    transmitting,
+)
 from rtt_fusion.graph.model import (
     Category,
     Node,
     NodeType,
     ParamSpec,
-    PortFrame,
-    PortSpec,
     light_in,
     light_out,
 )
@@ -167,28 +173,22 @@ def hpfem_table(ctx: Context, node: Node, wavelength_um: float, d_loc: FloatArra
 
 
 def hpfem_grating(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> list[Any]:
+    node = transmitting(node, socket)
+
     def table_for(lam: float, d_loc: FloatArray) -> jt.JonesTable:
         return hpfem_table(ctx, node, lam, d_loc)
 
     return list(rays_through(ctx, node, inputs.get("in", []), table_for, True))
 
 
-def _frame(n: Node) -> dict[str, PortFrame]:
-    normal = np.asarray(n.params.get("normal", [0.0, 0.0, 1.0]), dtype=float)
-    normal = normal / np.linalg.norm(normal)
-    point = n.params.get("point", [0.0, 0.0, 0.0])
-    return {
-        "front": PortFrame(
-            (float(point[0]), float(point[1]), float(point[2])),
-            (float(normal[0]), float(normal[1]), float(normal[2])),
-        )
-    }
-
-
 TYPE = NodeType(
     "hpfem.grating",
     Category.SPLITTER,
-    (light_in("in", "RHS"), light_out("out", "RHS", label="orders")),
+    (
+        light_in("in", "RHS", "front"),
+        light_out("out", "RHS", "front", label="orders"),
+        light_out("back_out", "RHS", "back", label="transmitted orders"),
+    ),
     (
         ParamSpec(
             "job",
@@ -208,7 +208,7 @@ TYPE = NodeType(
             "choice",
             "reflected",
             options=("reflected", "transmitted"),
-            description="the orders passed on",
+            description="the orders at out; back_out always gives the transmitted orders",
         ),
         ParamSpec("orders", "numbers", [], description="orders to pass on; empty: -1, 0, 1"),
         ParamSpec(
@@ -247,10 +247,10 @@ TYPE = NodeType(
             "grating_vector", "point", [1.0, 0.0, 0.0], description="local x (the job's x), ⟂ lines"
         ),
     ),
-    (("out", ("in",)),),
-    ports=(PortSpec("front", "in", "out", "front"),),
-    scatter=(("front", "front", "full", ()),),
-    port_frames=_frame,
+    (("out", ("in",)), ("back_out", ("in",))),
+    ports=PORTS,
+    scatter=SCATTER,
+    port_frames=port_frames,
     description="Periodic sample computed by hp-FEM (finite elements): diffraction orders as "
     "channels",
 )

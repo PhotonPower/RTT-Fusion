@@ -16,6 +16,19 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   den vorderen Port.
 ### Behoben
 
+- **Feldbilder mit einem Fokus neben der Achse des Felds** (#88, Befund 1 und die Fälle A und B):
+  Rayleigh–Sommerfeld und Debye legen ihr Ergebnis um die Achse der Feldkoordinaten, die im
+  Schwerpunkt des Bündels liegt. Ein Bündel, das daneben fokussiert (außeraxialer Feldpunkt, eine
+  von mehreren Beugungsordnungen, ein steiles Teilbündel), landete auf einer periodischen Kopie,
+  am Rand oder gar nicht im Bild. `field.propagate_to` rechnet den Fleck jetzt dort, wo die
+  Strahlen landen: Rayleigh–Sommerfeld um diesen Punkt, Debye um die eigene Achse mit einem
+  Fenster, das Detektorfenster und Fleck enthält, bei einem Fleck weiter als einen halben
+  Pupillenradius daneben um den Fokus. Zwei kohärente ±1-Ordnungen im Fokus einer Linse geben den
+  Fleck in der Mitte mit Streifen der Periode λf/(2·Versatz) und Kontrast 1; ein Teilbündel unter
+  37° ist nicht mehr leer. Felder, die ganz mehr als eine Fensterbreite neben dem Fenster landen,
+  werden mit einer Protokollzeile übersprungen (bisher z. T. riesige Debye-Gitter). Offen: Debye
+  um den Fokus mit einer Pupille neben der Achse liefert in Fieldtracing einige Prozent zu viel
+  Spitze (Entwurf `docs/issue-entwurf-fieldtracing-debye-pupille.md`).
 - **Gitter: Index der gebeugten Bündel** (#121): `fg.grating` und `hpfem.grating` setzen den Index
   einer Ordnung auf das Medium, in dem sie läuft (transmittiert: Substrat, reflektiert:
   Einfallsmedium), wie `fg.stack`. Bisher behielt das Bündel den Index des Einfallsmediums; der

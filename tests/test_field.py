@@ -24,7 +24,7 @@ from rtt_fusion.graph import Graph, Node, builtin_registry, optics
 from rtt_fusion.graph.execute import WITH_FIELDS, ExecutionError, Executor
 from rtt_fusion.graph.field import field_to_rays, rays_to_field
 from rtt_fusion.graph.imaging import Image, coherent_image
-from rtt_fusion.graph.light import Plane
+from rtt_fusion.graph.light import Plane, RayBundle
 
 # fieldtracing is optional (requirements-modules.txt); without it these tests are skipped
 richards_wolf = pytest.importorskip("fieldtracing.focus").richards_wolf
@@ -419,3 +419,108 @@ def test_a_method_without_operators_falls_back(monkeypatch: Any) -> None:
     pts = uu.reshape(-1, 1) * plane.u[:2] + vv.reshape(-1, 1) * plane.v[:2]
     ref = np.sum(np.abs(richards_wolf(pts, f, K, a / f)) ** 2, axis=1).reshape(n, n)
     assert np.abs(im.values - ref).max() / ref.max() < 1e-2
+
+
+# ------------------------------------------------- #88: off-axis foci (Debye on the field's axis)
+
+
+def _converging(x_c: float, x_f: float, length: float, radius: float, rings: int = 16) -> Any:
+    """An ideally converging bundle: rays from a disc of `radius` around (x_c, 0, 0) to the focus
+    (x_f, 0, length)."""
+    from rtt_fusion.graph.light import CoherenceKey
+
+    px, py = [0.0], [0.0]
+    for r in range(1, rings + 1):
+        for k in range(6 * r):
+            a = 2 * np.pi * k / (6 * r)
+            px.append(r / rings * np.cos(a))
+            py.append(r / rings * np.sin(a))
+    start = np.stack(
+        [x_c + radius * np.array(px), radius * np.array(py), np.zeros(len(px))], axis=-1
+    )
+    d = np.array([x_f, 0.0, length]) - start
+    dist = np.linalg.norm(d, axis=1)
+    return RayBundle(
+        key=CoherenceKey("source"),
+        wavelength_um=0.54607,
+        position=start,
+        direction=d / dist[:, None],
+        opl=dist.max() - dist,
+        amplitude=np.ones(len(px), dtype=complex),
+        source_xy=start[:, :2].copy(),
+        alive=np.ones(len(px), dtype=bool),
+        source_frame=np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
+    )
+
+
+@pytest.mark.parametrize(
+    ("x_c", "x_f", "origin"),
+    [(0.0, 1.5, 0.0), (0.0, 1.8, 0.0), (-1.2, 1.2, -1.2), (1.2, -1.2, 1.2)],
+)
+def test_off_axis_focus_lands_at_the_geometric_focus(x_c: float, x_f: float, origin: float) -> None:
+    """#88 finding 1: a bundle converging beside the axis of its field coordinates (the port
+    plane's origin lies in its centroid) focused onto a periodic copy of the Debye integral. The
+    peak must lie at the geometric focus – also beyond half a Debye period (2.5 mm here)."""
+    from rtt_fusion.graph.field import field_image
+
+    length, half, n = 58.0, 2.0, 201
+    fb = rays_to_field(
+        _converging(x_c, x_f, length, 1.2), Plane.make([origin, 0.0, 0.0], [0.0, 0.0, 1.0])
+    )
+    detector = Plane.make([0.0, 0.0, length], [0.0, 0.0, 1.0])
+    log: list[str] = []
+    v = field_image([fb], detector, half, half, n, n, log).values
+    row, col = np.unravel_index(np.argmax(v), v.shape)
+    pixel = 2 * half / n
+    assert abs((col + 0.5) * pixel - half - x_f) <= pixel, log
+    assert abs((row + 0.5) * pixel - half) <= pixel
+
+
+def test_two_coherent_beams_interfere_in_their_common_focus() -> None:
+    """#88 case A: two parallel coherent beams (±1 orders of a grating pair, 0.98 mm off the axis)
+    meet in the focus of a lens: a spot in the middle with fringes of period λ·f / (2·offset)
+    (34.0 µm), contrast ≈ 1. Each bundle's field has its origin in its own centroid, as a port
+    plane puts it; before the fix the image was empty in the middle."""
+    from rtt_fusion.graph.field import field_image
+
+    length, offset, lam_mm = 164.5, 0.98, 0.405e-3
+    period = lam_mm * length / (2 * offset)
+    fields = []
+    for x_c in (offset, -offset):
+        b = _converging(x_c, 0.0, length, 0.15, rings=8)
+        b = replace(b, wavelength_um=0.405)
+        fields.append(rays_to_field(b, Plane.make([x_c, 0.0, 0.0], [0.0, 0.0, 1.0])))
+    detector = Plane.make([0.0, 0.0, length], [0.0, 0.0, 1.0])
+    half, n = 0.06, 241  # 0.5 µm pixels
+    log: list[str] = []
+    v = field_image(fields, detector, half, half, n, n, log).values
+    x = (np.arange(n) + 0.5) / n * 2 * half - half
+    row = v[n // 2]
+    centre = float(row[np.argmin(np.abs(x))])
+    assert centre >= 0.97 * float(v.max()), log
+    dark = float(row[np.argmin(np.abs(x - period / 2))])
+    bright = float(row[np.argmin(np.abs(x - period))])
+    assert dark < 0.03 * centre
+    assert bright > 0.5 * centre
+
+
+def test_a_steep_sub_beam_in_its_focus_is_not_dark() -> None:
+    """#88 case B: a sub-beam converging at 37° (sin α = 0.6) onto a detector at its focus: the
+    field image (Debye) must show the spot where the rays meet and hold the beam's power – before
+    the fix it was empty (power 0, no note)."""
+    from rtt_fusion.graph.field import field_image
+
+    length = 1.2 / np.tan(np.arcsin(0.6))
+    b = _converging(1.2, 0.0, length, 0.15, rings=12)
+    b = replace(b, wavelength_um=0.405)
+    fb = rays_to_field(b, Plane.make([1.2, 0.0, 0.0], [0.0, 0.0, 1.0]))
+    detector = Plane.make([0.0, 0.0, length], [0.0, 0.0, 1.0])
+    half, n = 0.006, 97
+    log: list[str] = []
+    h = field_image([fb], detector, half, half, n, n, log)
+    assert h.values.max() > 0, log
+    row, col = np.unravel_index(np.argmax(h.values), h.values.shape)
+    assert abs(int(row) - n // 2) <= 1 and abs(int(col) - n // 2) <= 1
+    # the spot (FWHM ≈ 2.7 µm) lies in the ±6 µm window: nearly all of the power arrives
+    pixel_area = (2 * half / n) ** 2
+    assert 0.9 * h.power <= float(h.values.sum()) * pixel_area <= 1.05 * h.power

@@ -27,7 +27,7 @@ port plane (R → H), local Fresnel numbers ≫ 1 (H → R).
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -268,6 +268,58 @@ def _onto(fb: FieldBundle, plane: Plane, notes: list[str]) -> tuple[FieldBundle,
     return fb, float((plane.origin - fb.plane.origin) @ n)
 
 
+def landing(fb: FieldBundle, distance: float) -> FloatArray | None:
+    """Where the samples' rays cross the plane `distance` mm on, in the field's coordinates
+    (sample + distance · k⊥/k_z); None for a field that is not a cloud in space or has samples
+    running backwards."""
+    from fieldtracing.field import GridlessField
+
+    f = fb.field
+    if not isinstance(f, GridlessField) or f.domain != "space" or len(f.points) == 0:
+        return None
+    k = f.local_wave_vector()
+    if np.any(k[:, 2] <= 0.0):
+        return None
+    return np.asarray(np.asarray(f.points) + distance * k[:, :2] / k[:, 2:3], dtype=np.float64)
+
+
+class _OutsideWindow(Exception):
+    """A field whose rays all land far outside the detector window (propagate_to, field_sums)."""
+
+
+def recentred(fb: FieldBundle, distance: float) -> FieldBundle:
+    """The field with its coordinates centred where its rays land after `distance` mm (#88).
+
+    Debye puts the focus, Rayleigh–Sommerfeld its output grid on the axis of the field's
+    coordinates; RTT-Fusion's port planes put that axis through the bundle's centroid. A bundle
+    that converges off that axis (an off-axis field point, one diffraction order of several)
+    then focused onto a periodic copy or outside the computed grid. The new origin is the mean
+    of the landing points (sample + distance · k⊥/k_z), weighted with |U|²; the samples keep
+    their phase, gradient, Hessian and amplitude, the plane its axes (only shifted in itself)."""
+    from fieldtracing.field import GridlessField
+
+    f = fb.field
+    if not isinstance(f, GridlessField) or f.domain != "space" or len(f.points) == 0:
+        return fb
+    land = landing(fb, distance)
+    w = np.sum(np.abs(np.asarray(f.amplitude)) ** 2, axis=1)
+    if land is None or not float(w.sum()) > 0.0:
+        return fb
+    c = (land * w[:, None]).sum(axis=0) / float(w.sum())
+    scale = float(np.max(np.abs(np.asarray(f.points)))) if len(f.points) else 0.0
+    if float(np.hypot(c[0], c[1])) <= 1e-12 * max(scale, 1.0):
+        return fb
+    p = fb.plane
+    moved = Plane(
+        np.asarray(p.origin) + c[0] * np.asarray(p.u) + c[1] * np.asarray(p.v),
+        p.normal,
+        p.u,
+        p.v,
+    )
+    shifted = replace(f, points=np.asarray(f.points) - c)
+    return FieldBundle(fb.key, moved, shifted, fb.path, fb.branch)
+
+
 #: output samples per direction of Fieldtracing's Rayleigh–Sommerfeld step (its `n_out` default)
 RS_SAMPLES = 64
 
@@ -350,18 +402,93 @@ def near_focus(
 
 
 def propagate_to(
-    fb: FieldBundle, plane: Plane, window: float | None = None, tolerance: float | None = None
+    fb: FieldBundle,
+    plane: Plane,
+    window: float | None = None,
+    tolerance: float | None = None,
+    skip_outside: bool = False,
 ) -> tuple[FieldBundle, list[str]]:
     """The field on `plane` (Fieldtracing's planner) and the log of the steps. The returned
     bundle keeps the coordinates of a plane parallel to `plane` (its `plane` attribute is the
     frame of the field coordinates, shifted along the normal onto the target). `tolerance`: ε of
     the planner's selection rules (None: Fieldtracing's default, 0.02); a larger ε lets a cheaper
-    method through, e.g. Debye instead of Rayleigh–Sommerfeld near a focus."""
+    method through, e.g. Debye instead of Rayleigh–Sommerfeld near a focus. With a window, a spot
+    beside the field's axis is computed where it lies (#88): Rayleigh–Sommerfeld about where the
+    rays land (`recentred`), Debye with a window holding the detector's window and the spot;
+    `skip_outside`: a field landing entirely more than a window width beside the window raises
+    `_OutsideWindow`."""
     notes: list[str] = []
     fb, distance = _onto(fb, plane, notes)
     if abs(distance) < 1e-9:
         return fb, notes
-    plan = plan_onto(fb, distance, window, tolerance, notes)
+    if window is None:
+        return _run(fb, distance, plan_onto(fb, distance, None, tolerance, notes), notes)
+    land = landing(fb, distance)
+    du, dv = _in_plane(fb, plane.origin)
+    if land is not None and skip_outside:
+        # every ray lands more than a window width beside the detector window: its light does
+        # not reach the window (and a Debye or RS grid out to it would be huge)
+        off = land - np.array([du, dv])
+        far = 1.5 * window
+        if (
+            off[:, 0].min() > far
+            or off[:, 0].max() < -far
+            or off[:, 1].min() > far
+            or off[:, 1].max() < -far
+        ):
+            raise _OutsideWindow(
+                f"{fb.key.source}: the field lands {np.hypot(*off.mean(axis=0)):.3g} mm from "
+                f"the window's centre, outside the {window:g} mm window – left out"
+            )
+    centred = recentred(fb, distance)
+    if centred is fb:  # the light lands on the field's axis
+        return _run(fb, distance, plan_onto(fb, distance, window, tolerance, notes), notes)
+    # (#88) Rayleigh–Sommerfeld and Debye put their output on the axis of the field's
+    # coordinates. Rayleigh–Sommerfeld integrates the field itself: centred on where the light
+    # lands, its grid holds the spot. Debye works best with the pupil centred on that axis
+    # (about the focus, a pupil beside the axis gains a few per cent of power and peak in
+    # Fieldtracing): it stays on the pupil's axis with a window that holds the detector's window
+    # and the spot, while the spot lies within half the pupil radius of it and that needs no more
+    # than DEBYE_SAMPLES samples – otherwise about the focus.
+    cu, cv = _in_plane(centred, plane.origin)
+    near: list[str] = []
+    plan_c = plan_onto(centred, distance, window + 2.0 * max(abs(cu), abs(cv)), tolerance, near)
+    if plan_c.method == "rayleigh_sommerfeld":
+        return _run(centred, distance, plan_c, notes + near)
+    su, sv = _in_plane(fb, centred.plane.origin)  # the spot, from the field's axis
+    own = max(window + 2.0 * max(abs(du), abs(dv)), window + 2.0 * max(abs(su), abs(sv)))
+    plan = plan_onto(fb, distance, own, tolerance, notes)
+    if plan.method == "debye":
+        offset = float(np.hypot(su, sv))
+        pupil = float(plan.parameters.get("length_u_mm", 0.0))
+        samples = float(plan.parameters.get("samples", 0.0))
+        # about its own axis Debye takes the directions within the pupil's cone: a spot further
+        # off than half the pupil radius (a steep sub-beam) lies outside it
+        if offset > 0.5 * pupil or samples > DEBYE_SAMPLES:
+            notes.append(
+                f"{fb.key.source}: Debye about the focus, {offset:.3g} mm beside the field's axis "
+                f"(pupil radius {pupil:.3g} mm"
+                + (f", {samples:.0f} samples" if samples > DEBYE_SAMPLES else "")
+                + ")"
+            )
+            return _run(centred, distance, plan_c, notes + near)
+    return _run(fb, distance, plan, notes)
+
+
+def _in_plane(fb: FieldBundle, point: Any) -> tuple[float, float]:
+    """A point's coordinates in the field's plane (u, v from its origin)."""
+    rel = np.asarray(point, dtype=float) - np.asarray(fb.plane.origin)
+    return float(rel @ fb.plane.u), float(rel @ fb.plane.v)
+
+
+#: most samples across the k-disc for Debye about the field's own axis (#88); beyond, about the
+#: focus (a padded grid of 4·n per axis: 768 → 3072², about 450 MB for three components)
+DEBYE_SAMPLES = 768
+
+
+def _run(
+    fb: FieldBundle, distance: float, plan: Any, notes: list[str]
+) -> tuple[FieldBundle, list[str]]:
     result, log = plan.run(fb.field)
     notes.append(f"{fb.key.source}: H propagation {distance:g} mm by {plan.method} ({plan.reason})")
     notes += [f"  {e.operator}: {w}" for e in log for w in e.warnings]
@@ -397,9 +524,14 @@ def field_sums(
         if progress is not None:
             progress(i / max(len(fields), 1), f"field propagation {i + 1}/{len(fields)}")
         power += field_power(fb)
-        target, notes = propagate_to(
-            fb, plane, window=2.0 * max(half_u, half_v), tolerance=tolerance
-        )
+        try:
+            target, notes = propagate_to(
+                fb, plane, window=2.0 * max(half_u, half_v), tolerance=tolerance, skip_outside=True
+            )
+        except _OutsideWindow as outside:
+            if log is not None:
+                log.append(str(outside))
+            continue
         if log is not None:
             log.extend(notes)
         rot = _frame(target.plane)

@@ -516,13 +516,16 @@ def _system(
     return d
 
 
-def _fill_gaps(node: dict[str, Any]) -> None:
+def _fill_gaps(node: dict[str, Any], location: str = "/root") -> None:
+    """Empty assemblies in the places of removed blocks, named after their location (node names
+    are unique in a system: two removed blocks must not both be "(removed)")."""
     children = node.get("children", [])
     for k, c in enumerate(children):
+        here = f"{location}/children/{k}"
         if c is None:
-            children[k] = {"type": "assembly", "name": "(removed)", "children": []}
+            children[k] = {"type": "assembly", "name": f"(removed {here})", "children": []}
         elif isinstance(c, dict):
-            _fill_gaps(c)
+            _fill_gaps(c, here)
 
 
 def _all_children(node: dict[str, Any]) -> list[Any]:

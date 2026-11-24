@@ -4,6 +4,21 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Behoben
+
+- **Startstrahlen bei einer gedrehten ersten Blende** (#125): kann `make_rays` einen Pfad nicht
+  zielen (gefaltet, gedreht), laufen die Ersatz-Startstrahlen jetzt längs der Feldrichtung im
+  Rahmen der ersten Fläche – ein Laseraustritt längs +x vor einem Umlenkspiegel wird getroffen.
+  Erreicht kein Startstrahl das Ende eines Pfades, nennt das Protokoll es (bisher ein Bild der
+  Leistung 0 ohne Hinweis).
+- **Zwei ersetzte Raytatouille-Blöcke ohne `rtt`-Daten** (#124): ihre Plätze heißen nach ihrem Ort
+  (`(removed /root/children/1)`); bisher zweimal `(removed)`, und das System kompilierte nicht.
+- **Feldausbreitung mit der Methode „mixed“** (#119): wählt Fieldtracings Planer eine Methode ohne
+  Operatorkette (`mixed`: F_min ≤ 1 und F_max ≥ 1/ε, z. B. viele Ringe in einen Fokus), nimmt
+  `propagate_to` die der nächsten Auswahlregel (nahe einer Kaustik Debye oder Rayleigh–Sommerfeld,
+  sonst SFT oder FFT) und nennt das im Protokoll, statt mit einem `ValueError` abzubrechen;
+  `near_focus` folgt derselben Wahl.
+
 ## [0.5.0] - 2026-11-24
 
 hp-FEM als zweiter rigoroser Gitterlöser im Workflow (R35): Block `hpfem.grating`, Jones-Tabellen

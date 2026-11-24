@@ -287,6 +287,15 @@ def plan_onto(
 
     extra: dict[str, Any] = {} if tolerance is None else {"tolerance": tolerance}
     plan = plan_propagation(fb.field, distance, focus_window=window, **extra)
+    if not plan.operators:  # a method without an operator chain yet (Fieldtracing: "mixed")
+        method, why = _executable_method(plan.situation, tolerance)
+        notes.append(
+            f"{fb.key.source}: the planner chose {plan.method} ({plan.reason}), which "
+            f"Fieldtracing cannot compute yet – {method} instead ({why})"
+        )
+        plan = plan_propagation(fb.field, distance, focus_window=window, method=method, **extra)
+        if not plan.operators:
+            raise FieldError(f"no executable propagation method ({plan.method}) for this field")
     if plan.method != "rayleigh_sommerfeld" or window is None:
         return plan
     covered = RS_SAMPLES * float(plan.parameters.get("step_out_mm", 0.0))
@@ -300,6 +309,23 @@ def plan_onto(
         f"{window:g} mm window – Debye instead, estimated error {error:.2g} (ε = {eps:g})"
     )
     return debye
+
+
+def _executable_method(situation: Any, tolerance: float | None) -> tuple[str, str]:
+    """The method the selection rules after "mixed" give (Fieldtracing's rules 4 and 6): near a
+    caustic Debye (if its error 1.5/N_F ≤ ε) or Rayleigh–Sommerfeld, else SFT or the direct FFT,
+    whichever needs fewer samples."""
+    from fieldtracing.selection import debye_error
+
+    eps = 0.02 if tolerance is None else tolerance
+    if situation.target_fresnel * eps < 1.0:
+        err = debye_error(situation.fresnel_number)
+        if err <= eps:
+            return "debye", f"target near a caustic; Debye error {err:.3g} ≤ ε"
+        return "rayleigh_sommerfeld", f"target near a caustic; Debye error {err:.3g} > ε"
+    if situation.sft_samples < situation.fft_samples:
+        return "sft", "fewer samples than the direct FFT"
+    return "fft", "fewer samples than the SFT"
 
 
 def near_focus(
@@ -316,6 +342,10 @@ def near_focus(
     plan = plan_propagation(fb.field, distance, focus_window=window, **extra)
     if plan.method in ("debye", "rayleigh_sommerfeld"):
         return str(plan.reason)
+    if not plan.operators:  # "mixed": the method propagate_to takes instead decides
+        method, why = _executable_method(plan.situation, tolerance)
+        if method in ("debye", "rayleigh_sommerfeld"):
+            return f"{plan.reason}; {why}"
     return None
 
 

@@ -373,3 +373,49 @@ def test_sampling_a_grid_equals_the_cubic_interpolation_of_the_whole_grid() -> N
     assert error <= 1.5 * np.abs(want[:-2] - exact).max()  # the same order (other end conditions)
     assert np.abs(got - want).max() < 1e-6
     assert np.all(got[-2:] == 0)
+
+
+def test_a_method_without_operators_falls_back(monkeypatch: Any) -> None:
+    """RTT-Fusion#119: the planner may choose a method Fieldtracing cannot compute yet ("mixed",
+    F_min ≤ 1 and F_max ≥ 1/ε, e.g. many rings of a focus). The propagation takes the method the
+    next selection rule gives (here Debye, the focus of W13) and says so, instead of a ValueError
+    out of Fieldtracing."""
+    import fieldtracing.chain as chain
+
+    real = chain.plan_propagation
+
+    def mixed(*args: Any, **kwargs: Any) -> Any:
+        plan = real(*args, **kwargs)
+        if kwargs.get("method") is None:
+            return replace(plan, method="mixed", reason="mixed (test)", operators=())
+        return plan
+
+    monkeypatch.setattr(chain, "plan_propagation", mixed)
+    f, a, half, n = 2.0, 1.0, 2.5e-3, 21
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    g.add(Node("src", "optics.collimated_source", params={"radius": a, "rings": 20}))
+    g.add(Node("lens", "optics.aplanatic_lens", params={"focal_length": f, "aperture_radius": a}))
+    g.add(
+        Node(
+            "cam",
+            "optics.detector",
+            params={
+                "point": [0, 0, f],
+                "normal": [0, 0, -1],
+                "half_size": [half, half],
+                "pixels": [n, n],
+            },
+        )
+    )
+    g.connect(("src", "out"), ("lens", "in"))
+    g.connect(("lens", "out"), ("cam", "in"), "H")
+    ex = Executor(g, reg, ev, available=WITH_FIELDS)
+    im: Image = ex.evaluate("cam", "image")
+    assert any("cannot compute yet – debye instead" in line for line in ex.context.log)
+    plane = Plane.make([0, 0, f], [0, 0, -1])
+    uu, vv = pixel_grid(half, n)
+    pts = uu.reshape(-1, 1) * plane.u[:2] + vv.reshape(-1, 1) * plane.v[:2]
+    ref = np.sum(np.abs(richards_wolf(pts, f, K, a / f)) ** 2, axis=1).reshape(n, n)
+    assert np.abs(im.values - ref).max() / ref.max() < 1e-2

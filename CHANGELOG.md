@@ -16,6 +16,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   den vorderen Port.
 ### Behoben
 
+- **Index hinter der letzten Fläche vor einem ersetzten Block** (#88, Befund 2): im geteilten Pfad
+  (ein Fremdblock wie `fg.grating` an der Stelle der Probe) trugen die Strahlen den Index des
+  Mediums, durch das sie an der letzten Fläche ankamen – hinter einem Objektiv dessen letztes Glas
+  (1,886) statt Luft. Jeder folgende Weg (`Plane.intersect`, der Block, Teil B) zählte (n − 1)·t
+  zu viel; bei einem geneigten Feldpunkt ist das ein Phasenkeil, und das Feld (H) fokussierte
+  neben seinen Strahlen: an der Pupillenkamera des 100×-Modells verschmolzen die Paare der
+  Beugungsordnungen zu je einem Fleck dazwischen, mit Kopien außerhalb der NA. Jetzt gilt das
+  Medium hinter der Fläche (`medium_front`/`medium_back`); die Flecken liegen wie im Strahlmodell
+  (0,199 · 0,316 · 0,590 · 0,707 · 1,098 · 1,215 · 1,488 mm), mit 8 und 16 Ringen gleich.
 - **Feldbilder mit einem Fokus neben der Achse des Felds** (#88, Befund 1 und die Fälle A und B):
   Rayleigh–Sommerfeld und Debye legen ihr Ergebnis um die Achse der Feldkoordinaten, die im
   Schwerpunkt des Bündels liegt. Ein Bündel, das daneben fokussiert (außeraxialer Feldpunkt, eine

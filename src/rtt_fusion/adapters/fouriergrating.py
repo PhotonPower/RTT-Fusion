@@ -58,12 +58,30 @@ def _fg() -> Any:
     return fouriergrating
 
 
-def _index(config: dict[str, Any], name: str) -> complex:
+def _index(config: dict[str, Any], name: str, wavelengths_um: tuple[float, ...]) -> complex:
+    """The index of a port medium. A dispersive one ({"n": {"sellmeier": …}}, FourierGrating M22)
+    is evaluated by FourierGrating at the middle of the handle's wavelengths (a table spans a few
+    nm around the rays' wavelength; the Jones matrices themselves use the dispersion exactly)."""
     material = config["materials"][name]
     if "n" not in material:
         raise ValueError(f"medium {name!r} at a port must be isotropic (key 'n')")
     n = material["n"]
-    value = complex(n[0], n[1]) if isinstance(n, list) else complex(n)
+    if isinstance(n, dict):
+        fg = _fg()
+        if not hasattr(fg, "material_eps"):
+            raise ValueError(
+                f"medium {name!r} is dispersive ({', '.join(map(str, n))}); the installed "
+                f"fouriergrating {fg.__version__} cannot evaluate it at a port (needs "
+                "fouriergrating.material_eps, FourierGrating 0.20)"
+            )
+        lam = float(np.median(np.asarray(wavelengths_um, dtype=float)))
+        cfg = {k: v for k, v in config.items() if k not in ("sweep", "output")}
+        cfg["incidence"] = {"lambda_um": lam, "phi_deg": 0.0, "psi_deg": 0.0, "delta_deg": 0.0}
+        value = complex(np.sqrt(complex(fg.material_eps(cfg, name, lam))))
+        if abs(value.imag) <= 1e-12 * abs(value.real):
+            value = complex(value.real, 0.0)
+    else:
+        value = complex(n[0], n[1]) if isinstance(n, list) else complex(n)
     if value.imag != 0.0:
         raise ValueError(f"medium {name!r} at a port must be non-absorbing")
     return value
@@ -115,7 +133,8 @@ def prepare(structure: Structure, wavelengths_um: list[float] | tuple[float, ...
             raise ValueError(f"configuration lacks {key!r}")
     if not wavelengths_um:
         raise ValueError("at least one wavelength is required")
-    front, back = _index(cfg, cfg["superstrate"]), _index(cfg, cfg["substrate"])
+    lams = tuple(float(w) for w in wavelengths_um)
+    front, back = _index(cfg, cfg["superstrate"], lams), _index(cfg, cfg["substrate"], lams)
     h = hashlib.sha256()
     h.update(f"rtt_fusion {__version__} fg-adapter {ADAPTER_VERSION}".encode())
     h.update(f"fouriergrating {_fg().__version__}".encode())

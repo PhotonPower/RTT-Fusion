@@ -6,6 +6,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 
+- **Gitter: Index der gebeugten Bündel** (#121): `fg.grating` und `hpfem.grating` setzen den Index
+  einer Ordnung auf das Medium, in dem sie läuft (transmittiert: Substrat, reflektiert:
+  Einfallsmedium), wie `fg.stack`. Bisher behielt das Bündel den Index des Einfallsmediums; der
+  nächste Block rechnete den optischen Weg mit n = 1, ein `fg.stack` dahinter meldete den falschen
+  Index. Kommen Strahlen in einem anderen Index an, als die Tabelle erwartet, nennt das Protokoll es.
+- **Gitter und Stapel mit einem Bündel ohne lebende Strahlen** (#122), z. B. die gesperrte
+  Polarisationsgruppe hinter einem idealen Polarisator: `fg.grating`, `hpfem.grating` und
+  `fg.stack` überspringen es (bisher Absturz in der Tabelle bzw. eine unnötige Lösung).
+- **Dispersives Superstrat oder Substrat im FourierGrating-Adapter** (#123): `{"n": {"sellmeier":
+  …}}` (und die anderen Modelle von FourierGrating M22) am Port wertet FourierGrating bei der
+  Wellenlänge aus (`material_eps`, FourierGrating 0.20); ein älteres FourierGrating meldet es klar
+  statt eines `TypeError`.
 - **Startstrahlen bei einer gedrehten ersten Blende** (#125): kann `make_rays` einen Pfad nicht
   zielen (gefaltet, gedreht), laufen die Ersatz-Startstrahlen jetzt längs der Feldrichtung im
   Rahmen der ersten Fläche – ein Laseraustritt längs +x vor einem Umlenkspiegel wird getroffen.

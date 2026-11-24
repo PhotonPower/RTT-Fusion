@@ -278,3 +278,24 @@ def test_the_stack_in_a_graph(tmp_path: Path) -> None:
     out: list[RayBundle] = ex.evaluate("st", "back_out")
     assert _power(out[0]) == pytest.approx(1.0, abs=1e-12)  # AR: everything through
     assert out[0].index == pytest.approx(n_sub)
+
+
+def test_a_bundle_without_live_rays_passes_nothing(tmp_path: Path) -> None:
+    """RTT-Fusion#122 for the stack: a dead bundle (the blocked group behind a polariser) is
+    skipped before the solver."""
+    path = _config(tmp_path, 1.0, [(1.38, 0.1)], 1.52, "dead")
+    reg = builtin_registry()
+    ev = optics.register(reg)
+    g = Graph()
+    g.add(
+        Node(
+            "src",
+            "optics.collimated_source",
+            params={"radius": 0.5, "rings": 2, "center": [0, 0, -1], "wavelengths_um": [0.55]},
+        )
+    )
+    b = Executor(g, reg, ev).evaluate("src", "out")[0]
+    dead = b.evolve(alive=np.zeros(b.size, dtype=bool))
+    node = Node("st", stack.TYPE_ID, params={"fouriergrating": path, "normal": [0, 0, -1]})
+    for socket in ("back_out", "front_out"):
+        assert stack.stack(Context(Graph()), node, socket, {"front_in": [dead]}) == []

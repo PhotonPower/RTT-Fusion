@@ -4,6 +4,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-24
+
+hp-FEM als zweiter rigoroser Gitterlöser im Workflow (R35): Block `hpfem.grating`, Jones-Tabellen
+aus jedem Adapter mit Port-Wellen.
+
 ### Hinzugefügt
 
 - **hp-FEM-Gitter im Workflow** (Stufe R35): Block `hpfem.grating` – das rigorose Gitter von

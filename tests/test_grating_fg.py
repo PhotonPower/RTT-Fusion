@@ -178,7 +178,7 @@ def test_point_table_is_the_direct_solution(config: tuple[dict[str, object], str
     assert not jt.near_rayleigh_anomaly(t, LAMBDA_UM, 0.137, 0.02)
 
 
-def _incident(alpha_deg: float) -> Any:
+def _source_bundle(alpha_deg: float = 0.0) -> Any:
     reg = builtin_registry()
     ev = optics.register(reg)
     g = Graph()
@@ -203,7 +203,7 @@ def test_back_port_gives_the_transmitted_orders(config: tuple[dict[str, object],
     """#120: `back_out` of a grating whose `side` is "reflected" gives exactly what `out` gives
     with side = transmitted (the same table, the same rays)."""
     cfg, _ = config
-    b = _incident(3.0)
+    b = _source_bundle(3.0)
     back = grating.grating(
         Context(Graph()),
         Node("gr", "fg.grating", params={"config": cfg, "orders": [-1, 0, 1]}),
@@ -223,3 +223,92 @@ def test_back_port_gives_the_transmitted_orders(config: tuple[dict[str, object],
         assert np.array_equal(x.direction, y.direction)
         assert np.array_equal(x.amplitude, y.amplitude)
         assert np.all(np.asarray(x.direction)[np.asarray(x.alive)][:, 2] > 0)  # onward, not back
+
+
+def _air_to_glass(glass: Any) -> dict[str, Any]:
+    """A shallow lamellar grating, air above, glass below (Λ = 1.7 µm: no order grazes at normal
+    incidence in air or glass)."""
+    return {
+        "dimension": "1D",
+        "solver": "rcwa",
+        "truncation": {"Nx": 8, "Nz": 0},
+        "period_um": {"x": 1.7, "z": 0.0},
+        "materials": {"air": {"n": 1.0}, "glass": {"n": glass}},
+        "superstrate": "air",
+        "substrate": "glass",
+        "layers": [
+            {
+                "type": "lamellar1d",
+                "thickness_um": 0.1,
+                "breakpoints_um": [0.0, 0.85, 1.7],
+                "materials": ["glass", "air"],
+            }
+        ],
+    }
+
+
+def test_orders_carry_the_index_of_their_medium() -> None:
+    """RTT-Fusion#121: a transmitted order runs in the substrate – its bundle carries the
+    substrate's index (as fg.stack), a reflected one the incident medium's."""
+    b = _source_bundle()
+    for side, n in (("transmitted", 1.5), ("reflected", 1.0)):
+        node = Node(
+            "gr",
+            "fg.grating",
+            params={"config": _air_to_glass(1.5), "side": side, "orders": [-1, 0, 1]},
+        )
+        ctx = Context(Graph())
+        out = grating.grating(ctx, node, "out", {"in": [b]})
+        assert {bo.path[-1] for bo in out} == {"gr[-1]", "gr[0]", "gr[1]"}
+        for bo in out:
+            assert float(bo.index) == n
+            m = int(bo.path[-1].split("[")[1].rstrip("]"))
+            d = np.asarray(bo.direction)[np.asarray(bo.alive)]
+            # the grating equation in the order's medium: n·sin θ_m = m λ/Λ
+            assert np.allclose(n * d[:, 0], m * LAMBDA_UM / 1.7, atol=1e-9)
+        assert not any("rays arrive in index" in line for line in ctx.log)
+
+
+def test_rays_in_another_index_than_the_table_expects_are_logged() -> None:
+    b = _source_bundle().evolve(index=1.33)
+    node = Node("gr", "fg.grating", params={"config": _air_to_glass(1.5), "side": "transmitted"})
+    ctx = Context(Graph())
+    grating.grating(ctx, node, "out", {"in": [b]})
+    assert any("rays arrive in index 1.33, the grating expects 1.0" in line for line in ctx.log)
+
+
+def test_a_bundle_without_live_rays_passes_nothing() -> None:
+    """RTT-Fusion#122: the blocked group behind an ideal polariser – no table, no crash."""
+    b = _source_bundle()
+    dead = b.evolve(alive=np.zeros(b.size, dtype=bool))
+    node = Node("gr", "fg.grating", params={"config": _air_to_glass(1.5), "side": "transmitted"})
+    ctx = Context(Graph())
+    assert grating.grating(ctx, node, "out", {"in": [dead]}) == []
+    assert not any("Jones" in line for line in ctx.log)
+    # beside a live bundle: only the live one is diffracted
+    out = grating.grating(ctx, node, "out", {"in": [dead, b]})
+    assert out and all(np.any(bo.alive) for bo in out)
+
+
+def test_a_dispersive_substrate_is_evaluated_at_the_wavelength() -> None:
+    """RTT-Fusion#123: {"n": {"sellmeier": …}} at a port, as FourierGrating computes it."""
+    fg = pytest.importorskip("fouriergrating")
+    if not hasattr(fg, "material_eps"):
+        cfg = _air_to_glass({"sellmeier": {"A": 1.0, "B": [1.25], "C_um2": [0.01]}})
+        with pytest.raises(ValueError, match="dispersive"):
+            fga.prepare(fga.Structure(cfg), (LAMBDA_UM,))
+        return
+    b_coef = [0.6961663, 0.4079426, 0.8974794]  # fused silica
+    c_um2 = [0.00467914826, 0.0135120631, 97.9340025]
+    cfg = _air_to_glass({"sellmeier": {"A": 1.0, "B": b_coef, "C_um2": c_um2}})
+    lam2 = LAMBDA_UM**2
+    n = float(
+        np.sqrt(1.0 + sum(bk * lam2 / (lam2 - ck) for bk, ck in zip(b_coef, c_um2, strict=True)))
+    )
+    handle = fga.prepare(fga.Structure(cfg), (LAMBDA_UM,))
+    assert handle.back_index.real == pytest.approx(n, abs=1e-9)
+    assert handle.back_index.imag == 0.0
+    b = _source_bundle()
+    node = Node("gr", "fg.grating", params={"config": cfg, "side": "transmitted", "orders": [0]})
+    out = grating.grating(Context(Graph()), node, "out", {"in": [b]})
+    assert len(out) == 1 and float(out[0].index) == pytest.approx(n, abs=1e-9)

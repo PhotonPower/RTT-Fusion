@@ -427,7 +427,9 @@ def _start_rays(
             1.0,
         ]
     )
-    direction /= np.linalg.norm(direction)
+    # the field angle in the frame of the first surface: a stop turned out of the axis (a laser
+    # exit along +x before a fold) sends its rays along its own normal (#125)
+    direction = rot @ (direction / np.linalg.norm(direction))
     px, py = hexapolar(rings) if points is None else (np.asarray(points[0]), np.asarray(points[1]))
     on_plane = np.stack([px * radius, py * radius, np.zeros_like(px)], -1) @ rot.T + centre
     start = on_plane - direction * (1.0 if first.kind != "stop" else 1.0 + radius)
@@ -605,6 +607,8 @@ def _path_light(
     idx = np.asarray(rec.ray_indices)
     last = count - 1
     reached = _passed(rec)
+    if not np.any(reached):
+        _dark(ctx, node, path, field, wl)
     rows = np.arange(len(idx))
     weight = np.asarray(rec.weight)[rows, last]
     bundle = RayBundle(
@@ -619,6 +623,19 @@ def _path_light(
         path=(path,),
     )
     return [bundle], []
+
+
+def _dark(ctx: Context, node: Node, path: str, field: int, wl: int) -> None:
+    """A log line (once per path, field and wavelength) when no start ray passes a path: the
+    image stays dark, and the reason is usually the start rays (a stop the rays miss)."""
+    seen = ctx.shared.setdefault("dark_paths", set())
+    if (path, field, wl) in seen:
+        return
+    seen.add((path, field, wl))
+    ctx.log.append(
+        f"{node.id}: no start ray passes path {path!r} (field {field}, wavelength {wl}) – "
+        "check the first surface (stop or entrance pupil) and the field angles"
+    )
 
 
 def _image(
@@ -850,6 +867,7 @@ def _split_path(
     )
     rows = np.flatnonzero(_passed(rec_a))
     if rows.size < 3:
+        _dark(ctx, block, path, field, wl)
         return []
     idx = np.asarray(rec_a.ray_indices)
     last = rec_a.slots - 1

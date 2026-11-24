@@ -447,8 +447,8 @@ def rays_through(
     gvec = np.asarray(node.params.get("grating_vector", [1.0, 0.0, 0.0]), dtype=float)
     out: list[RayBundle] = []
     for b in bundles:
-        if not isinstance(b, RayBundle):
-            continue
+        if not isinstance(b, RayBundle) or not np.any(b.alive):
+            continue  # no light (e.g. the blocked group behind a polariser): nothing to diffract
         d_mean = np.asarray(b.direction)[np.asarray(b.alive)].mean(axis=0)
         z = normal if float(d_mean @ normal) > 0 else -normal  # local z along the incident light
         x = gvec - z * float(gvec @ z)
@@ -458,9 +458,16 @@ def rays_through(
         plane = Plane(point, z, x, y)
         moved, uv = plane.intersect(b)
         alive = np.asarray(moved.alive)
+        if not np.any(alive):
+            continue  # every ray misses the grating's plane
         d_loc = np.asarray(moved.direction) @ rot.T
         lam = b.wavelength_um
         table = table_for(lam, d_loc[alive])
+        if abs(float(b.index) - table.n_in) > 1e-9:
+            ctx.log.append(
+                f"{node.id}: rays arrive in index {b.index}, the grating expects {table.n_in} on "
+                "that side"
+            )
         reflected = table.side == "reflected"
         orders = [int(m) for m in node.params.get("orders", []) or table.orders]
         unknown = [m for m in orders if m not in table.orders]
@@ -542,6 +549,7 @@ def rays_through(
                     amplitude=np.asarray(moved.amplitude) * np.where(ok, c, 0.0),
                     alive=ok & (np.abs(c) > 0),
                     prt=prt_out,
+                    index=table.n_out,
                     path=(*b.path, f"{node.id}[{m}]"),
                     source_frame=_carry(moved.source_frame, d_mean, (d_out @ rot)[ok].mean(axis=0)),
                 )

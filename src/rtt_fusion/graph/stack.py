@@ -136,9 +136,13 @@ def _plane(node: Node) -> Plane:
 def _apply(
     ctx: Context, node: Node, b: RayBundle, plane: Plane, from_back: bool, reflect: bool
 ) -> RayBundle | None:
-    handle = _handle(ctx, node, b.wavelength_um, from_back)
+    if not np.any(b.alive):
+        return None  # no light (e.g. the blocked group behind a polariser)
     moved, _ = plane.intersect(b)
     alive = np.asarray(moved.alive)
+    if not np.any(alive):
+        return None
+    handle = _handle(ctx, node, b.wavelength_um, from_back)
     normal = np.asarray(plane.normal)
     z = -normal if not from_back else normal  # local z along the incident light
     x = np.asarray(plane.u) - z * float(np.asarray(plane.u) @ z)

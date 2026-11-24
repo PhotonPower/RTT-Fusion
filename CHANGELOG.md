@@ -14,6 +14,32 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   unverändert gültig. Eine Tabelle nur reflektierter Ordnungen am Rückport meldet das klar. Beim
   Ersetzen eines Blocks geht ein Socket, für den mehrere passen, an den der gleichen Seite, sonst an
   den vorderen Port.
+### Behoben
+
+- **Gitter: Index der gebeugten Bündel** (#121): `fg.grating` und `hpfem.grating` setzen den Index
+  einer Ordnung auf das Medium, in dem sie läuft (transmittiert: Substrat, reflektiert:
+  Einfallsmedium), wie `fg.stack`. Bisher behielt das Bündel den Index des Einfallsmediums; der
+  nächste Block rechnete den optischen Weg mit n = 1, ein `fg.stack` dahinter meldete den falschen
+  Index. Kommen Strahlen in einem anderen Index an, als die Tabelle erwartet, nennt das Protokoll es.
+- **Gitter und Stapel mit einem Bündel ohne lebende Strahlen** (#122), z. B. die gesperrte
+  Polarisationsgruppe hinter einem idealen Polarisator: `fg.grating`, `hpfem.grating` und
+  `fg.stack` überspringen es (bisher Absturz in der Tabelle bzw. eine unnötige Lösung).
+- **Dispersives Superstrat oder Substrat im FourierGrating-Adapter** (#123): `{"n": {"sellmeier":
+  …}}` (und die anderen Modelle von FourierGrating M22) am Port wertet FourierGrating bei der
+  Wellenlänge aus (`material_eps`, FourierGrating 0.20); ein älteres FourierGrating meldet es klar
+  statt eines `TypeError`.
+- **Startstrahlen bei einer gedrehten ersten Blende** (#125): kann `make_rays` einen Pfad nicht
+  zielen (gefaltet, gedreht), laufen die Ersatz-Startstrahlen jetzt längs der Feldrichtung im
+  Rahmen der ersten Fläche – ein Laseraustritt längs +x vor einem Umlenkspiegel wird getroffen.
+  Erreicht kein Startstrahl das Ende eines Pfades, nennt das Protokoll es (bisher ein Bild der
+  Leistung 0 ohne Hinweis).
+- **Zwei ersetzte Raytatouille-Blöcke ohne `rtt`-Daten** (#124): ihre Plätze heißen nach ihrem Ort
+  (`(removed /root/children/1)`); bisher zweimal `(removed)`, und das System kompilierte nicht.
+- **Feldausbreitung mit der Methode „mixed“** (#119): wählt Fieldtracings Planer eine Methode ohne
+  Operatorkette (`mixed`: F_min ≤ 1 und F_max ≥ 1/ε, z. B. viele Ringe in einen Fokus), nimmt
+  `propagate_to` die der nächsten Auswahlregel (nahe einer Kaustik Debye oder Rayleigh–Sommerfeld,
+  sonst SFT oder FFT) und nennt das im Protokoll, statt mit einem `ValueError` abzubrechen;
+  `near_focus` folgt derselben Wahl.
 
 ## [0.5.0] - 2026-11-24
 

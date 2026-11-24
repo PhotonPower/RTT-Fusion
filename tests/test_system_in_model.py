@@ -64,3 +64,29 @@ def test_w57_channels() -> None:
     assert event_channel({"surface": "G", "order": -1}) == "G:m-1"
     assert event_channel({"surface": "P.S1", "kind": "extraordinary"}) == "P.S1:extraordinary"
     assert event_channel({"surface": "BS", "kind": "reflect"}) == ""  # the ports tell it
+
+
+def _names(node: Any) -> list[str]:
+    out = [str(node.get("name"))] if "name" in node else []
+    for c in node.get("children") or []:
+        out += _names(c)
+    return out
+
+
+def test_two_removed_blocks_leave_distinct_placeholders() -> None:
+    """RTT-Fusion#124: blocks replaced without their Raytatouille data leave empty assemblies in
+    their places; node names are unique in a system, so the two must differ."""
+    d = json.loads((DATA / "raytatouille" / "feature_tour.rtt.json").read_text(encoding="utf-8"))
+    m = model_from_raytatouille(d)
+    owners = [n for n in m.nodes.values() if n.params.get("rtt")]
+    assert len(owners) >= 2
+    removed = [loc for n in owners[:2] for loc in n.params["rtt"]]
+    for n in owners[:2]:
+        n.params["rtt"] = {}
+    m.branches = []  # their steps went with them
+    root = system_from_model(m)["root"]
+    names = _names(root)
+    placeholders = [x for x in names if x.startswith("(removed")]
+    assert len(placeholders) >= 2
+    assert len(names) == len(set(names))
+    assert all(any(loc in x for loc in removed) for x in placeholders)

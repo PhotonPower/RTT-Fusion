@@ -954,6 +954,113 @@ def _is_topology(registry: NodeTypeRegistry, node: Node) -> bool:
     )
 
 
+def replacement_ports(
+    model: Model, registry: NodeTypeRegistry, node_id: str, new: Node
+) -> dict[str, str]:
+    """Where the connected ports of `node_id` go on a block `new` in its place: a port of the same
+    name; else the only port of the new type; else by the branches – the port the light enters
+    through becomes the new port with an in channel (a grating's `front`), the one it leaves
+    through the port the new type scatters into from there (`back`); a port the light enters and
+    leaves through (a mirror's) becomes the new type's front port. ValueError if that is not
+    unique, or two ports would share one."""
+    ports = node_ports(new, registry)
+    names = [p.name for p in ports]
+    connected = {c.a[1] for c in model.connections if c.a[0] == node_id} | {
+        c.b[1] for c in model.connections if c.b[0] == node_id
+    }
+    entries = {s.port_in for b in model.branches for s in b.steps if s.node == node_id}
+    exits = {s.port_out for b in model.branches for s in b.steps if s.node == node_id}
+    ins = [p for p in ports if p.in_socket]
+    front = next((p for p in ins if p.side == "front"), ins[0] if len(ins) == 1 else None)
+    scatter = node_scatter(new, registry)
+    onward = (
+        [
+            p
+            for p in ports
+            if front is not None
+            and p.name != front.name
+            and p.out_socket
+            and scatter.get((front.name, p.name), ("none", ()))[0] != "none"
+        ]
+        if front is not None
+        else []
+    )
+    mapping: dict[str, str] = {}
+    for old in sorted(connected):
+        if old in names:
+            mapping[old] = old
+        elif len(names) == 1:
+            mapping[old] = names[0]
+        elif front is not None and old in entries:
+            mapping[old] = front.name  # entered here (and left here: a mirror's single port)
+        elif len(onward) == 1 and old in exits:
+            mapping[old] = onward[0].name
+        else:
+            raise ValueError(f"no unique port of {new.type_id} for {node_id}.{old} (ports {names})")
+    if len(set(mapping.values())) != len(mapping):
+        raise ValueError(f"two ports of {node_id} would share one port of {new.type_id}")
+    return mapping
+
+
+def replace_in_model(model: Model, registry: NodeTypeRegistry, node_id: str, new: Node) -> Node:
+    """`validate.replace_block` for a model: `new` takes the place of `node_id` (keeping its id,
+    position and name unless `new` sets them); the connections and branch steps move to its ports
+    (`replacement_ports`; a step's channel of the old block goes), data links it has no socket for
+    go, and a block that replaced a Raytatouille block keeps that block's data (`rtt`, `runs` keyed
+    by the new ports) – the element stays in the system the Raytracer draws (ADR Nachtrag 1)."""
+    old = model.nodes[node_id]
+    mapping = replacement_ports(model, registry, node_id, new)
+    params = dict(new.params)
+    if not new.type_id.startswith("rtt.") and "rtt" in old.params and "rtt" not in params:
+        params["rtt"] = old.params["rtt"]
+        runs: dict[str, Any] = {}
+        for key, value in dict(old.params.get("runs") or {}).items():
+            traversal = str(key).split("|", 1)[0]
+            a, _, b = traversal.partition(">")
+            runs.setdefault(f"{mapping.get(a, a)}>{mapping.get(b, b) if b else b}|", value)
+        if runs:
+            params["runs"] = runs
+    placed = replace(
+        new,
+        id=node_id,
+        name=new.name or old.name,
+        position=old.position if new.position == (0.0, 0.0) else new.position,
+        params=params,
+        ports=(),
+        sockets=(),
+    )
+    model.nodes[node_id] = placed
+
+    def moved(end: tuple[str, str]) -> tuple[str, str]:
+        return (end[0], mapping.get(end[1], end[1])) if end[0] == node_id else end
+
+    model.connections = [replace(c, a=moved(c.a), b=moved(c.b)) for c in model.connections]
+    model.branches = [
+        replace(
+            b,
+            steps=tuple(
+                Step(
+                    s.node,
+                    mapping.get(s.port_in, s.port_in) if s.port_in else s.port_in,
+                    mapping.get(s.port_out, s.port_out) if s.port_out else s.port_out,
+                )
+                if s.node == node_id
+                else s
+                for s in b.steps
+            ),
+        )
+        for b in model.branches
+    ]
+    sockets = {s.name for s in node_sockets(placed, registry)}
+    model.links = [
+        lk
+        for lk in model.links
+        if not (lk.source[0] == node_id and lk.source[1] not in sockets)
+        and not (lk.target[0] == node_id and lk.target[1] not in sockets)
+    ]
+    return placed
+
+
 def _through_back_ports(graph: Graph, registry: NodeTypeRegistry) -> Graph:
     """Version 1 chained transmission gratings out → in (#120): the light link leaving a block on
     `side = transmitted` through a port that already takes light from another block goes out

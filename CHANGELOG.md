@@ -6,6 +6,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Hinzugefügt
 
+- **`replace_block` auf einem Modell (Version 2)**: Verbindungen und Ast-Schritte ziehen auf die
+  Ports des neuen Blocks – gleicher Name, sonst der einzige Port, sonst nach den Ästen: wo das Licht
+  eintritt `front` (auch der eine Port eines Spiegels), wo es austritt der Port, in den der Typ von
+  dort streut (`back`); nicht eindeutig: ValueError. Der neue Block behält die Raytatouille-Daten
+  des alten (`rtt`, `runs` nach den neuen Ports). Dieselbe Regel nutzt der Editor von Raytatouille
+  Fusion. Damit braucht kein Skript mehr den Socket-Graphen (Version 1).
 - **Alte Graphen mit Gittern im Durchlicht als Modell** (#120, Folge): `model_from_graph` liest eine
   Kette `out` → `in` von Gittern auf `side = transmitted` (wie Skripte sie schreiben) über den
   hinteren Port `back_out`, statt mit „a port has one connection“ abzubrechen; die Äste laufen

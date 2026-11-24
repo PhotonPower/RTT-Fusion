@@ -505,15 +505,15 @@ Import a system (dict, JSON text, `.rtt.json` path or `rt.System`): `model_from_
 `"field_tolerance"`. Swap a block, keeping its links: `replace_block(graph, reg, "test_mirror",
 Node("gr", "fg.grating", params=...))`.
 
-**Write documents as models (version 2).** `replace_block` works on the socket graph; a document
-for Raytatouille Fusion holds the model: `m = model_from_graph(graph, reg)`, then
-`workflow.model_document(m, reg)` under `"workflow"` of the `.rttf` (section 2.2), never the graph
-(`workflow.graph`, version 1: no branches, groups or sections in the editor, and the Raytracer
-did not draw it before CAD 1.2.1). A grating in transmission between two blocks goes on through its
-back port: link `("gr", "back_out")` to the next block (`out` gives the orders of `side`, one port;
-`model_from_graph` maps a version-1 chain `out` → `in` on `side = "transmitted"` to `back_out`).
-Check before writing: no error in `doc["diagnostics"]`, and
-`unroll(io.model_from_dict(doc["model"], reg), reg)` succeeds.
+**Write documents as models (version 2).** Import the system as a model and swap blocks there:
+`m = model_from_raytatouille(system)`, `replace_block(m, reg, "sample", Node("sample",
+"fg.grating", params=...))` – the connections and branch steps move to the new block's ports (a
+mirror's port → `front`; a block the light passes → `front` where it enters, `back` where it
+leaves; ValueError if not unique), and it keeps the old block's Raytatouille data. Store
+`workflow.model_document(m, reg)` under `"workflow"` of the `.rttf` (section 2.2), never a socket
+graph (`workflow.graph`, version 1: no branches, groups or sections in the editor). A grating in
+transmission goes on through its back port `back_out`. Check before writing: no error in
+`doc["diagnostics"]`, and `unroll(io.model_from_dict(doc["model"], reg), reg)` succeeds.
 
 ### 2.10 An adapter directly (plane waves on ports)
 

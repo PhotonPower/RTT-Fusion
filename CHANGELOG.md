@@ -4,11 +4,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
-## [0.5.1] - 2026-11-24
+## [0.5.1] - 2026-11-25
 
-Rückmeldungen aus dem Modell der Zweigitter-Interferenzlithografie (#119–#125, #88): Gitter im
-Durchlicht als Schritt eines Astes, Bündelindex und tote Bündel an Gittern, dispersive Port-Medien,
-Startstrahlen einer gedrehten Blende, Feldbilder mit einem Fokus neben der Achse.
+Rückmeldungen aus dem Modell der Zweigitter-Interferenzlithografie (#119–#125, #88) und dem
+FrObSy-Belichtungskopf (#132, #133): Gitter im Durchlicht als Schritt eines Astes, Bündelindex und
+tote Bündel an Gittern, dispersive Port-Medien, Startstrahlen einer gedrehten Blende, Feldbilder mit
+einem Fokus neben der Achse, der Index hinter der letzten Fläche vor einem ersetzten Block; ein
+knotenweiser Detektor auf „auto“ entscheidet am ersten Bündel, das ihn erreicht; `replace_block` auf
+Modellen und alte Graphen mit Gittern im Durchlicht als Modell, sodass kein Skript mehr Version 1
+schreiben muss.
 
 ### Hinzugefügt
 

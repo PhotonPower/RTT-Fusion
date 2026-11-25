@@ -36,6 +36,7 @@ OPTIONAL_MODULES = (
     "rtt_fusion.graph.stack",
     "rtt_fusion.graph.particle",
     "rtt_fusion.graph.meta",
+    "rtt_fusion.graph.actuator",
     "rtt_fusion.graph.display",
     "rtt_fusion.graph.conversion",
     "rtt_fusion.graph.datanodes",

@@ -4,6 +4,20 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Aktuatoren (`fusion.actuator`)**: ein Wert für einen Tisch des Aufbaus – Verschiebetisch unter
+  einem Belichtungskopf, Drehhalter, Fokusantrieb. Der Wert setzt einen freien Parameter des
+  Raytatouille-Systems (`parameter`, innerhalb `min`/`max` seiner Zeile) und verschiebt die Blöcke,
+  die der Tisch trägt (`moves`: „Block.Komponente“ oder „Block.Komponente*Faktor“, dx dy dz in mm,
+  rx ry rz in rad oder mit `unit` „deg“ in Grad), um Faktor·(Wert − `zero`) als ihren Lage-Offset
+  `pose_by_<Aktuator>`. Ein getragener Block, der ein Raytatouille-Element ersetzt hat, behält
+  seine eigene Lage (`keep_pose`), sodass die Bewegung nur einmal zählt. Damit rechnen der Prozess
+  der Engine und ein Anbieter hinter dem JSON-Kanal gleich. Der Executor wendet die Aktuatoren vor
+  jedem Lauf an. Ein Meta-Block treibt einen Aktuator über dessen Eingang `drive` und setzt ihn
+  danach zurück. Unbekannte Parameter oder Blöcke, ein Ausdrucksparameter oder ein Wert außerhalb
+  des Bereichs sind `exec.param`. REFERENCE.md 2.12.
+
 ## [0.5.2] - 2026-11-25
 
 Die Kamera hinter der Tubuslinse im FrObSy-Belichtungskopf blieb in Raytatouille Fusion leer: ein

@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Geändert
+
+- Die eigene Fassung von `fit_curvature` (#141) wird nur noch für Fieldtracing 0.2.0 eingesetzt.
+  Fieldtracing 0.2.1 behebt die Endlosschleife selbst (PhotonPower/Fieldtracing#86) und bringt
+  außerdem den richtigen Debye-Träger für Pupillen neben der Achse (#85) und mit konkavem Umriss.
+
 ### Behoben
 
 - **Felder aus gefalteten Strahlbündeln** (#135, Fall 2, Leistung): Hinter einer aberrierten

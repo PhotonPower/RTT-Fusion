@@ -1,4 +1,4 @@
-"""A fix for Fieldtracing 0.2.x, installed before the planner runs (issue #135, case 1).
+"""A fix for Fieldtracing 0.2.0, installed before the planner runs (issue #135, case 1).
 
 `fieldtracing.selection.fit_curvature` solves its minimax linear program on a subset of the
 samples and adds the violated samples until none is left. HiGHS solves to about 1e-7, the loop
@@ -8,7 +8,8 @@ head shifted by 0.25 mm: a few hundred samples, the run never ended).
 
 The replacement is the same algorithm and stops when the subset no longer grows, with the largest
 residual over all samples as the bound (≥ the optimum, so the grid step it sets is safe). It is
-installed only for Fieldtracing 0.2.x and only if the module has the parts it builds on.
+installed only for Fieldtracing 0.2.0 (0.2.1 carries the fix, PhotonPower/Fieldtracing#86) and
+only if the module has the parts it builds on.
 """
 
 from __future__ import annotations
@@ -34,13 +35,13 @@ def _version() -> tuple[int, ...]:
 
 
 def install() -> None:
-    """Installs the terminating `fit_curvature` into Fieldtracing 0.2.x (once)."""
+    """Installs the terminating `fit_curvature` into Fieldtracing 0.2.0 (once)."""
     global _installed
     if _installed:
         return
     _installed = True
     version = _version()
-    if not version or version[:2] != (0, 2):
+    if version[:3] != (0, 2, 0):  # fixed in Fieldtracing 0.2.1 (PhotonPower/Fieldtracing#86)
         return
     try:
         import fieldtracing.chain as chain

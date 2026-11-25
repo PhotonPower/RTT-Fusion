@@ -901,7 +901,15 @@ def _split_path(
         path=(path,),
         prt=prt_a.astype(complex),
         source_frame=frame,
-        index=_segment_index(rec_a, rows, last - 1, last) if last >= 1 else 1.0,
+        # the rays stand on the last surface before the block and go on in the medium behind it
+        # (not in the one they arrived through: the glass of an objective's last lens, #88)
+        index=_index_behind(
+            compiled,
+            by_id.get(str(before[-1]["surface"])),
+            _segment_index(rec_a, rows, last - 1, last) if last >= 1 else 1.0,
+            wl,
+            str(before[-1].get("kind", "")),
+        ),
         source_index=_segment_index(rec_a, rows, 0, 1),
     )
     sockets = node_sockets(placed, ctx.registry) if ctx.registry is not None else ()
@@ -1101,6 +1109,22 @@ def _object_index(compiled: Any, wl: int) -> float:
         return 1.0
     index = media[0].index
     return float(np.real(index[min(int(wl), len(index) - 1)]))
+
+
+def _index_behind(compiled: Any, layout: Any, arriving: float, wl: int, kind: str) -> float:
+    """Refractive index of the medium a ray goes on in behind a surface it arrived at through a
+    medium of index `arriving`: the other side's medium (`medium_front`/`medium_back` of the
+    surface), the same one after a reflection or without media."""
+    media = list(getattr(compiled, "media", []) or [])
+    if not media or layout is None or kind == "reflect":
+        return arriving
+
+    def index(i: int) -> float:
+        values = media[int(i)].index
+        return float(np.real(values[min(int(wl), len(values) - 1)]))
+
+    front, back = index(layout.medium_front), index(layout.medium_back)
+    return back if abs(arriving - front) <= abs(arriving - back) else front
 
 
 def _start_opl(rec: Any, rows: Any, n: float) -> Any:
@@ -1665,29 +1689,32 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
     planned = _input_representation(ctx, node)
     fields_wanted = planned in ("H", "S")
     if not fields_wanted and _auto_fields(ctx, node):
-        first = next(
-            (
-                b
-                for arriving in inputs.values()
-                for b in arriving or []
-                if isinstance(b, RayBundle) and b.branch is not None
-            ),
-            None,
-        )
-        if first is not None and first.branch is not None:
-            run, _ = _run_of(ctx, node, first, None)
+        # the first arriving bundle whose light reaches the detector decides: one that misses it
+        # (a diffraction order beside the optics) gives no field to judge, and the detector fell
+        # back to rays where the others focus
+        probe: list[FieldBundle] = []
+        for b in (
+            b
+            for arriving in inputs.values()
+            for b in arriving or []
+            if isinstance(b, RayBundle) and b.branch is not None
+        ):
+            assert b.branch is not None
+            run, _ = _run_of(ctx, node, b, None)
             probe = _trace_run(
                 compiled,
                 layouts,
                 run,
-                first,
-                first.key.wavelength_index,
-                first.key.field_index,
+                b,
+                b.key.wavelength_index,
+                b.key.field_index,
                 True,
-                first=first.branch[1] < 0,
+                first=b.branch[1] < 0,
                 keep_all=True,
             )
-            fields_wanted = _near_focus(ctx, node, compiled, probe)
+            if probe:
+                break
+        fields_wanted = _near_focus(ctx, node, compiled, probe)
     bundles: list[RayBundle] = []
     fields: list[FieldBundle] = []
     spectra: list[SpectrumBundle] = []

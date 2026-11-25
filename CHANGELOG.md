@@ -12,6 +12,17 @@ Startstrahlen einer gedrehten Blende, Feldbilder mit einem Fokus neben der Achse
 
 ### Hinzugefügt
 
+- **`replace_block` auf einem Modell (Version 2)**: Verbindungen und Ast-Schritte ziehen auf die
+  Ports des neuen Blocks – gleicher Name, sonst der einzige Port, sonst nach den Ästen: wo das Licht
+  eintritt `front` (auch der eine Port eines Spiegels), wo es austritt der Port, in den der Typ von
+  dort streut (`back`); nicht eindeutig: ValueError. Der neue Block behält die Raytatouille-Daten
+  des alten (`rtt`, `runs` nach den neuen Ports). Dieselbe Regel nutzt der Editor von Raytatouille
+  Fusion. Damit braucht kein Skript mehr den Socket-Graphen (Version 1).
+- **Alte Graphen mit Gittern im Durchlicht als Modell** (#120, Folge): `model_from_graph` liest eine
+  Kette `out` → `in` von Gittern auf `side = transmitted` (wie Skripte sie schreiben) über den
+  hinteren Port `back_out`, statt mit „a port has one connection“ abzubrechen; die Äste laufen
+  front → back. Ein Gitter auf „reflected“, das Licht an einen anderen Block weitergibt, bleibt
+  abgelehnt.
 - **Gitter im Durchlicht als Schritt eines Astes** (#120): `fg.grating` und `hpfem.grating` haben
   einen zweiten Port `back` mit dem Ausgang `back_out`, der immer die transmittierten Ordnungen
   liefert (Streutabelle front → front und front → back, wie `fg.stack`). Damit liegt ein
@@ -20,8 +31,29 @@ Startstrahlen einer gedrehten Blende, Feldbilder mit einem Fokus neben der Achse
   unverändert gültig. Eine Tabelle nur reflektierter Ordnungen am Rückport meldet das klar. Beim
   Ersetzen eines Blocks geht ein Socket, für den mehrere passen, an den der gleichen Seite, sonst an
   den vorderen Port.
+
 ### Behoben
 
+- **Workflow-Dokument eines frischen Modells**: `workflow.model_document` setzte erst die Sockets
+  eines Knotens und leitete daraus dann die Ports ab – Typen mit deklarierten Ports (die Gitter:
+  `front`, `back`) bekamen die Namen `in`/`out`, und das Dokument ließ sich nicht wieder lesen
+  („no port 'front'“). Betraf Modelle ohne gespeicherte Ports, z. B. aus Skripten oder aus der
+  Umwandlung eines alten Graphen; von CAD geschriebene Dokumente tragen die Ports schon.
+- **Knotenweiser Detektor auf „auto“ urteilt über Licht, das ihn erreicht**: er entschied zwischen
+  Strahlen und Feldern nur am ersten ankommenden Bündel. Verfehlt das den Detektor (eine
+  Beugungsordnung neben der Optik), blieb er bei Strahlen, auch wo die anderen Bündel auf ihn
+  fokussieren – im FrObSy-Modell zeigte die Kamera hinter Objektiv und Tubuslinse nur einen
+  geometrischen Strich statt der Streifen des Substrats (×100, 33,8 µm). Jetzt entscheidet das erste
+  Bündel, dessen Licht ankommt.
+- **Index hinter der letzten Fläche vor einem ersetzten Block** (#88, Befund 2): im geteilten Pfad
+  (ein Fremdblock wie `fg.grating` an der Stelle der Probe) trugen die Strahlen den Index des
+  Mediums, durch das sie an der letzten Fläche ankamen – hinter einem Objektiv dessen letztes Glas
+  (1,886) statt Luft. Jeder folgende Weg (`Plane.intersect`, der Block, Teil B) zählte (n − 1)·t
+  zu viel; bei einem geneigten Feldpunkt ist das ein Phasenkeil, und das Feld (H) fokussierte
+  neben seinen Strahlen: an der Pupillenkamera des 100×-Modells verschmolzen die Paare der
+  Beugungsordnungen zu je einem Fleck dazwischen, mit Kopien außerhalb der NA. Jetzt gilt das
+  Medium hinter der Fläche (`medium_front`/`medium_back`); die Flecken liegen wie im Strahlmodell
+  (0,199 · 0,316 · 0,590 · 0,707 · 1,098 · 1,215 · 1,488 mm), mit 8 und 16 Ringen gleich.
 - **Feldbilder mit einem Fokus neben der Achse des Felds** (#88, Befund 1 und die Fälle A und B):
   Rayleigh–Sommerfeld und Debye legen ihr Ergebnis um die Achse der Feldkoordinaten, die im
   Schwerpunkt des Bündels liegt. Ein Bündel, das daneben fokussiert (außeraxialer Feldpunkt, eine

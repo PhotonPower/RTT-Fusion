@@ -235,9 +235,11 @@ def model_document(
     provider is recorded gets `graph.provider_missing` (the plugin is missing or too old) instead
     of `graph.node_type_unknown` – it stays in the model with its data."""
     for node in model.nodes.values():  # with the inputs every block has (drive, pose)
+        # the ports first: a type's declared ports (a grating's front and back) hold only for a
+        # node without own sockets – derived from the sockets they would be named in / out
+        ports = node.ports or node_ports(node, reg)
         node.sockets = tuple(node_sockets(node, reg))
-        if not node.ports:
-            node.ports = node_ports(node, reg)
+        node.ports = ports
     diagnostics = [dict(d.__dict__) for d in validate_model(model, reg)]
     p: dict[str, Any] = {"links": {}, "conversions": [], "connections": {}}
     if not any(d["severity"] == "error" for d in diagnostics):

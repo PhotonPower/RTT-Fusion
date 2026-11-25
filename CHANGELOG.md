@@ -18,6 +18,20 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   danach zurück. Unbekannte Parameter oder Blöcke, ein Ausdrucksparameter oder ein Wert außerhalb
   des Bereichs sind `exec.param`. REFERENCE.md 2.12.
 
+### Behoben
+
+- **Kamera bei verschobenem Kopf endete nicht** (#135, Fall 1): Die Krümmungsanpassung von
+  Fieldtracing 0.2.x (`fit_curvature`) löst ein lineares Programm auf einer wachsenden Teilmenge
+  der Abtastpunkte. HiGHS löst auf etwa 1e-7 genau, die Schleife verlangt 1e-9. Liegen alle
+  verletzten Punkte schon in der Teilmenge, wächst sie nicht mehr, und dasselbe Programm wird ohne
+  Ende gelöst. RTT-Fusion setzt für Fieldtracing 0.2.x eine Fassung ein, die dann mit dem größten
+  Residuum als Schranke endet. Die Kamera des FrObSy-Belichtungskopfs bei DX = 0,25 mm rechnet
+  damit in 5 s: Periode 33,8 µm, Kontrast 0,986 (Referenz 34,02 µm, 0,988).
+- **Felder: kein Raster über 2 GiB** (#135): Eine Ausbreitung, deren Raster mehr als
+  `field.FIELD_GRID_BYTES` brauchen würde (19944² Debye-Punkte forderten 17,8 GiB), wird mit
+  `exec.field` abgelehnt, bevor das Raster angelegt wird. Die Meldung nennt Abtastwerte, Speicher
+  und was hilft.
+
 ## [0.5.2] - 2026-11-25
 
 Die Kamera hinter der Tubuslinse im FrObSy-Belichtungskopf blieb in Raytatouille Fusion leer: ein

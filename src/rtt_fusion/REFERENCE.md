@@ -1146,7 +1146,9 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
   normal, up)`, `plane.intersect(bundle) -> (moved, uv)`; `split_field`, `split_along`,
   `physical_split`, `rotation_between`, `concat`.
 - `field` (fieldtracing): `FieldBundle(key, plane, field, path, branch)`; `rays_to_field(bundle,
-  plane=None)`, `field_to_rays(fb)`, `field_power(fb)`, `propagate_to(fb, plane, window=None,
+  plane=None)` (one field of all samples), `rays_to_fields(bundle, plane=None)` (one field per
+  sheet of a folded ray map – the conversions R -> H on links and at detectors use it),
+  `field_to_rays(fb)`, `field_power(fb)`, `propagate_to(fb, plane, window=None,
   tolerance=None) -> (fb, notes)`, `field_image(fields, plane, hu, hv, nx, ny, log=None,
   progress=None, tolerance=None) -> Image`, `port_plane(bundle)`, `field_tolerance(shared)`,
   `FieldError`.

@@ -83,7 +83,23 @@ def port_plane(bundle: RayBundle) -> Plane:
 
 
 def rays_to_field(bundle: RayBundle, plane: Plane | None = None) -> FieldBundle:
-    """R -> H on `plane` (default `port_plane`)."""
+    """R -> H on `plane` (default `port_plane`): one field of all samples. A ray map folded at
+    the plane (rays of different parts of the pupil land on the same spot) is better made with
+    `rays_to_fields`, one field per sheet."""
+    return _rays_to_fields(bundle, plane, sheets=False)[0]
+
+
+def rays_to_fields(bundle: RayBundle, plane: Plane | None = None) -> list[FieldBundle]:
+    """R -> H on `plane` (default `port_plane`), one field per sheet of the ray map (#135, case
+    2): behind an aberrated lens the rays of the pupil's rim cross the others, the map from the
+    start coordinates onto the plane folds, and one field of all samples covers the overlap once
+    (half the power was lost behind the FrObSy objective). The sheets – regions of one sign of
+    J – each give a field on the same plane with the same coherence key; propagated and summed
+    they hold the light of both. An unfolded map gives one field, as `rays_to_field`."""
+    return _rays_to_fields(bundle, plane, sheets=True)
+
+
+def _rays_to_fields(bundle: RayBundle, plane: Plane | None, sheets: bool) -> list[FieldBundle]:
     alive = np.asarray(bundle.alive)
     from fieldtracing.field import GridlessField
     from fieldtracing.mesh import fit_derivatives, mesh_jacobian_cloud
@@ -132,16 +148,53 @@ def rays_to_field(bundle: RayBundle, plane: Plane | None = None) -> FieldBundle:
     ok &= np.all(np.isfinite(hessian.reshape(len(start), -1)), axis=1)
     if ok.sum() < 6:
         raise FieldError("the ray net has a caustic at the port plane (no geometric field there)")
-    f = GridlessField(
-        landing[ok],
-        k0 * opl[ok],
-        gradient[ok],
-        hessian[ok],
-        np.asarray(u_local[ok], dtype=np.complex128),
-        bundle.wavelength_um,
-        n,
-    )
-    return FieldBundle(bundle.key, plane, f, bundle.path, bundle.branch)
+    keep = [ok] if not sheets else [ok & part for part in _sheets(cloud, len(start))]
+
+    def field(mask: Any) -> FieldBundle:
+        f = GridlessField(
+            landing[mask],
+            k0 * opl[mask],
+            gradient[mask],
+            hessian[mask],
+            np.asarray(u_local[mask], dtype=np.complex128),
+            bundle.wavelength_um,
+            n,
+        )
+        return FieldBundle(bundle.key, plane, f, bundle.path, bundle.branch)
+
+    made = [field(mask) for mask in keep if mask.sum() >= 6]
+    return made or [field(ok)]  # no sheet large enough: one field, as before
+
+
+def _sheets(cloud: Any, n_samples: int) -> list[Any]:
+    """The sheets of a folded ray map: the samples of each connected region of start-mesh
+    triangles with the same sign of J (edge-adjacent triangles of equal sign), a sample belonging
+    to a sheet when all its triangles do; samples at a fold (triangles of both signs) belong to
+    none – Fieldtracing marks them caustic. One sheet (no fold): all samples."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    tri = np.asarray(cloud.triangles, dtype=np.int64)
+    sign = np.sign(np.asarray(cloud.triangle_ratio, dtype=float))
+    if len(tri) == 0 or not (np.any(sign > 0) and np.any(sign < 0)):
+        return [np.ones(n_samples, dtype=bool)]
+    edges = np.sort(np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]), axis=1)
+    owner = np.tile(np.arange(len(tri)), 3)
+    order = np.lexsort((edges[:, 1], edges[:, 0]))
+    e, o = edges[order], owner[order]
+    shared = np.flatnonzero(np.all(e[1:] == e[:-1], axis=1))  # an inner edge: two triangles
+    a, b = o[shared], o[shared + 1]
+    same = sign[a] == sign[b]
+    graph = coo_matrix((np.ones(int(same.sum())), (a[same], b[same])), shape=(len(tri), len(tri)))
+    _, label = connected_components(graph, directed=False)
+    # per sample: the label of its triangles, none where they differ (a fold)
+    lowest = np.full(n_samples, np.iinfo(np.int64).max, dtype=np.int64)
+    highest = np.full(n_samples, -1, dtype=np.int64)
+    for corner in range(3):
+        np.minimum.at(lowest, tri[:, corner], label)
+        np.maximum.at(highest, tri[:, corner], label)
+    of_sample = np.where(lowest == highest, highest, -1)
+    return [of_sample == s for s in np.unique(label) if np.any(of_sample == s)]
 
 
 def field_to_rays(fb: FieldBundle) -> RayBundle:

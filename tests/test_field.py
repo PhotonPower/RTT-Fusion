@@ -617,3 +617,67 @@ def test_auto_judges_only_light_near_the_window() -> None:
     inside = replace(_converging(1.0, 0.0, length, 0.3, rings=8), wavelength_um=0.405)
     assert near_focus(rays_to_field(beside), detector, 0.3046, 0.2) is None
     assert near_focus(rays_to_field(inside), detector, 0.3046, 0.2) is not None
+
+
+# ------------------------------------------------- #135: a folded ray map, one field per sheet
+
+
+def _aberrated(c: float = 0.5) -> Any:
+    """A bundle converging with strong spherical aberration: the ray from pupil radius ρ meets
+    the axis at f·(1 − c·ρ²/a²) (f = 50 mm, a = 2 mm); beyond the marginal rays' caustic the map
+    from the pupil onto a plane folds."""
+    f0, a = 50.0, 2.0
+    b = replace(_converging(0.0, 0.0, f0, a, rings=40), wavelength_um=0.5)
+    p = np.asarray(b.position)
+    rho2 = np.sum(p[:, :2] ** 2, axis=1)
+    focus = f0 * (1.0 - c * rho2 / a**2)
+    d = np.stack([-p[:, 0], -p[:, 1], focus], axis=-1)
+    d /= np.linalg.norm(d, axis=1)[:, None]
+    length = np.sqrt(rho2 + focus**2)
+    return replace(b, direction=d, opl=length.max() - length)
+
+
+def test_an_unfolded_ray_map_gives_one_field() -> None:
+    from rtt_fusion.graph.field import rays_to_fields
+
+    b = _converging(0.3, 0.0, 58.0, 1.2)
+    plane = Plane.make([0.0, 0.0, 10.0], [0.0, 0.0, 1.0])
+    one = rays_to_field(b, plane)
+    many = rays_to_fields(b, plane)
+    assert len(many) == 1
+    np.testing.assert_array_equal(many[0].field.points, one.field.points)
+    np.testing.assert_array_equal(many[0].field.amplitude, one.field.amplitude)
+
+
+def test_a_folded_ray_map_gives_a_field_per_sheet() -> None:
+    """#135 case 2: behind an aberrated lens the rays of the rim cross the others; one field of
+    all samples counted the overlap once (half the power of a beam behind the FrObSy objective).
+    Here: the image 45 mm on, made from a plane where the map folds (32 mm, three sheets) and,
+    as the reference route, from the start plane where it does not. One field per sheet comes
+    close to the reference (samples at the folds are left out, the geometric amplitude does not
+    hold there); one field of all samples has a fifth of the power."""
+    from rtt_fusion.graph.field import field_image, rays_to_fields
+
+    b = _aberrated()
+    detector = Plane.make([0.0, 0.0, 45.0], [0.0, 0.0, 1.0])
+    half, n = 0.4, 81
+    folded = Plane.make([0.0, 0.0, 32.0], [0.0, 0.0, 1.0])
+    sheets = rays_to_fields(b, folded)
+    assert len(sheets) >= 2
+
+    def image(fields: list[Any]) -> FloatArray:
+        return np.asarray(field_image(fields, detector, half, half, n, n, []).values)
+
+    reference = image([rays_to_field(b, Plane.make([0.0, 0.0, 1e-3], [0.0, 0.0, 1.0]))])
+    by_sheet = image(sheets)
+    one = image([rays_to_field(b, folded)])
+
+    def agreement(v: FloatArray) -> tuple[float, float]:
+        return float(np.corrcoef(reference.ravel(), v.ravel())[0, 1]), float(
+            v.sum() / reference.sum()
+        )
+
+    corr_sheets, power_sheets = agreement(by_sheet)
+    corr_one, power_one = agreement(one)
+    assert corr_sheets > 0.75 and power_sheets > 0.45, (corr_sheets, power_sheets)
+    assert corr_one < 0.65 and power_one < 0.3, (corr_one, power_one)

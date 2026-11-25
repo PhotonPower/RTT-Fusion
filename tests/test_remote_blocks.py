@@ -303,3 +303,67 @@ def test_hpfem_grating_is_offered_as_a_ray_block() -> None:
     reg, _ = workflow.registry()
     known = reg.get("hpfem.grating")
     assert known is not None and known.type_id == "hpfem.grating"
+
+
+# ---------------------------------------------------------------------------- issue #137
+
+
+@pytest.mark.parametrize("with_plan", [True, False])
+def test_137_fields_on_the_link_into_a_remote_detector(tmp_path: Path, with_plan: bool) -> None:
+    """Issue #137: node-wise, the link into the camera planned H – the engine turns the rays into
+    fields on the link, the provider's detector propagates them. The request names the plan of
+    the links at the block, so the detector knows the fields are its light; without the plan (an
+    older engine) the arriving fields still are. Before, the provider had no plan, took the link
+    for R and gave an empty image without a word."""
+    pytest.importorskip("raytatouille")
+    pytest.importorskip("fieldtracing")
+    import warnings
+
+    from rtt_fusion.graph import backend_rtt, model_from_raytatouille, unroll
+    from rtt_fusion.graph.execute import WITH_FIELDS
+    from rtt_fusion.graph.workflow import registry
+
+    d = json.loads((Path(__file__).parent / "data" / "linnik_mini.rtt.json").read_text("utf-8"))
+    shared = {"rings": 6, "pixels": [24, 24], "rtt_execution": "nodes"}
+
+    def graph(reg: Any) -> Graph:
+        g = unroll(model_from_raytatouille(d), reg)
+        for lk in g.links_to("camera"):
+            g.set_transport(lk, "H")
+        return g
+
+    reg, extra = registry()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        local: Image = Executor(
+            graph(reg), reg, {**backend_rtt.EVALUATORS, **extra}, shared, available=WITH_FIELDS
+        ).evaluate("camera", "image")
+    rtt_types = [t for t in reg.types() if t.type_id in backend_rtt.EVALUATORS]
+    provider = BlockProvider(rtt_types, dict(backend_rtt.EVALUATORS), lambda g, plain: {})
+    plans: dict[str, Any] = {}
+
+    def call(name: str, request: dict[str, Any]) -> dict[str, Any]:
+        wire = json.loads(json.dumps(request, allow_nan=False))
+        if wire.get("kind") != "prepare":
+            plans[wire["node"]["id"]] = wire.get("plan")
+            if not with_plan:
+                wire.pop("plan", None)
+        answer: dict[str, Any] = json.loads(json.dumps(provider.handle(wire), allow_nan=False))
+        return answer
+
+    engine_reg, engine_extra = registry()
+    catalogue = [{"provider": "raytracer", "type": e} for e in provider.catalogue()]
+    remote = register_remote(engine_reg, catalogue, call, tmp_path / "portdata")
+    ex = Executor(
+        graph(engine_reg),
+        engine_reg,
+        {**engine_extra, **remote},
+        shared,
+        available=WITH_FIELDS,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        again: Image = ex.evaluate("camera", "image")
+    assert set(plans["camera"].values()) == {"H"}  # the plan of the link reached the provider
+    assert local.power > 0
+    np.testing.assert_allclose(again.values, local.values, rtol=0, atol=1e-9 * local.values.max())

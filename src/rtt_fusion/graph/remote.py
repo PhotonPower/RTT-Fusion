@@ -19,6 +19,11 @@ get the run's unrolled graph once, before the first of their evaluations in that
 its context (`Context.graph` the whole graph, `shared` the plain settings plus what the provider's
 `prepare` hook adds, e.g. a material library).
 
+Plan (issue #137): the planner runs in the engine; a request names the planned representation of
+every light link into and out of the block (`"plan": {link key: "R" | "H" | "S"}`), and the
+provider's context gets it as `Context.plan`. A detector thereby knows that the light on its link
+arrives as fields (H) and a block before an H link knows that fields are made behind it.
+
 Changes within a run (issue #70): meta blocks (`meta.sweep`, `meta.replicates`, `meta.optimise`)
 change parameters of blocks in the engine's graph after the run was prepared – the drive of a
 mirror, a pose, a parameter. Every evaluation therefore names the blocks whose parameters differ
@@ -43,10 +48,12 @@ from rtt_fusion import portdata
 from rtt_fusion.graph import io
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.model import Graph, Node, NodeType
+from rtt_fusion.graph.planner import Plan, link_key
 from rtt_fusion.graph.registry import NodeTypeRegistry
 
 #: request a provider answers: {"node", "socket", "inputs": {socket: handle}, "folders": {socket:
-#: folder of that input}, "out": folder for the outputs, "shared": plain settings of the run}
+#: folder of that input}, "out": folder for the outputs, "shared": plain settings of the run,
+#: "plan": {link key: representation} of the links at the block}
 #: response: {"ok": True, "outputs": handle, "log": [...], "used": {link key: {"representation",
 #: "reason"}}} or {"ok": False, "error": "..."}
 Call = Callable[[str, dict[str, Any]], dict[str, Any]]
@@ -150,7 +157,13 @@ class BlockProvider:
             else:
                 graph, shared = Graph(), dict(request.get("shared", {}))
                 graph.add(node)
-            ctx = Context(graph, shared=dict(shared), operators=self.operators)
+            planned = request.get("plan")
+            ctx = Context(
+                graph,
+                shared=dict(shared),
+                operators=self.operators,
+                plan=Plan(representations=dict(planned)) if isinstance(planned, dict) else None,
+            )
             value = self.evaluators[node.type_id](ctx, node, str(request["socket"]), inputs)
             log = list(ctx.log)
             handle = portdata.write(value, request["out"])
@@ -257,6 +270,18 @@ class RemoteEvaluator:
             self.runs[key] = (run, _snapshot(ctx.graph))
         return self.runs[key][0]
 
+    @staticmethod
+    def _plan(ctx: Context, node: Node) -> dict[str, str] | None:
+        """The planned representation of the links into and out of the block (#137)."""
+        if ctx.plan is None:
+            return None
+        links = [*ctx.graph.links_to(node.id), *ctx.graph.links_from(node.id)]
+        return {
+            link_key(lk): ctx.plan.representations[link_key(lk)]
+            for lk in links
+            if link_key(lk) in ctx.plan.representations
+        }
+
     def _needs_engine(self, ctx: Context, node: Node) -> bool:
         """Whether the block evaluates blocks of another provider (a detector with a grating of
         FourierGrating on its path): the provider cannot reach them, the engine can."""
@@ -291,6 +316,9 @@ class RemoteEvaluator:
                 "out": str(folder / "out"),
                 "shared": _plain(ctx.shared),
             }
+            planned = self._plan(ctx, node)
+            if planned is not None:
+                request["plan"] = planned
             if run is not None:
                 request["run"] = run
                 request["changes"] = self._changes(ctx, (self.provider, id(ctx.graph)))

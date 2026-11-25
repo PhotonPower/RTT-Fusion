@@ -68,6 +68,8 @@ NEEDS: dict[str, str] = {
     "meta.optimise": "nothing",
     "meta.replicates": "nothing",
     "meta.sweep": "nothing",
+    "fusion.actuator": "nothing (applied to the graph before a run, `rtt_fusion.graph.actuator`; "
+    "its `parameter` needs a Raytatouille system)",
     "optics.aplanatic_lens": _OPTICS,
     "optics.beam_splitter": _OPTICS,
     "optics.collimated_source": _OPTICS,

@@ -163,7 +163,12 @@ class Executor:
     # ------------------------------------------------------------------ public
     def check(self) -> None:
         """Raises for errors of the graph check, for transports that cannot run yet and for
-        errors of the plan; keeps the plan in `self.plan`."""
+        errors of the plan; keeps the plan in `self.plan`. Applies the actuators first (their
+        values into the system parameters and the poses of the blocks they carry)."""
+        if any(n.type_id == "fusion.actuator" for n in self.graph.nodes.values()):
+            from rtt_fusion.graph.actuator import apply_actuators
+
+            apply_actuators(self.graph)
         found = errors(validate(self.graph, self.registry))
         if found:
             d = found[0]

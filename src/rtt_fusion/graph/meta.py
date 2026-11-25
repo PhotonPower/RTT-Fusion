@@ -85,23 +85,33 @@ class _Parameter:
         if self.node_id not in ctx.graph.nodes:
             raise ExecutionError("exec.param", f"no block {self.node_id!r}", where)
         self.node = ctx.graph.nodes[self.node_id]
+        self.graph = ctx.graph
         self.saved = self.node.params.get(self.name)
 
     def set(self, value: float) -> None:
         if self.index is None:
             self.node.params[self.name] = value
-            return
-        current = list(self.node.params.get(self.name) or [])
-        while len(current) <= self.index:
-            current.append(0.0)
-        current[self.index] = value
-        self.node.params[self.name] = current
+        else:
+            current = list(self.node.params.get(self.name) or [])
+            while len(current) <= self.index:
+                current.append(0.0)
+            current[self.index] = value
+            self.node.params[self.name] = current
+        self._actuate()
 
     def restore(self) -> None:
         if self.saved is None:
             self.node.params.pop(self.name, None)
         else:
             self.node.params[self.name] = self.saved
+        self._actuate()
+
+    def _actuate(self) -> None:
+        """An actuator passes its new value on to the system and the blocks it carries."""
+        if self.node.type_id == "fusion.actuator":
+            from rtt_fusion.graph.actuator import apply_actuators
+
+            apply_actuators(self.graph)
 
 
 def _collect(ctx: Context, node: Node) -> tuple[str, str]:

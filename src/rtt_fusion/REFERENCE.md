@@ -27,7 +27,7 @@ and data types, 1.4 planner, 1.5 conversions at ports, 1.6 coherence and branche
 frames, signs, 1.8 polarisation) · 2 Recipes, runnable (2.1 rays, 2.2 model, file, document,
 2.3 plan inspection, 2.4 fields at a focus, 2.5 converting, 2.6 stack and grating with S,
 2.7 particle, 2.8 interferometer and sweep, 2.9 Raytatouille systems, 2.10 an adapter directly,
-2.11 a .rttf document) · 3 Block catalogue (generated) · 4 Public API by module ·
+2.11 a .rttf document, 2.12 actuators) · 3 Block catalogue (generated) · 4 Public API by module ·
 5 Diagnostics and log lines · 6 Gotchas and performance · 7 Discovering more at run time
 
 ## 0.1 Installing the optional modules
@@ -478,6 +478,7 @@ Instead of `parameter`, link the meta block: `g.connect(("sweep", "drive"), ("mB
 offset `component` (dx … rz). `meta.replicates` averages images; `meta.optimise` searches
 `bounds` for `goal` maximum/minimum.
 
+
 ### 2.9 Raytatouille systems (`rtt.*` blocks)
 
 ```python run needs=raytatouille
@@ -561,13 +562,35 @@ ex = Executor(graph, reg, {**backend_rtt.EVALUATORS, **ev}, shared, available=wo
 results = ex.results()          # {(node, socket): value} of every detector/analysis output
 ```
 
+
+### 2.12 Actuators: one value for a stage
+
+A stage of the setup – a table under an exposure head, a rotation mount, a focus drive – is a
+`fusion.actuator`. Its value sets a free parameter of the Raytatouille system (`parameter`; within
+the `min`/`max` of its row) and moves the blocks the stage carries (`moves`, "block.component" or
+"block.component*factor"; dx dy dz in mm, rx ry rz in rad, in degrees with `unit` "deg") by
+factor·(value − `zero`), as their pose offset `pose_by_<actuator>`. A carried block that replaced
+a Raytatouille element keeps its own pose (`keep_pose`), so the move counts once.
+
+```python
+g.add(Node("head_x", "fusion.actuator", params={
+    "value": 0.25, "parameter": "DX", "moves": "E1.dx, G1.dx, G2.dx, E2.dx"}))
+g.add(Node("gap", "fusion.actuator", params={       # grating distance DP, nominally 8 mm
+    "value": 10.5, "zero": 8.0, "parameter": "DP", "moves": "G2.dz, E2.dz"}))
+```
+
+The executor applies the actuators before a run; a meta block drives one through its input
+`drive` (added to `value`): `g.connect(("sweep", "drive"), ("head_x", "drive"))`. A muted actuator
+does nothing. Unknown parameters or blocks, an expression parameter or a value outside the range
+are `exec.param`.
+
 ## 3 Block catalogue (generated)
 
 Generated from the registry by `tools/gen_llm_reference.py`; do not edit by hand.
 `python -m rtt_fusion.reference --blocks --live` prints it from the installed registry.
 
 <!-- BEGIN GENERATED: block catalogue (python tools/gen_llm_reference.py) -->
-42 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
+43 block types. Per type: category and description; needs (optional packages); native = representations the evaluator computes in (the executor converts the rest at its ports); sockets as `name` in|out light:<accepted representations>[@side] or data:<type> (blocks of category source/domain/splitter/detector also get the data input `pose`, type drive); ports as name(in socket→out socket), the names `Model.connect` and branch steps use; through = output ← inputs it depends on; `param name type = default [unit] range of options – description`.
 
 ### analysis.camera_image
 analysis: Irradiance image of a detector with many rays.
@@ -718,6 +741,17 @@ domain: Layer stack (FourierGrating, exact per ray): coating, filter, mirror lay
 - param `field_threshold` number = 1e-10 – plane waves below this share of the largest amplitude are left out (H)
 - param `field_transfer` choice = "exact" of exact|interpolated – exact: FourierGrating per plane wave; interpolated: from a verified sub-grid of the spectrum (1e-8), much faster for wide beams
 - param `field_grid_max` integer = 1024 – at most this many grid points per axis for a field (H)
+
+### fusion.actuator
+meta: Actuator: a stage that sets a system parameter and carries blocks along.
+- needs: nothing (applied to the graph before a run, `rtt_fusion.graph.actuator`; its `parameter` needs a Raytatouille system); native: – (data block, no light)
+- sockets: `drive` in data:drive
+- param `value` number = 0.0 – position of the stage
+- param `unit` choice = "mm" of mm|deg|rad|µm| – unit of the value; deg: rotations of the carried blocks in degrees
+- param `parameter` text = "" – free parameter of the Raytatouille system set to the value, e.g. DX
+- param `moves` text = "" – blocks carried along: block.component or block.component*factor, comma-separated (dx dy dz in mm, rx ry rz), e.g. G1.dx, G2.dx
+- param `zero` number = 0.0 – value at which the carried blocks stand where the model puts them
+- param `drive` number = 0.0 – added to the value (set by a meta block)
 
 ### fusion.condensed
 domain: Condensed group (R29): plane-wave tables of its inner branches.

@@ -4,6 +4,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-25
+
+Die Kamera hinter der Tubuslinse im FrObSy-Belichtungskopf blieb in Raytatouille Fusion leer: ein
+Detektor im Plugin-Prozess kannte den Plan seiner Verbindung nicht (#137).
+
 ### Behoben
 
 - **Felder in einen Detektor im Plugin-Prozess** (#137): Raytatouille Fusion rechnet die `rtt.*`-

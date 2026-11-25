@@ -433,7 +433,7 @@ def plan_onto(
 
     from rtt_fusion.graph._fieldtracing_fix import install
 
-    install()  # Fieldtracing 0.2.x: a curvature fit that can loop forever (#135)
+    install()  # Fieldtracing 0.2.0: a curvature fit that can loop forever (#135)
 
     extra: dict[str, Any] = {} if tolerance is None else {"tolerance": tolerance}
     plan = plan_propagation(fb.field, distance, focus_window=window, **extra)
@@ -487,7 +487,7 @@ def near_focus(
 
     from rtt_fusion.graph._fieldtracing_fix import install
 
-    install()  # Fieldtracing 0.2.x: a curvature fit that can loop forever (#135)
+    install()  # Fieldtracing 0.2.0: a curvature fit that can loop forever (#135)
 
     fb, distance = _onto(fb, plane, [])
     if abs(distance) < 1e-9:

@@ -283,6 +283,47 @@ def landing(fb: FieldBundle, distance: float) -> FloatArray | None:
     return np.asarray(np.asarray(f.points) + distance * k[:, :2] / k[:, 2:3], dtype=np.float64)
 
 
+#: samples whose rays land further than this many window widths from the window's centre are
+#: left out of a propagation onto a detector (#135, case 2)
+NEAR_WINDOW = 2.0
+
+
+def _near_window(
+    fb: FieldBundle, land: FloatArray, centre: tuple[float, float], window: float, notes: list[str]
+) -> tuple[FieldBundle, FloatArray]:
+    """The field without the samples whose rays land further than NEAR_WINDOW window widths from
+    the window's centre, and their landing points (#135, case 2).
+
+    Such light does not reach the window. Kept, a few strongly aberrated rays (0.8 % of the power
+    of a beam at the rim of an objective's aperture, landing up to 8 mm off) set the size of the
+    field's pupil (5 mm instead of 0.3 mm), its axis and the grid of the propagation – which then
+    put the focus beside the window. A field whose samples all land that far stays as it is (the
+    window check decides about it)."""
+    from fieldtracing.field import GridlessField
+
+    f = fb.field
+    off = land - np.asarray(centre)
+    keep = np.hypot(off[:, 0], off[:, 1]) <= NEAR_WINDOW * window
+    if keep.all() or not keep.any() or not isinstance(f, GridlessField):
+        return fb, land
+    w = np.sum(np.abs(np.asarray(f.amplitude)) ** 2, axis=1)
+    share = float(w[~keep].sum() / w.sum()) if float(w.sum()) > 0.0 else 0.0
+    notes.append(
+        f"{fb.key.source}: {int((~keep).sum())} of {len(keep)} samples left out – their rays land "
+        f"more than {NEAR_WINDOW * window:.3g} mm from the window's centre ({share:.2%} of the "
+        "power)"
+    )
+    kept = replace(
+        f,
+        points=np.asarray(f.points)[keep],
+        phase=np.asarray(f.phase)[keep],
+        gradient=np.asarray(f.gradient)[keep],
+        hessian=np.asarray(f.hessian)[keep],
+        amplitude=np.asarray(f.amplitude)[keep],
+    )
+    return FieldBundle(fb.key, fb.plane, kept, fb.path, fb.branch), land[keep]
+
+
 class _OutsideWindow(Exception):
     """A field whose rays all land far outside the detector window (propagate_to, field_sums)."""
 
@@ -398,6 +439,21 @@ def near_focus(
     fb, distance = _onto(fb, plane, [])
     if abs(distance) < 1e-9:
         return None
+    land = landing(fb, distance) if window is not None else None
+    if land is not None and window is not None:
+        # light that lands beside the window (#135, case 3) does not decide about it; samples
+        # landing far off do not set the field's extent (as in propagate_to)
+        du, dv = _in_plane(fb, plane.origin)
+        off = land - np.array([du, dv])
+        far = 1.5 * window
+        if (
+            off[:, 0].min() > far
+            or off[:, 0].max() < -far
+            or off[:, 1].min() > far
+            or off[:, 1].max() < -far
+        ):
+            return None
+        fb, _ = _near_window(fb, land, (du, dv), window, [])
     extra: dict[str, Any] = {} if tolerance is None else {"tolerance": tolerance}
     plan = plan_propagation(fb.field, distance, focus_window=window, **extra)
     if plan.method in ("debye", "rayleigh_sommerfeld"):
@@ -433,6 +489,8 @@ def propagate_to(
         return _run(fb, distance, plan_onto(fb, distance, None, tolerance, notes), notes)
     land = landing(fb, distance)
     du, dv = _in_plane(fb, plane.origin)
+    if land is not None:
+        fb, land = _near_window(fb, land, (du, dv), window, notes)
     if land is not None and skip_outside:
         # every ray lands more than a window width beside the detector window: its light does
         # not reach the window (and a Debye or RS grid out to it would be huge)
@@ -470,13 +528,19 @@ def propagate_to(
         offset = float(np.hypot(su, sv))
         pupil = float(plan.parameters.get("length_u_mm", 0.0))
         samples = float(plan.parameters.get("samples", 0.0))
+        period = float(plan.parameters.get("period_mm", 0.0) or 0.0)
         # about its own axis Debye takes the directions within the pupil's cone: a spot further
-        # off than half the pupil radius (a steep sub-beam) lies outside it
-        if offset > 0.5 * pupil or samples > DEBYE_SAMPLES:
+        # off than half the pupil radius (a steep sub-beam) lies outside it; and its result is one
+        # period about the axis (zero beyond): a spot not well inside it (a tenth of the period
+        # from its edge) shows shifted by a period (#135, case 2: a spot 1.07 mm off, period
+        # 1.55 mm – the light landed beside the camera's window)
+        aliased = period > 0.0 and offset > 0.4 * period
+        if offset > 0.5 * pupil or samples > DEBYE_SAMPLES or aliased:
             notes.append(
                 f"{fb.key.source}: Debye about the focus, {offset:.3g} mm beside the field's axis "
                 f"(pupil radius {pupil:.3g} mm"
                 + (f", {samples:.0f} samples" if samples > DEBYE_SAMPLES else "")
+                + (f", Debye period {period:.3g} mm" if aliased else "")
                 + ")"
             )
             return _run(centred, distance, plan_c, notes + near)

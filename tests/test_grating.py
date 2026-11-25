@@ -236,8 +236,8 @@ def test_transmission_gratings_are_steps_of_a_branch() -> None:
         (("G1", "back_out"), ("G2", "in")),
         (("G2", "back_out"), ("cam", "in")),
     }
-    with pytest.raises(ValueError, match="a port has one connection"):
-        model_from_graph(_transmission_chain(back=False), reg)
+    # the version 1 form (out → in on "transmitted") is read through the back port as well
+    assert len(model_from_graph(_transmission_chain(back=False), reg).connections) == 3
 
 
 def test_the_back_port_needs_transmitted_orders(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -264,3 +264,135 @@ def test_port_frames_face_both_ways() -> None:
     )
     assert frames["front"].normal == (0.0, 0.0, 1.0) and frames["back"].normal == (0.0, 0.0, -1.0)
     assert frames["front"].origin == frames["back"].origin == (0.0, 0.0, 1.0)
+
+
+def test_a_version_1_chain_of_transmission_gratings_becomes_a_model() -> None:
+    """A version 1 graph (as scripts write it) chains transmission gratings out → in; as a model
+    the light goes on through the back port (#120), the branch steps front → back, and the model
+    unrolls to the same computation (the same blocks and links up to the socket name)."""
+    from rtt_fusion.graph.topology import model_from_graph, unroll
+
+    reg = builtin_registry()
+    optics.register(reg)
+    grating.register(reg)
+    g = _transmission_chain(back=False)
+    m = model_from_graph(g, reg)
+    steps = [(s.node, s.port_in, s.port_out) for s in m.branches[0].steps]
+    assert ("G1", "front", "back") in steps and ("G2", "front", "back") in steps
+    u = unroll(m, reg)
+    assert {(lk.source, lk.target) for lk in u.links} >= {
+        (("G1", "back_out"), ("G2", "in")),
+        (("G2", "back_out"), ("cam", "in")),
+    }
+    # a grating on "reflected" that sends light on to another block stays refused
+    for name in ("G1", "G2"):
+        g.nodes[name].params["side"] = "reflected"
+    with pytest.raises(ValueError, match="a port has one connection"):
+        model_from_graph(g, reg)
+
+
+def test_a_model_document_of_gratings_reads_back() -> None:
+    """The workflow document of a fresh model (no ports stored on the nodes yet, as a script or
+    the conversion of an old graph makes it) keeps the gratings' declared ports front and back: the
+    file reads back and unrolls (the ports were derived from the sockets as in / out before)."""
+    import json
+
+    from rtt_fusion.graph import io, workflow
+    from rtt_fusion.graph.topology import model_from_graph, unroll
+
+    reg, _ = workflow.registry()
+    m = model_from_graph(_transmission_chain(back=False), reg)
+    doc = workflow.model_document(m, reg)
+    assert not [d for d in doc["diagnostics"] if d["severity"] == "error"], doc["diagnostics"]
+    g1 = next(n for n in doc["model"]["nodes"] if n["id"] == "G1")
+    assert [p["name"] for p in g1["ports"]] == ["front", "back"]
+    back = io.model_from_dict(json.loads(json.dumps(doc["model"])), reg)
+    links = {(lk.source, lk.target) for lk in unroll(back, reg).links}
+    assert (("G1", "back_out"), ("G2", "in")) in links
+
+
+def test_replace_block_in_a_model_moves_ports_by_the_branches() -> None:
+    """`replace_block` on a model (version 2): a thin lens between source and camera replaced by a
+    transmission grating – the port the light enters through becomes `front`, the one it leaves
+    through `back`; connections and branch steps follow, the model unrolls through `back_out`."""
+    from rtt_fusion.graph import Model, replace_block, unroll, validate_model
+
+    reg = builtin_registry()
+    optics.register(reg)
+    grating.register(reg)
+    m = Model()
+    m.add(Node("src", "optics.collimated_source", params={"radius": 0.01, "rings": 2}))
+    m.add(Node("lens", "optics.thin_lens", params={"point": [0, 0, 1.0]}, position=(200.0, 0.0)))
+    m.add(Node("cam", "optics.detector", params={"point": [0, 0, 3.0], "normal": [0, 0, -1]}))
+    m.connect(("src", "out"), ("lens", "in"))
+    m.connect(("lens", "out"), ("cam", "in"))
+    m.branch("main", ("src", None, "out"), ("lens", "in", "out"), ("cam", "in", None))
+    placed = replace_block(
+        m,
+        reg,
+        "lens",
+        Node(
+            "lens",
+            "fg.grating",
+            params={
+                "table": TABLE,
+                "side": "transmitted",
+                "point": [0, 0, 1.0],
+                "normal": [0, 0, -1],
+            },
+        ),
+    )
+    assert placed.type_id == "fg.grating" and placed.position == (200.0, 0.0)
+    assert {(c.a, c.b) for c in m.connections} == {
+        (("src", "out"), ("lens", "front")),
+        (("lens", "back"), ("cam", "in")),
+    }
+    assert ("lens", "front", "back") in [
+        (s.node, s.port_in, s.port_out) for s in m.branches[0].steps
+    ]
+    assert validate_model(m, reg) == []
+    links = {(lk.source, lk.target) for lk in unroll(m, reg).links}
+    assert (("lens", "back_out"), ("cam", "in")) in links
+
+
+def test_replace_block_in_a_model_mirror_to_grating_keeps_the_system(tmp_path: Path) -> None:
+    """The Linnik's sample mirror (one port, entered and left through it) replaced by a grating in
+    the model: its port becomes `front`, the block keeps the mirror's Raytatouille data (`rtt`,
+    `runs` keyed by the new port), and the image equals the mirror's (W22 in the model)."""
+    import json as _json
+
+    from rtt_fusion.graph import backend_rtt, model_from_raytatouille, replace_block, unroll
+    from rtt_fusion.graph.execute import Executor as _Executor
+
+    rt = pytest.importorskip("raytatouille")
+    from test_grating_rtt import PERIOD_UM, image, load_system, write_table
+
+    d = load_system()
+    table = write_table(tmp_path / "mirror.json", {0: -1.0}, PERIOD_UM)
+    reg = builtin_registry()
+    ev = dict(backend_rtt.EVALUATORS)
+    ev.update(grating.register(reg))
+    m = model_from_raytatouille(d)
+    sample = next(n for n in m.nodes.values() if "sample" in n.id.lower())
+    old_ports = {c.a[1] for c in m.connections if c.a[0] == sample.id} | {
+        c.b[1] for c in m.connections if c.b[0] == sample.id
+    }
+    assert len(old_ports) == 1
+    placed = replace_block(
+        m, reg, sample.id, Node(sample.id, "fg.grating", params={"table": table})
+    )
+    assert "rtt" in placed.params and all("front" in k for k in placed.params.get("runs", {}))
+    assert all(
+        (s.port_in, s.port_out) == ("front", "front")
+        for b in m.branches
+        for s in b.steps
+        if s.node == sample.id
+    )
+    g = unroll(m, reg)
+    ex = _Executor(
+        g, reg, ev, {"system": rt.System.from_json(_json.dumps(d)), "rings": 15, "pixels": [512, 8]}
+    )
+    camera = next(n for n in g.nodes if n.startswith("camera"))
+    split = ex.evaluate(camera, "image")
+    whole = image(d, None)
+    assert np.abs(split.values - whole.values).max() < 1e-9 * whole.values.max()

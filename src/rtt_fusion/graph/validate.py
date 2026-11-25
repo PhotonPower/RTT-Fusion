@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from typing import Any
 
 from rtt_fusion.graph.model import (
     Category,
@@ -70,13 +71,18 @@ def node_through(node: Node, registry: NodeTypeRegistry) -> dict[str, tuple[str,
     return {s.name: ins for s in sockets if s.direction is Direction.OUT}
 
 
-def replace_block(graph: Graph, registry: NodeTypeRegistry, node_id: str, new: Node) -> Node:
+def replace_block(graph: Any, registry: NodeTypeRegistry, node_id: str, new: Node) -> Node:
     """`Graph.replace_node` with the socket map found from the sockets: linked sockets of the old
     block move to the new block's socket of the same name, else to the only new socket of the same
     direction and kind (a mirror's `from_objective`/`to_objective` -> a grating's `in`/`out`);
     where several fit, the one on the same side, else the only one of the front port (a grating's
     `out`, not its `back_out`).
-    Raises GraphError if a linked socket has no unique counterpart."""
+    Raises GraphError if a linked socket has no unique counterpart. On a model (version 2):
+    `topology.replace_in_model` (ports, branch steps; ValueError if not unique)."""
+    from rtt_fusion.graph.topology import Model, replace_in_model
+
+    if isinstance(graph, Model):
+        return replace_in_model(graph, registry, node_id, new)
     old = graph.node(node_id)
     new_sockets = node_sockets(new, registry)
     names = {s.name for s in new_sockets}
@@ -104,7 +110,8 @@ def replace_block(graph: Graph, registry: NodeTypeRegistry, node_id: str, new: N
     for key in ("rtt", "runs"):
         if key in old.params and key not in new.params:
             new.params[key] = old.params[key]
-    return graph.replace_node(node_id, new, mapping)
+    placed: Node = graph.replace_node(node_id, new, mapping)
+    return placed
 
 
 def validate(graph: Graph, registry: NodeTypeRegistry) -> list[Diagnostic]:

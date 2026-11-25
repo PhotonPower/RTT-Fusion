@@ -337,6 +337,10 @@ def plan_onto(
     – otherwise the image would be cut to a few micrometres around the axis."""
     from fieldtracing.chain import plan_propagation
 
+    from rtt_fusion.graph._fieldtracing_fix import install
+
+    install()  # Fieldtracing 0.2.x: a curvature fit that can loop forever (#135)
+
     extra: dict[str, Any] = {} if tolerance is None else {"tolerance": tolerance}
     plan = plan_propagation(fb.field, distance, focus_window=window, **extra)
     if not plan.operators:  # a method without an operator chain yet (Fieldtracing: "mixed")
@@ -386,6 +390,10 @@ def near_focus(
     """Why `plane` needs wave optics, or None: Fieldtracing's selection rule for a target near a
     caustic (rays cross or focus there, 1/F_target > ε), the reason in its words."""
     from fieldtracing.chain import plan_propagation
+
+    from rtt_fusion.graph._fieldtracing_fix import install
+
+    install()  # Fieldtracing 0.2.x: a curvature fit that can loop forever (#135)
 
     fb, distance = _onto(fb, plane, [])
     if abs(distance) < 1e-9:
@@ -486,9 +494,31 @@ def _in_plane(fb: FieldBundle, point: Any) -> tuple[float, float]:
 DEBYE_SAMPLES = 768
 
 
+#: most memory a field propagation's grid may take (#135: a Debye grid of 19944² for an order
+#: landing far beside the window asked for 17.8 GiB); beyond, the propagation is refused
+FIELD_GRID_BYTES = 2 * 2**30
+
+
+def grid_bytes(plan: Any) -> float:
+    """Estimated memory of a plan's largest grid: three complex components on the padded grid
+    (Debye: 4·n per axis, the others 2·n), n the plan's samples per axis."""
+    n = float(plan.parameters.get("samples", 0.0) or 0.0)
+    pad = 4.0 if plan.method == "debye" else 2.0
+    return 3 * 16 * (pad * n) ** 2
+
+
 def _run(
     fb: FieldBundle, distance: float, plan: Any, notes: list[str]
 ) -> tuple[FieldBundle, list[str]]:
+    need = grid_bytes(plan)
+    if need > FIELD_GRID_BYTES:
+        n = float(plan.parameters.get("samples", 0.0))
+        raise FieldError(
+            f"{fb.key.source}: the {plan.method} propagation over {distance:g} mm would need a "
+            f"grid of {n:.0f} samples per axis ({need / 2**30:.1f} GiB, more than "
+            f"{FIELD_GRID_BYTES / 2**30:g} GiB) – the light lands far from the field's axis or "
+            "the window is large; a smaller image window, fewer orders or the link on R help"
+        )
     result, log = plan.run(fb.field)
     notes.append(f"{fb.key.source}: H propagation {distance:g} mm by {plan.method} ({plan.reason})")
     notes += [f"  {e.operator}: {w}" for e in log for w in e.warnings]

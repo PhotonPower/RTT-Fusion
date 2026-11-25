@@ -726,13 +726,13 @@ def _near_focus(ctx: Context, node: Node, compiled: Any, probe: list[FieldBundle
     fields of one field point and wavelength per path. The decision goes to the log."""
     plane, hu, hv = _detector_plane(node, compiled)
     window = 2.0 * max(hu, hv)
+    failed: list[str] = []
     for fb in probe:
         try:
             why = near_focus(fb, plane, window, field_tolerance(ctx.shared))
-        except Exception as e:  # a field the planner cannot judge: rays as before
-            ctx.log.append(f"{node.name or node.id}: no automatic wave optics ({e})")
-            _record_used(ctx, node, "R", f"no automatic wave optics ({e})")
-            return False
+        except Exception as e:  # a field the planner cannot judge: the others decide
+            failed.append(str(e))
+            continue
         if why is not None:
             ctx.log.append(
                 f"{node.name or node.id}: the light focuses near the detector ({why}) – "
@@ -740,6 +740,10 @@ def _near_focus(ctx: Context, node: Node, compiled: Any, probe: list[FieldBundle
             )
             _record_used(ctx, node, "H", f"the light focuses near the detector ({why})")
             return True
+    if failed and len(failed) == len(probe):  # none could be judged: rays as before
+        ctx.log.append(f"{node.name or node.id}: no automatic wave optics ({failed[0]})")
+        _record_used(ctx, node, "R", f"no automatic wave optics ({failed[0]})")
+        return False
     _record_used(ctx, node, "R", "no focus near the detector")
     return False
 
@@ -1696,19 +1700,25 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
         fields_wanted = True
         _record_used(ctx, node, "H", "fields arrive at the detector")
     if not fields_wanted and _auto_fields(ctx, node):
-        # the first arriving bundle whose light reaches the detector decides: one that misses it
-        # (a diffraction order beside the optics) gives no field to judge, and the detector fell
-        # back to rays where the others focus
-        probe: list[FieldBundle] = []
-        for b in (
+        # every arriving bundle of one wavelength is judged: one that misses the detector (a
+        # diffraction order beside the optics, a field point at a steep angle) gives no field,
+        # one that focuses beside the window no focus near it (#135, case 3: the head shifted,
+        # the first order to arrive focused millimetres off and the camera fell back to rays
+        # where the ±1 orders focus); a bundle focusing near the detector decides for fields
+        arriving_rays = [
             b
             for arriving in inputs.values()
             for b in arriving or []
             if isinstance(b, RayBundle) and b.branch is not None
-        ):
-            assert b.branch is not None
+        ]
+        first = arriving_rays[0].key if arriving_rays else None
+        probe: list[FieldBundle] = []
+        for b in arriving_rays:
+            assert b.branch is not None and first is not None
+            if b.key.wavelength_index != first.wavelength_index:
+                continue
             run, _ = _run_of(ctx, node, b, None)
-            probe = _trace_run(
+            probe += _trace_run(
                 compiled,
                 layouts,
                 run,
@@ -1719,8 +1729,6 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
                 first=b.branch[1] < 0,
                 keep_all=True,
             )
-            if probe:
-                break
         fields_wanted = _near_focus(ctx, node, compiled, probe)
     bundles: list[RayBundle] = []
     fields: list[FieldBundle] = []

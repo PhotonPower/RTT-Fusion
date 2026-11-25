@@ -31,6 +31,22 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   `field.FIELD_GRID_BYTES` brauchen würde (19944² Debye-Punkte forderten 17,8 GiB), wird mit
   `exec.field` abgelehnt, bevor das Raster angelegt wird. Die Meldung nennt Abtastwerte, Speicher
   und was hilft.
+- **Leeres Kamerabild bei großem Gitterabstand** (#135, Fall 2): Bei Gitterabstand 10,5 mm
+  bildet das FrObSy-Objektiv die steilen Randstrahlen stark aberriert ab. Ein paar Strahlen
+  (0,8 % der Leistung) landen bis 8 mm neben der Kamera und bestimmten Ausdehnung, Achse und
+  Raster des Feldes (Pupille 5 mm statt 0,3 mm). Die Ausbreitung legte den Fokus dann neben das
+  Fenster. Abtastpunkte, deren Strahlen mehr als zwei Fensterbreiten von der Fenstermitte landen,
+  bleiben jetzt aus der Ausbreitung heraus; das Protokoll nennt Anzahl und Leistungsanteil.
+  Debye um die eigene Achse des Feldes gilt nur noch, wenn der Fleck gut innerhalb der
+  Debye-Periode liegt, sonst wird um den Fokus gerechnet. Kamera: Streifen mit 25,92 µm
+  (Referenz 25,92 µm), Kontrast 1,0. Die Leistung im Bild ist in dieser Stellung zu niedrig:
+  Hinter dem Objektiv kreuzen sich die aberrierten Strahlen, und ein Feld aus einer Punktwolke
+  zählt die überlappenden Bereiche nur einmal (0,014 statt 0,030 W je Bündel).
+- **„auto“ an der Kamera blieb bei Strahlen** (#135, Fall 3): Der knotenweise Detektor
+  beurteilte nur das erste ankommende Bündel, das Felder ergab. Bei verschobenem Kopf fokussierte
+  dieses Bündel Millimeter neben dem Fenster. Jetzt werden alle Bündel einer Wellenlänge
+  beurteilt. Licht, das neben dem Fenster landet, entscheidet nicht, und ein Bündel, das sich
+  nicht beurteilen lässt, wird übersprungen.
 
 ## [0.5.2] - 2026-11-25
 

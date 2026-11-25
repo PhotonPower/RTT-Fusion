@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any, cast
 
 import numpy as np
@@ -524,3 +525,95 @@ def test_a_steep_sub_beam_in_its_focus_is_not_dark() -> None:
     # the spot (FWHM ≈ 2.7 µm) lies in the ±6 µm window: nearly all of the power arrives
     pixel_area = (2 * half / n) ** 2
     assert 0.9 * h.power <= float(h.values.sum()) * pixel_area <= 1.05 * h.power
+
+
+# ------------------------------------------- #135: scattered rays, Debye period, auto at a window
+
+
+def _two_beams_with_scattered_rays(offset: float = 1.0834, spread: float = 8.0) -> list[Any]:
+    """The ±1 orders of the FrObSy head with fine fringes, as two coherent beams converging into
+    a common focus 164.5 mm on: every 7th ray strongly aberrated (spread across `spread` times the
+    pupil at the port plane, aimed 8 mm beside the focus, a tenth of the amplitude)."""
+    length = 164.5
+    rng = np.random.default_rng(1)
+    fields = []
+    for x_c in (offset, -offset):
+        b = replace(_converging(x_c, 0.0, length, 0.3, rings=10), wavelength_um=0.405)
+        idx = rng.choice(len(b.direction), size=len(b.direction) // 7, replace=False)
+        p, d, a = np.array(b.position), np.array(b.direction), np.array(b.amplitude)
+        centre = p.mean(axis=0)
+        p[idx] = centre + (p[idx] - centre) * spread
+        aim = np.array([8.0 * np.sign(x_c), 0.0, length]) - p[idx]
+        d[idx] = aim / np.linalg.norm(aim, axis=1)[:, None]
+        a[idx] *= 0.1
+        b = replace(b, position=p, direction=d, amplitude=a)
+        fields.append(rays_to_field(b, Plane.make([x_c, 0.0, 0.0], [0.0, 0.0, 1.0])))
+    return fields
+
+
+def test_scattered_rays_do_not_take_the_focus_off_the_window() -> None:
+    """#135 case 2: a few strongly aberrated rays set the field's extent (pupil 5 mm instead of
+    0.3 mm) and the grid of the propagation, which put the focus beside the camera's window –
+    an empty image. Samples landing more than two window widths off are left out (logged): the
+    two beams meet in the middle with fringes of λ·L/(2·offset)."""
+    from rtt_fusion.graph.field import field_image
+
+    length, offset, half, n = 164.5, 1.0834, 0.1523, 201
+    period = 0.405e-3 * length / (2 * offset)
+    log: list[str] = []
+    detector = Plane.make([0.0, 0.0, length], [0.0, 0.0, 1.0])
+    v = field_image(_two_beams_with_scattered_rays(offset), detector, half, half, n, n, log).values
+    x = (np.arange(n) + 0.5) / n * 2 * half - half
+    row = v[n // 2]
+    centre = float(row[np.argmin(np.abs(x))])
+    assert v.max() > 0 and centre >= 0.9 * float(v.max()), log
+    assert float(row[np.argmin(np.abs(x - period / 2))]) < 0.05 * centre
+    assert any("samples left out" in line for line in log), log
+
+
+def test_debye_about_its_axis_needs_a_period_holding_the_window(monkeypatch: Any) -> None:
+    """#135 case 2: Debye about the field's own axis gives one period n·λ/(2 sin θ) around it
+    (zero beyond); a spot outside the inner half of it shows shifted by a period. Then the
+    propagation goes about the focus, as for a spot far off the axis."""
+    from rtt_fusion.graph import field
+
+    fb = _two_beams_with_scattered_rays(spread=1.0)[0]  # converging 1.08 mm beside its axis
+    detector = Plane.make([0.0, 0.0, 164.5], [0.0, 0.0, 1.0])
+    used: list[Any] = []
+    calls: list[float] = []
+
+    def plan(fb_: Any, distance: float, window: Any, tolerance: Any, notes: list[str]) -> Any:
+        calls.append(float(window))  # first about the focus, then about the field's own axis
+        own = len(calls) == 2
+        return SimpleNamespace(
+            method="debye",
+            reason="test",
+            # about its own axis a period shorter than the window it needs (2.47 mm)
+            parameters={"length_u_mm": 5.1, "samples": 238.0, "period_mm": 1.55 if own else 1.0},
+            centred=not own,
+        )
+
+    monkeypatch.setattr(field, "plan_onto", plan)
+
+    def run(fb_: Any, d: float, p: Any, notes: list[str]) -> Any:
+        used.append(p)
+        return fb_, notes
+
+    monkeypatch.setattr(field, "_run", run)
+    _, notes = field.propagate_to(fb, detector, window=0.3046)
+    assert calls[1] > 2.0  # the window about its own axis holds the spot 1.08 mm off
+    assert used[-1].centred, notes
+    assert any("Debye period 1.55 mm" in line for line in notes), notes
+
+
+def test_auto_judges_only_light_near_the_window() -> None:
+    """#135 case 3: a bundle that focuses millimetres beside the detector's window does not
+    decide about it; one focusing in the window asks for fields."""
+    from rtt_fusion.graph.field import near_focus
+
+    length = 164.5
+    detector = Plane.make([0.0, 0.0, length], [0.0, 0.0, 1.0])
+    beside = replace(_converging(0.0, 5.0, length, 0.3, rings=8), wavelength_um=0.405)
+    inside = replace(_converging(1.0, 0.0, length, 0.3, rings=8), wavelength_um=0.405)
+    assert near_focus(rays_to_field(beside), detector, 0.3046, 0.2) is None
+    assert near_focus(rays_to_field(inside), detector, 0.3046, 0.2) is not None

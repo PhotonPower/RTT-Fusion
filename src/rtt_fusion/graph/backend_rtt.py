@@ -1688,6 +1688,13 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
     compiled, layouts, _, _, _ = _runs(ctx)
     planned = _input_representation(ctx, node)
     fields_wanted = planned in ("H", "S")
+    if not fields_wanted and any(
+        isinstance(b, FieldBundle) for arriving in inputs.values() for b in arriving or []
+    ):
+        # fields arrive although no plan says H (a provider without the engine's plan, #137, or
+        # a field a block made on an R link): they are the light – the rays go into fields too
+        fields_wanted = True
+        _record_used(ctx, node, "H", "fields arrive at the detector")
     if not fields_wanted and _auto_fields(ctx, node):
         # the first arriving bundle whose light reaches the detector decides: one that misses it
         # (a diffraction order beside the optics) gives no field to judge, and the detector fell

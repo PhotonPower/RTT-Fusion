@@ -4,6 +4,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Behoben
+
+- **Felder in einen Detektor im Plugin-Prozess** (#137): Raytatouille Fusion rechnet die `rtt.*`-
+  Blöcke im Raytracer-Plugin, hinter dem JSON-Kanal eines `BlockProvider`. Der Plan der
+  Verbindungen lag nur in der Engine, und so hielt der Detektor dort eine Verbindung auf H für R. Er
+  ließ die Felder, die auf der Verbindung entstanden, unbeachtet und gab ein leeres Bild ohne
+  Meldung (Kamera hinter der Tubuslinse im FrObSy-Belichtungskopf). Jede Anfrage nennt jetzt die
+  geplante Darstellung der Verbindungen am Block (`"plan"`), und der Anbieter gibt sie dem Block als
+  `Context.plan`. Ein Block vor einer H-Verbindung setzt damit auch dort den Brechungsindex hinter
+  sich (#131). Kommen am Detektor Felder an, ohne dass ein Plan H sagt, rechnet er trotzdem mit
+  ihnen und vermerkt das an der Verbindung.
+
 ## [0.5.1] - 2026-11-25
 
 Rückmeldungen aus dem Modell der Zweigitter-Interferenzlithografie (#119–#125, #88) und dem

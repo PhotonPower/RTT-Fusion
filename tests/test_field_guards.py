@@ -23,6 +23,9 @@ def test_the_curvature_fit_ends() -> None:
     pytest.importorskip("fieldtracing")
     import fieldtracing.selection as selection
 
+    if not hasattr(selection, "_curvature_lp"):  # a Fieldtracing before the subset loop (0.1)
+        pytest.skip("this Fieldtracing fits the curvature without the subset loop")
+
     from rtt_fusion.graph._fieldtracing_fix import install
 
     install()

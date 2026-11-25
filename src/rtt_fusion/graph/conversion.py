@@ -27,7 +27,7 @@ def convert(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
         FieldError,
         field_to_rays,
         field_tolerance,
-        rays_to_field,
+        rays_to_fields,
     )
     from rtt_fusion.graph.spectrum import (
         SpectrumBundle,
@@ -47,18 +47,23 @@ def convert(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) -> li
     out: list[Any] = []
     notes: list[str] = []
     try:
-        for item in inputs.get("in") or []:
-            if to in ("H", "S") and isinstance(item, RayBundle):
-                item = rays_to_field(item)
-            if to == "S" and isinstance(item, FieldBundle):
-                item = field_to_spectrum(item, tolerance=field_tolerance(ctx.shared), notes=notes)
-            elif to == "H" and isinstance(item, SpectrumBundle):
-                item = spectrum_to_field(item, notes)
-            elif to == "R" and isinstance(item, SpectrumBundle):
-                item = spectrum_to_rays(item, notes)
-            elif to == "R" and isinstance(item, FieldBundle):
-                item = field_to_rays(item)
-            out.append(item)
+        for raw in inputs.get("in") or []:
+            # a ray map folded at the port gives one field per sheet (#135)
+            items: list[Any] = (
+                rays_to_fields(raw) if to in ("H", "S") and isinstance(raw, RayBundle) else [raw]
+            )
+            for item in items:
+                if to == "S" and isinstance(item, FieldBundle):
+                    item = field_to_spectrum(
+                        item, tolerance=field_tolerance(ctx.shared), notes=notes
+                    )
+                elif to == "H" and isinstance(item, SpectrumBundle):
+                    item = spectrum_to_field(item, notes)
+                elif to == "R" and isinstance(item, SpectrumBundle):
+                    item = spectrum_to_rays(item, notes)
+                elif to == "R" and isinstance(item, FieldBundle):
+                    item = field_to_rays(item)
+                out.append(item)
     except FieldError as e:
         raise ExecutionError("exec.field", str(e), node.id) from e
     except ImportError as e:  # fieldtracing missing

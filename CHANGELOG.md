@@ -4,6 +4,20 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Behoben
+
+- **Felder aus gefalteten Strahlbündeln** (#135, Fall 2, Leistung): Hinter einer aberrierten
+  Linse kreuzen die Randstrahlen die übrigen, und die Abbildung der Pupille auf die Portebene
+  faltet sich. Ein Feld aus allen Stichproben zählt die Überlappung nur einmal: Hinter dem
+  FrObSy-Objektiv ging so die Hälfte der Leistung verloren. `field.rays_to_fields` macht ein
+  Feld je Schicht (zusammenhängende Bereiche eines Vorzeichens der Jacobi-Determinante) auf
+  derselben Ebene mit demselben Kohärenzschlüssel; ausgebreitet und addiert tragen sie das Licht
+  beider. Die Umwandlungen R → H auf Verbindungen, in `fusion.convert` und am Detektor nutzen
+  sie; eine ungefaltete Abbildung gibt wie bisher ein Feld. FrObSy-Belichtungskopf, Kamera bei
+  feinen Streifen: 0,031 W statt 0,008 W (Kontrast 0,96); verschobener Kopf: Kontrast 0,993 statt
+  0,986, gedreht 0,999 statt 0,962. Stichproben an den Faltlinien bleiben draußen (dort trägt die
+  geometrische Amplitude nicht); bei starker Faltung bleibt das Ergebnis eine Näherung.
+
 ### Hinzugefügt
 
 - **Aktuatoren (`fusion.actuator`)**: ein Wert für einen Tisch des Aufbaus – Verschiebetisch unter

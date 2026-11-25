@@ -65,7 +65,7 @@ from rtt_fusion.graph.field import (
     field_image,
     field_tolerance,
     near_focus,
-    rays_to_field,
+    rays_to_fields,
 )
 from rtt_fusion.graph.imaging import coherent_image
 from rtt_fusion.graph.light import (
@@ -1056,7 +1056,7 @@ def _trace_run(
             bundle = _full(b, bundle, src)
         return [bundle]
     try:
-        return [rays_to_field(bundle)]
+        return rays_to_fields(bundle)  # one field per sheet of a folded ray map (#135)
     except FieldError as e:
         raise ExecutionError("exec.field", f"{run}: {e}") from e
 
@@ -1246,7 +1246,7 @@ def _fields(
     out = []
     for p, jones in enumerate((x, y)):
         bundle = base.evolve(key=CoherenceKey("source", field, wl, p), jones=jones.astype(complex))
-        out.append(rays_to_field(bundle))
+        out += rays_to_fields(bundle)
     return out
 
 

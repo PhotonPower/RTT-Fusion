@@ -51,7 +51,7 @@ from rtt_fusion.graph.field import (
     FieldError,
     field_to_rays,
     field_tolerance,
-    rays_to_field,
+    rays_to_fields,
 )
 from rtt_fusion.graph.light import RayBundle
 from rtt_fusion.graph.model import Direction, Graph, Node, SocketKind
@@ -413,23 +413,30 @@ class Executor:
             if isinstance(b, SpectrumBundle) and rays_wanted and (rep == "H" or not spectrum_kept)
         ]
         notes += overlapping_orders(to_rays)  # S -> R: are the orders separated? (plan S3)
+        first: list[Any] = []  # per arriving bundle the first it became (for `used`)
         try:
-            for item in value:
-                if rep in ("H", "S") and isinstance(item, RayBundle):
-                    item = rays_to_field(item)
-                if rep == "S" and isinstance(item, FieldBundle):
-                    item = field_to_spectrum(
-                        item, tolerance=field_tolerance(self.context.shared), notes=notes
-                    )
-                if isinstance(item, SpectrumBundle) and (rep == "H" or not spectrum_kept):
-                    if rays_wanted:
-                        item = spectrum_to_rays(item, notes)
-                    else:
-                        item = spectrum_to_field(item, notes)
-                if isinstance(item, FieldBundle) and rays_wanted:
-                    item = field_to_rays(item)
-                out.append(item)
-            self._record_used(value, out, rep, consumer, lk)
+            for raw in value:
+                # a ray map folded at the port gives one field per sheet (#135)
+                items: list[Any] = (
+                    rays_to_fields(raw)
+                    if rep in ("H", "S") and isinstance(raw, RayBundle)
+                    else [raw]
+                )
+                for item in items:
+                    if rep == "S" and isinstance(item, FieldBundle):
+                        item = field_to_spectrum(
+                            item, tolerance=field_tolerance(self.context.shared), notes=notes
+                        )
+                    if isinstance(item, SpectrumBundle) and (rep == "H" or not spectrum_kept):
+                        if rays_wanted:
+                            item = spectrum_to_rays(item, notes)
+                        else:
+                            item = spectrum_to_field(item, notes)
+                    if isinstance(item, FieldBundle) and rays_wanted:
+                        item = field_to_rays(item)
+                    out.append(item)
+                first.append(out[-len(items)] if items else raw)
+            self._record_used(value, first, rep, consumer, lk)
         except SupportError as e:
             raise ExecutionError("exec.spectrum_support", str(e), where) from e
         except FieldError as e:

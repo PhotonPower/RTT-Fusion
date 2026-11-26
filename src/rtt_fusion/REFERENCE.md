@@ -1105,6 +1105,13 @@ Signatures abbreviated; `reg` = `NodeTypeRegistry`; (g) = re-exported by `rtt_fu
 - `ExecutionError(code, message, location)` (`.code`, `.location`); `ResultCache(limit_bytes=1 GiB)`
   (LRU, `warnings`); `EXECUTABLE`={R}, `WITH_FIELDS`={R,H}, `WITH_SPECTRA`={R,H,S};
   `Evaluator = Callable[[Context, Node, str, dict], Any]`; `produced_by(node, evaluators)`.
+- `rtt_fusion.graph.ray_paths.ray_paths(graph, reg, evaluators, shared, detectors=None,
+  min_power=0.0) -> (list[RayPath], log)`: rays to draw, from the sources to the detectors, also
+  through blocks of other kinds (gratings, stacks): the detectors computed node-wise with R only,
+  every Raytatouille trace recorded and the pieces joined by ray (`source_xy`, coherence key, the
+  bundle's `path`). `RayPath(path, field, wavelength_um, points (n, k, 3) NaN after a loss,
+  power)`; `min_power`: leave out bundles weaker than that share of the strongest through the same
+  block. Lower-level: `recording()`, `note(bundle, points, rows, owner)`, `joined(pieces)`.
 
 ### 4.5 rtt_fusion.graph.planner (g: plan, Plan, Requirements)
 

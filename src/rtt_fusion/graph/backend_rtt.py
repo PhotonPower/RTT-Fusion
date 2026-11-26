@@ -54,10 +54,12 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
 
+from rtt_fusion.graph import ray_paths
 from rtt_fusion.graph.execute import Context, Evaluator, ExecutionError
 from rtt_fusion.graph.field import (
     FieldBundle,
@@ -953,6 +955,7 @@ def _trace_run(
     fields_wanted: bool,
     first: bool = False,
     keep_all: bool = False,
+    owner: str | None = None,
 ) -> list[Any]:
     """Traces a bundle along the events of the path `run` of `compiled`, starting where the rays
     are, and combines OPL, field and polarisation (the field a·prt·jones goes on as a scalar
@@ -960,7 +963,8 @@ def _trace_run(
     the last event (the detector) and return fields. `first`: the bundle comes from the source –
     the medium there is taken from the first segment. `keep_all` (rays): the bundle keeps every
     ray of `b`, the ones lost on the way marked dead – the image triangulates over the source grid
-    and must not bridge the gaps (as along a whole path)."""
+    and must not bridge the gaps (as along a whole path). `owner`: the block the trace is for –
+    while ray paths are recorded for drawing (`ray_paths`), the trace is noted with it."""
     import raytatouille as rt
 
     alive = np.flatnonzero(np.asarray(b.alive) & (np.abs(np.asarray(b.amplitude)) > 0))
@@ -988,6 +992,8 @@ def _trace_run(
         max_recorded_rays=max(rays.size, 1),
         polarization=True,
     )
+    if owner is not None and ray_paths.active():
+        ray_paths.note(b, np.asarray(rec.position), alive[np.asarray(rec.ray_indices)], owner)
     reached = _passed(rec)  # also a ray that starts on or behind the run's first surface: missed
     rows = np.flatnonzero(reached)
     if rows.size < 3:
@@ -1639,6 +1645,8 @@ def _source_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any])
                     source_frame=np.stack([x, y]),
                     branch=(name, -1),
                 )
+                if ray_paths.active():  # drawn from here: the start points of the branch
+                    ray_paths.note(replace(base, path=()), position[:, None, :], np.arange(n), name)
                 for p, jones in enumerate((x, y)):
                     out.append(
                         base.evolve(
@@ -1677,6 +1685,7 @@ def _block_nodes(ctx: Context, node: Node, socket: str, inputs: dict[str, Any]) 
                 False,
                 first=b.branch[1] < 0,
                 keep_all=True,
+                owner=node.id,
             ):
                 traced = traced.evolve(branch=(b.branch[0], i), path=(*b.path, node.id))
                 if fields_next:
@@ -1754,6 +1763,7 @@ def _detector_nodes(ctx: Context, node: Node, inputs: dict[str, Any]) -> Any:
                 fields_wanted,
                 first=b.branch[1] < 0,
                 keep_all=True,
+                owner=node.id,
             )
             if fields_wanted:
                 fields += traced

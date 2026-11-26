@@ -4,6 +4,20 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unreleased]
 
+### Neu
+
+- **Strahlwege durch den ganzen Workflow zum Zeichnen** (`graph.ray_paths`): `ray_paths(graph,
+  registry, evaluators, shared)` rechnet die Detektoren knotenweise nur mit Strahlen (jede
+  Verbindung auf R, keine Felder am Fokus) und schreibt dabei jede Raytatouille-Verfolgung mit
+  (`_trace_run(..., owner=)`, die Startpunkte der Quelle). Blöcke anderer Art – ein
+  FourierGrating-Gitter oder -Stapel, ein hp-FEM-Gitter – verschieben die Strahlen ohne
+  Raytatouille; ihre Ausgänge werden als Eckpunkt mitgeschrieben, und die Stücke werden je Strahl
+  verbunden (gleicher Kohärenzschlüssel und Pupillenpunkt `source_xy`, das Stück des Blocks, mit
+  dem der Pfad des Bündels weitergeht). `min_power` lässt Bündel weg, die schwächer sind als
+  dieser Anteil des stärksten durch denselben Block (schwache Beugungsordnungen). Für CAD: *Trace
+  rays*, wo ein Zweig durch Gitterblöcke führt – bisher endeten die Strahlen dort vor dem ersten
+  Gitter (ein „(aim)“-Stück des Raytatouille-Systems).
+
 ### Geändert
 
 - Die eigene Fassung von `fit_curvature` (#141) wird nur noch für Fieldtracing 0.2.0 eingesetzt.
